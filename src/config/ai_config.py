@@ -90,12 +90,12 @@ class AIConfig:
             # 模型配置
             "models": {
                 "outline": {
-                    "name": os.getenv("VOLCENGINE_OUTLINE_MODEL_ID", "deepseek-v3-1-250821"),
+                    "name": os.getenv("VOLCENGINE_OUTLINE_MODEL_ID", "deepseek-v3-2-251201"),
                     "temperature": float(os.getenv("VOLCENGINE_OUTLINE_TEMPERATURE", "1.0"))
                 },
                 "content": {
-                    "name": os.getenv("VOLCENGINE_CONTENT_MODEL_ID", "deepseek-v3-1-250821"),
-                    "temperature": float(os.getenv("VOLCENGINE_CONTENT_TEMPERATURE", "0.7"))
+                    "name": os.getenv("VOLCENGINE_CONTENT_MODEL_ID", "deepseek-v3-2-251201"),
+                    "temperature": float(os.getenv("VOLCENGINE_CONTENT_TEMPERATURE", "1.0"))
                 }
             },
             # 备用模型配置
