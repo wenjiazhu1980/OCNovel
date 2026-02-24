@@ -14,7 +14,7 @@ class AIConfig:
             "retry_delay": float(os.getenv("OPENAI_RETRY_DELAY", "10")),  # 默认 10 秒
             "models": {
                 "embedding": {
-                    "name": "Qwen/Qwen3-Embedding-0.6B",
+                    "name": os.getenv("OPENAI_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"),
                     "temperature": 0.7,
                     "dimension": 1024,
                     "api_key": os.getenv("OPENAI_EMBEDDING_API_KEY", ""),
@@ -22,14 +22,16 @@ class AIConfig:
                     "timeout": int(os.getenv("OPENAI_EMBEDDING_TIMEOUT", "60"))
                 },
                 "outline": {
-                    "name": "deepgeminipro",  # 使用本地服务器支持的模型
+                    # 默认使用开源免费模型，便于零成本体验
+                    "name": os.getenv("OPENAI_OUTLINE_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
                     "temperature": 1.0,
                     "api_key": os.getenv("OPENAI_OUTLINE_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_OUTLINE_API_BASE", "https://api.siliconflow.cn/v1"),
                     "timeout": int(os.getenv("OPENAI_OUTLINE_TIMEOUT", "120"))
                 },
                 "content": {
-                    "name": "deepgeminiflash",  # 使用deepclaude接口的模型
+                    # 默认使用开源免费模型，便于零成本体验
+                    "name": os.getenv("OPENAI_CONTENT_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
                     "temperature": 0.7,
                     "api_key": os.getenv("OPENAI_CONTENT_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_CONTENT_API_BASE", "https://api.siliconflow.cn/v1"),
@@ -58,9 +60,10 @@ class AIConfig:
                 "base_url": os.getenv("GEMINI_FALLBACK_BASE_URL", "https://api.siliconflow.cn/v1"),
                 "timeout": int(os.getenv("GEMINI_FALLBACK_TIMEOUT", "120")),  # 备用API使用更长的超时时间
                 "models": {
-                    "flash": "moonshotai/Kimi-K2-Instruct",  # flash模型的备用
-                    "pro": "Qwen/Qwen3-235B-A22B-Thinking-2507",  # pro模型的备用
-                    "default": "deepseek-ai/DeepSeek-V3.1"  # 默认备用模型
+                    # 备用默认也切换到免费开源模型，避免高成本模型兜底
+                    "flash": "Qwen/Qwen2.5-7B-Instruct",
+                    "pro": "Qwen/Qwen2.5-7B-Instruct",
+                    "default": "Qwen/Qwen2.5-7B-Instruct"
                 }
             },
             "models": {
@@ -99,7 +102,7 @@ class AIConfig:
             "fallback": {
                 "enabled": os.getenv("VOLCENGINE_FALLBACK_ENABLED", "true").lower() == "true",
                 "provider": "openai",  # 备用到OpenAI兼容模型
-                "model_name": "deepseek-ai/DeepSeek-V3.1",
+                "model_name": "Qwen/Qwen2.5-7B-Instruct",
                 "api_key": os.getenv("OPENAI_EMBEDDING_API_KEY", ""),  # 使用嵌入模型的API密钥作为备用
                 "base_url": "https://api.siliconflow.cn/v1"  # 使用硅基流动的API地址
             }
