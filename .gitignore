@@ -53,3 +53,4 @@ Thumbs.db
 .cursorignore
 .cursorrules
 .qoderignore
+.ace-tool/

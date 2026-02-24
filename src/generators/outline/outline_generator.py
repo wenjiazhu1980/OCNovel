@@ -191,7 +191,8 @@ class OutlineGenerator:
             current_start_chapter_num=batch_start_num,
             current_batch_size=current_batch_size,
             existing_context=existing_context,
-            extra_prompt=extra_prompt
+            extra_prompt=extra_prompt,
+            novel_config=self.config.novel_config
         )
 
         # 新增：打印大纲生成提示词长度
@@ -299,13 +300,13 @@ class OutlineGenerator:
             processed_json_str = re.sub(r',+', ',', processed_json_str)
 
             # 5. Remove trailing commas before `}` or `]` (e.g., `],` -> `]`, `},` -> `}`)
-            processed_json_str = re.sub(r',\s*([}\]])', r'\\1', processed_json_str)
+            processed_json_str = re.sub(r',\s*([}\]])', r'\1', processed_json_str)
 
             # 6. Try to fix missing commas: if `]` or `}` is followed directly by a new JSON element's start character (not a comma), insert a comma.
             # This regex is specifically for inserting a comma between a closing bracket/brace and an opening new JSON element.
             # It looks for a closing bracket/brace (Group 1) followed by optional whitespace, AND NOT followed by a comma (?!,).
             # Then it asserts (positive lookahead) that the next character is the start of a valid JSON value.
-            processed_json_str = re.sub(r'([}\\]])\\s*(?!,)(?=[\\\[{\\\"-0123456789tfnal])', r'\\1,', processed_json_str)
+            processed_json_str = re.sub(r'([}\\]])\\s*(?!,)(?=[\\\[{\\\"-0123456789tfnal])', r'\1,', processed_json_str)
 
             # 7. Find the first `[` or `{` and the last `]` or `}` to extract the outermost JSON
             json_start_square = processed_json_str.find('[')

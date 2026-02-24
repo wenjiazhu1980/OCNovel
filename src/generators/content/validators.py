@@ -55,6 +55,10 @@ class DuplicateValidator:
         self.content_model = content_model
         self.min_duplicate_length = 50  # 最小重复文字长度
         self.max_duplicate_ratio = 0.3  # 最大允许重复比例
+        # 性能保护参数，避免在长文本上出现 O(n^3) 级别的扫描
+        self.max_scan_chars = 6000
+        self.window_stride = 5
+        self.max_report_items = 50
     
     def check_duplicates(
         self,
@@ -95,21 +99,31 @@ class DuplicateValidator:
     def _find_internal_duplicates(self, content: str) -> List[Tuple[str, int, int]]:
         """查找章节内部的重复文字"""
         duplicates = []
-        content_length = len(content)
-        
-        # 使用滑动窗口查找重复片段
-        for length in range(self.min_duplicate_length, content_length // 2):
-            for start in range(content_length - length * 2):
-                pattern = content[start:start + length]
-                # 在当前片段之后查找相同内容
-                next_start = start + length
-                while True:
-                    next_start = content.find(pattern, next_start)
-                    if next_start == -1:
-                        break
-                    duplicates.append((pattern, start, next_start))
-                    next_start += 1
-        
+        if not content:
+            return duplicates
+
+        scan_content = content[:self.max_scan_chars]
+        window_size = self.min_duplicate_length
+        if len(scan_content) < window_size * 2:
+            return duplicates
+
+        first_positions = {}
+        step = max(1, self.window_stride)
+        max_start = len(scan_content) - window_size + 1
+
+        for start in range(0, max_start, step):
+            pattern = scan_content[start:start + window_size]
+            prev_start = first_positions.get(pattern)
+            if prev_start is None:
+                first_positions[pattern] = start
+                continue
+
+            # 只记录非重叠重复，减少误报和结果爆炸
+            if start - prev_start >= window_size:
+                duplicates.append((pattern, prev_start, start))
+                if len(duplicates) >= self.max_report_items:
+                    break
+
         return duplicates
     
     def _find_cross_chapter_duplicates(
@@ -120,23 +134,54 @@ class DuplicateValidator:
     ) -> List[Tuple[str, str, int, int]]:
         """查找与前后章节的重复文字"""
         duplicates = []
-        
-        # 检查与上一章的重复
-        if prev_content:
-            for length in range(self.min_duplicate_length, len(current_content) // 2):
-                for start in range(len(current_content) - length):
-                    pattern = current_content[start:start + length]
-                    if pattern in prev_content:
-                        duplicates.append(("prev", pattern, start, prev_content.find(pattern)))
-        
-        # 检查与下一章的重复
-        if next_content:
-            for length in range(self.min_duplicate_length, len(current_content) // 2):
-                for start in range(len(current_content) - length):
-                    pattern = current_content[start:start + length]
-                    if pattern in next_content:
-                        duplicates.append(("next", pattern, start, next_content.find(pattern)))
-        
+
+        if not current_content:
+            return duplicates
+
+        window_size = self.min_duplicate_length
+        step = max(1, self.window_stride)
+        current_scan = current_content[:self.max_scan_chars]
+        if len(current_scan) < window_size:
+            return duplicates
+
+        def build_window_index(text: str) -> Dict[str, int]:
+            index = {}
+            if not text:
+                return index
+            text_scan = text[:self.max_scan_chars]
+            if len(text_scan) < window_size:
+                return index
+
+            max_start = len(text_scan) - window_size + 1
+            for start in range(0, max_start, step):
+                pattern = text_scan[start:start + window_size]
+                if pattern not in index:
+                    index[pattern] = start
+            return index
+
+        prev_index = build_window_index(prev_content)
+        next_index = build_window_index(next_content)
+        max_start = len(current_scan) - window_size + 1
+        seen = set()
+
+        for start in range(0, max_start, step):
+            pattern = current_scan[start:start + window_size]
+
+            if prev_index and pattern in prev_index:
+                key = ("prev", start)
+                if key not in seen:
+                    duplicates.append(("prev", pattern, start, prev_index[pattern]))
+                    seen.add(key)
+
+            if next_index and pattern in next_index:
+                key = ("next", start)
+                if key not in seen:
+                    duplicates.append(("next", pattern, start, next_index[pattern]))
+                    seen.add(key)
+
+            if len(duplicates) >= self.max_report_items:
+                break
+
         return duplicates
     
     def _generate_report(

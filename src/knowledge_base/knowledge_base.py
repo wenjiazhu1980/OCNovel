@@ -256,6 +256,7 @@ class KnowledgeBase:
                 'embedding_model_name': self.embedding_model.model_name,  # 保存嵌入模型名称
                 'embedding_dimension': dimension  # 保存嵌入维度
             }, f)
+        self.is_built = True
         logging.info("知识库构建完成并已缓存")
         
         # 清理临时文件

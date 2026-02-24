@@ -1,7 +1,6 @@
 from typing import Dict, List, Optional
 import dataclasses # 导入 dataclasses 以便类型提示
 import json
-from src.config.config import Config  # 导入 Config 类
 import os
 import logging
 from .humanization_prompts import (
@@ -14,9 +13,6 @@ from .humanization_prompts import (
     get_chinese_punctuation_rules,
     get_enhanced_zhuque_prompt_with_punctuation
 )
-
-# 初始化 Config 实例
-config = Config()
 
 # 如果 ChapterOutline 只在此处用作类型提示，可以简化或使用 Dict
 # from .novel_generator import ChapterOutline # 或者定义一个类似的结构
@@ -40,13 +36,14 @@ def get_outline_prompt(
     current_batch_size: int,
     existing_context: str = "",
     extra_prompt: Optional[str] = None,
-    reference_info: str = ""
+    reference_info: str = "",
+    novel_config: Optional[Dict] = None
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
-    # 从 config.json 中获取故事设定
-    novel_config = config.novel_config
-    writing_guide = novel_config.get("writing_guide", {})
+    # 从调用方传入的配置中获取故事设定，避免导入期读取默认配置文件
+    effective_novel_config = novel_config or {}
+    writing_guide = effective_novel_config.get("writing_guide", {})
     
     # 提取关键设定
     world_building = writing_guide.get("world_building", {})
