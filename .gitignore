@@ -42,7 +42,7 @@ docs/
 examples/
 scripts/
 *_gui.*
-*
+
 # 环境变量
 .env
 !.env.example
