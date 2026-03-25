@@ -1,13 +1,19 @@
 import os
 import pickle
 import hashlib
+import logging
+# faiss-cpu 启动时会通过 logging 打印 GPU 不可用的 INFO 日志，属于正常行为
+# 临时提高 root logger 级别压掉这条消息
+_root = logging.getLogger()
+_orig_level = _root.level
+_root.setLevel(logging.WARNING)
 import faiss
+_root.setLevel(_orig_level)
 import numpy as np
 import jieba
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-import logging
-from FlagEmbedding import FlagReranker
+import openai
 
 @dataclass
 class TextChunk:
@@ -19,7 +25,7 @@ class TextChunk:
     metadata: Dict
 
 class KnowledgeBase:
-    def __init__(self, config: Dict, embedding_model, reranker_model_name: str = None):
+    def __init__(self, config: Dict, embedding_model, reranker_config: Dict = None):
         self.config = config
         self.embedding_model = embedding_model
         self.chunks: List[TextChunk] = []
@@ -27,9 +33,32 @@ class KnowledgeBase:
         self.cache_dir = config["cache_dir"]
         self.is_built = False  # 添加构建状态标志
         os.makedirs(self.cache_dir, exist_ok=True)
-        self.reranker_model_name = reranker_model_name
+        self.reranker_config = reranker_config
         self.reranker = None
-        
+        self._init_reranker()
+
+    def _init_reranker(self):
+        """初始化 Reranker（通过 API 调用，无需下载本地模型）"""
+        if not self.reranker_config:
+            logging.info("未提供 Reranker 配置，搜索将仅使用向量检索")
+            return
+        model_name = self.reranker_config.get("model_name", "")
+        api_key = self.reranker_config.get("api_key", "")
+        base_url = self.reranker_config.get("base_url", "")
+        if not model_name or not api_key:
+            logging.warning("Reranker 模型名称或 API Key 为空，跳过初始化")
+            return
+        try:
+            self.reranker = {
+                "client": openai.OpenAI(api_key=api_key, base_url=base_url),
+                "model_name": model_name,
+                "timeout": self.reranker_config.get("timeout", 60),
+            }
+            logging.info(f"Reranker API 客户端初始化成功: {model_name}")
+        except Exception as e:
+            logging.warning(f"Reranker 初始化失败（将回退到纯向量检索）: {e}")
+            self.reranker = None
+
     def _get_cache_path(self, text: str) -> str:
         """获取缓存文件路径"""
         text_hash = hashlib.md5(text.encode()).hexdigest()
@@ -269,27 +298,69 @@ class KnowledgeBase:
                         logging.warning(f"清理临时文件 {f} 失败: {e}")
 
     def search(self, query: str, k: int = 5) -> List[str]:
-        """搜索相关内容"""
+        """搜索相关内容（向量检索 + Reranker 二次精排）"""
         if not self.index:
             logging.error("知识库索引未构建")
             raise ValueError("Knowledge base not built yet")
-            
+
         query_vector = self.embedding_model.embed(query)
-        
+
         if query_vector is None:
             logging.error("嵌入模型返回空向量")
             return []
-            
-        # 搜索最相似的文本块
+
+        # 如果有 reranker，多召回一些候选用于精排
+        recall_k = min(k * 4, len(self.chunks)) if self.reranker else k
+
+        # 向量检索召回候选
         query_vector_array = np.array([query_vector]).astype('float32')
-        distances, indices = self.index.search(query_vector_array, k)
-        
-        # 返回相关文本内容
-        results = []
+        distances, indices = self.index.search(query_vector_array, recall_k)
+
+        candidates = []
         for idx in indices[0]:
-            if idx < len(self.chunks):
-                results.append(self.chunks[idx].content)
-        return results
+            if 0 <= idx < len(self.chunks):
+                candidates.append(self.chunks[idx].content)
+
+        if not candidates:
+            return []
+
+        # Reranker API 二次精排
+        if self.reranker and len(candidates) > 1:
+            try:
+                scores = self._rerank_via_api(query, candidates)
+                ranked = sorted(zip(candidates, scores), key=lambda x: x[1], reverse=True)
+                results = [doc for doc, _ in ranked[:k]]
+                logging.debug(f"Reranker 精排完成，从 {len(candidates)} 个候选中选出 {len(results)} 个")
+                return results
+            except Exception as e:
+                logging.warning(f"Reranker 精排失败，回退到向量检索结果: {e}")
+
+        return candidates[:k]
+
+    def _rerank_via_api(self, query: str, documents: List[str]) -> List[float]:
+        """通过 API 调用 Reranker 模型进行精排，返回每个文档的相关性分数"""
+        client: openai.OpenAI = self.reranker["client"]
+        model_name = self.reranker["model_name"]
+        timeout = self.reranker.get("timeout", 60)
+
+        # SiliconFlow / Jina 兼容的 /rerank 端点
+        response = client.post(
+            "/rerank",
+            body={
+                "model": model_name,
+                "query": query,
+                "documents": documents,
+                "return_documents": False,
+            },
+            cast_to=object,
+            options={"timeout": timeout},
+        )
+
+        # 响应格式: {"results": [{"index": 0, "relevance_score": 0.95}, ...]}
+        results = response.get("results", []) if isinstance(response, dict) else []
+        # 按原始文档顺序排列分数
+        score_map = {item["index"]: item["relevance_score"] for item in results}
+        return [score_map.get(i, 0.0) for i in range(len(documents))]
 
     def get_all_references(self) -> Dict[str, str]:
         """获取所有参考内容"""
@@ -378,17 +449,4 @@ class KnowledgeBase:
         finally:
             # 恢复原始缓存目录
             if cache_dir:
-                self.cache_dir = old_cache_dir 
-
-    def get_openai_config(self, model_type: str) -> Dict:
-        """获取OpenAI配置"""
-        if model_type == "reranker":
-            return {
-                "model_name": self.reranker_model_name,
-                "api_key": "",
-                "base_url": "",
-                "use_fp16": True,
-                "retry_delay": 5
-            }
-        else:
-            return {} 
+                self.cache_dir = old_cache_dir

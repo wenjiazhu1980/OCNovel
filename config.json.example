@@ -123,16 +123,19 @@
       "max_retries": 3,
       "retry_delay": 30,
       "batch_size": 10,
+      "outline_batch_size": 100,
+      "outline_context_chapters": 10,
+      "outline_detail_chapters": 5,
       "model_timeout": 60,
       "max_tokens": 65536,
       "force_rebuild_kb": false,
       "model_selection": {
         "outline": {
-          "provider": "volcengine",
+          "provider": "openai",
           "model_type": "outline"
         },
         "content": {
-          "provider": "volcengine",
+          "provider": "openai",
           "model_type": "content"
         }
       },
@@ -142,7 +145,7 @@
         "check_duplicates": true
       },
       "humanization": {
-        "temperature": 0.8,
+        "temperature": 1.0,
         "top_p": 0.9,
         "dialogue_ratio": 0.4,
         "description_simplification": true,

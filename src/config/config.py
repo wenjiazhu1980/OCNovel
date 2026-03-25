@@ -43,16 +43,19 @@ class Config:
     def __init__(self, config_file: str = "config.json"):
         """
         初始化配置
-        
+
         Args:
             config_file: 配置文件路径
         """
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        # 如果配置文件路径不是绝对路径，则相对于项目根目录
+        self._code_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        # 如果配置文件路径不是绝对路径，则相对于代码根目录
         if not os.path.isabs(config_file):
-            self.config_file = os.path.join(self.base_dir, config_file)
+            self.config_file = os.path.join(self._code_dir, config_file)
         else:
             self.config_file = config_file
+
+        # base_dir 基于配置文件所在目录（支持 ~/OCNovel 等外部目录）
+        self.base_dir = os.path.dirname(os.path.abspath(self.config_file))
         
         # 加载环境变量
         load_dotenv()
@@ -64,8 +67,10 @@ class Config:
         # 初始化 AI 配置
         self.ai_config = AIConfig()
         
-        # 从配置文件中读取 output_dir
+        # 从配置文件中读取 output_dir，相对路径基于 base_dir
         config_output_dir = self.config["output_config"].get("output_dir")
+        if config_output_dir and not os.path.isabs(config_output_dir):
+            config_output_dir = os.path.join(self.base_dir, config_output_dir)
         
         # 优先使用config.json中的model_config，如果没有则使用AIConfig的默认配置
         if "model_config" in self.config:
@@ -77,18 +82,14 @@ class Config:
             self.model_config = {}
             model_selection = self.config["generation_config"].get("model_selection", {})
             # outline_model
-            outline_sel = model_selection.get("outline", {"provider": "gemini", "model_type": "outline"})
-            if outline_sel["provider"] == "volcengine":
-                self.model_config["outline_model"] = self.ai_config.get_volcengine_config(outline_sel["model_type"])
-            elif outline_sel["provider"] == "openai":
+            outline_sel = model_selection.get("outline", {"provider": "openai", "model_type": "outline"})
+            if outline_sel["provider"] == "openai":
                 self.model_config["outline_model"] = self.ai_config.get_openai_config(outline_sel["model_type"])
             else:
                 self.model_config["outline_model"] = self.ai_config.get_gemini_config(outline_sel["model_type"])
             # content_model
-            content_sel = model_selection.get("content", {"provider": "gemini", "model_type": "content"})
-            if content_sel["provider"] == "volcengine":
-                self.model_config["content_model"] = self.ai_config.get_volcengine_config(content_sel["model_type"])
-            elif content_sel["provider"] == "openai":
+            content_sel = model_selection.get("content", {"provider": "openai", "model_type": "content"})
+            if content_sel["provider"] == "openai":
                 self.model_config["content_model"] = self.ai_config.get_openai_config(content_sel["model_type"])
             else:
                 self.model_config["content_model"] = self.ai_config.get_gemini_config(content_sel["model_type"])
@@ -102,9 +103,13 @@ class Config:
         # 知识库配置
         self.knowledge_base_config = self.config["knowledge_base_config"]
         self.knowledge_base_config["reference_files"] = [
-            os.path.join(self.base_dir, file_path)
+            os.path.join(self.base_dir, file_path) if not os.path.isabs(file_path) else file_path
             for file_path in self.knowledge_base_config["reference_files"]
         ]
+        # 缓存目录：相对路径基于 base_dir
+        cache_dir = self.knowledge_base_config.get("cache_dir", "data/cache")
+        if not os.path.isabs(cache_dir):
+            self.knowledge_base_config["cache_dir"] = os.path.join(self.base_dir, cache_dir)
         
         # 生成器配置
         self.generator_config = {

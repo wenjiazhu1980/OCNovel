@@ -18,12 +18,9 @@ class OutlineModel(BaseModel):
         elif config["type"] == "openai":
             from .openai_model import OpenAIModel
             self.model = OpenAIModel(config)
-        elif config["type"] == "volcengine":
-            from .openai_model import OpenAIModel
-            self.model = OpenAIModel(config)  # 火山引擎复用OpenAI兼容实现
         else:
             raise ValueError(f"不支持的模型类型: {config['type']}")
-        
+
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(10))
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """生成章节大纲"""
@@ -50,12 +47,9 @@ class ContentModel(BaseModel):
         elif config["type"] == "openai":
             from .openai_model import OpenAIModel
             self.model = OpenAIModel(config)
-        elif config["type"] == "volcengine":
-            from .openai_model import OpenAIModel
-            self.model = OpenAIModel(config)  # 火山引擎复用OpenAI兼容实现
         else:
             raise ValueError(f"不支持的模型类型: {config['type']}")
-        
+
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(10))
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """生成章节内容"""
@@ -82,12 +76,9 @@ class EmbeddingModel(BaseModel):
         elif config["type"] == "openai":
             from .openai_model import OpenAIModel
             self.model = OpenAIModel(config)
-        elif config["type"] == "volcengine":
-            from .openai_model import OpenAIModel
-            self.model = OpenAIModel(config)  # 火山引擎复用OpenAI兼容实现
         else:
             raise ValueError(f"不支持的模型类型: {config['type']}")
-        
+
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """生成文本（不支持）"""
         raise NotImplementedError("EmbeddingModel不支持文本生成")
