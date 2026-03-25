@@ -1,5 +1,7 @@
 from openai import OpenAI
 import numpy as np
+import time
+import concurrent.futures
 from typing import Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_fixed, wait_exponential
 from .base_model import BaseModel
@@ -24,38 +26,12 @@ class OpenAIModel(BaseModel):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self._validate_config()
-        
-        # 检查是否为火山引擎配置
-        if config.get("type") == "volcengine":
-            self.is_volcengine = True
-            self.thinking_enabled = config.get("thinking_enabled", True)
-            self._init_volcengine_client(config)
-        else:
-            self.is_volcengine = False
-            self.thinking_enabled = False
-            self._init_standard_client(config)
+        self.api_mode = "auto"
+        self.reasoning_enabled = config.get("reasoning_enabled", False)
+        self.reasoning_effort = config.get("reasoning_effort", "medium")
+        self.cancel_checker = None  # 可选：外部注入的取消检查回调
+        self._init_standard_client(config)
             
-    def _init_volcengine_client(self, config: Dict[str, Any]):
-        """初始化火山引擎客户端"""
-        timeout = config.get("timeout", 300)
-        base_url = config.get("base_url")
-        
-        # 备用API配置
-        self.fallback_enabled = config.get("fallback_enabled", False)
-        if self.fallback_enabled:
-            self.fallback_base_url = config.get("fallback_base_url", "https://api.siliconflow.cn/v1")
-            self.fallback_api_key = config.get("fallback_api_key", "")
-            self.fallback_model_name = config.get("fallback_model_name", "deepseek-ai/DeepSeek-V3.1")
-        
-        # 初始化火山引擎客户端
-        self.volcengine_client = OpenAI(
-            api_key=config["api_key"],
-            base_url=base_url,
-            timeout=timeout
-        )
-        
-        logging.info(f"火山引擎DeepSeek-V3.1模型初始化完成: {base_url}, 深度思考: {self.thinking_enabled}")
-        
     def _init_standard_client(self, config: Dict[str, Any]):
         """初始化标准OpenAI客户端（原有逻辑）"""
         # 增加超时时间，特别是对于本地服务器
@@ -63,15 +39,20 @@ class OpenAIModel(BaseModel):
         base_url = config.get("base_url", "https://api.siliconflow.cn/v1")
         
         # 备用API配置
-        self.fallback_base_url = "https://api.siliconflow.cn/v1"
-        self.fallback_api_key = os.getenv("OPENAI_EMBEDDING_API_KEY", "")  # 使用embedding的API key作为备用
+        self.fallback_base_url = os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")
+        self.fallback_api_key = os.getenv("FALLBACK_API_KEY", "")  # 使用独立的备用API密钥
         # 根据当前模型类型选择备用模型
         if "gemini-2.5-flash" in self.model_name:
             self.fallback_model_name = "moonshotai/Kimi-K2-Instruct"  # 使用Kimi-K2作为gemini-2.5-flash的备用
         elif "gemini-2.5-pro" in self.model_name:
             self.fallback_model_name = "Qwen/Qwen3-235B-A22B-Thinking-2507"  # 使用Qwen作为gemini-2.5-pro的备用
         else:
-            self.fallback_model_name = "deepseek-ai/DeepSeek-V3.1"  # 默认备用模型
+            self.fallback_model_name = "deepseek-ai/DeepSeek-V3"  # 默认备用模型
+
+        self.api_mode = str(config.get("api_mode", "auto")).strip().lower()
+        if self.api_mode not in {"auto", "chat", "responses"}:
+            logging.warning(f"未知 API 模式: {self.api_mode}，已回退为 auto")
+            self.api_mode = "auto"
         
         # 初始化网络管理客户端（如果可用）
         if NETWORK_AVAILABLE:
@@ -119,20 +100,6 @@ class OpenAIModel(BaseModel):
         )
         logging.info(f"OpenAI model initialized with base URL: {base_url}, timeout: {timeout}s")
         
-    def _build_volcengine_messages(self, prompt: str) -> list:
-        """构建火山引擎消息格式"""
-        messages = [{"role": "user", "content": prompt}]
-        
-        if self.thinking_enabled:
-            # 添加深度思考指令
-            thinking_instruction = """
-请使用深度思考模式来回答这个问题。在回答之前，请在<thinking>标签中详细分析问题，
-考虑多个角度和可能的解决方案，然后给出最终的回答。
-"""
-            messages[0]["content"] = thinking_instruction + "\n\n" + prompt
-        
-        return messages
-    
     def _process_thinking_output(self, content: str) -> str:
         """处理包含思考过程的输出"""
         # 提取思考过程和最终答案
@@ -153,6 +120,185 @@ class OpenAIModel(BaseModel):
                 return content
         
         return content
+
+    def _supports_responses_api(self, client: Any) -> bool:
+        """检测当前客户端是否支持 Responses API"""
+        responses_attr = getattr(client, "responses", None)
+        return responses_attr is not None and hasattr(responses_attr, "create")
+
+    def _extract_chat_content(self, response: Any) -> Optional[str]:
+        """从 Chat Completions 响应中提取文本"""
+        content = response.choices[0].message.content
+        if isinstance(content, str):
+            return content
+
+        # 兼容 content 为结构化数组的情况
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str) and text:
+                        parts.append(text)
+                    continue
+
+                text = getattr(item, "text", None)
+                if isinstance(text, str) and text:
+                    parts.append(text)
+
+            merged = "".join(parts).strip()
+            return merged or None
+
+        return None
+
+    def _extract_responses_content(self, response: Any) -> Optional[str]:
+        """从 Responses API 响应中提取文本"""
+        output_text = getattr(response, "output_text", None)
+        if isinstance(output_text, str):
+            cleaned = output_text.strip()
+            if cleaned:
+                return cleaned
+
+        output_items = getattr(response, "output", None)
+        if not output_items:
+            return None
+
+        chunks = []
+        for item in output_items:
+            content_blocks = getattr(item, "content", None)
+            if content_blocks is None and isinstance(item, dict):
+                content_blocks = item.get("content")
+            if not content_blocks:
+                continue
+
+            for block in content_blocks:
+                text = getattr(block, "text", None)
+                if text is None and isinstance(block, dict):
+                    text = block.get("text")
+
+                if isinstance(text, str) and text:
+                    chunks.append(text)
+                    continue
+
+                nested_text = getattr(text, "value", None)
+                if nested_text is None and isinstance(text, dict):
+                    nested_text = text.get("value")
+                if isinstance(nested_text, str) and nested_text:
+                    chunks.append(nested_text)
+
+        merged = "".join(chunks).strip()
+        return merged or None
+
+    def _get_reasoning_effort(self) -> Optional[str]:
+        """获取校验后的推理强度值，未启用则返回 None"""
+        if not self.reasoning_enabled or not self.reasoning_effort:
+            return None
+        _valid = {"low", "medium", "high", "xhigh"}
+        effort = self.reasoning_effort.strip().lower()
+        if effort not in _valid:
+            logging.warning(f"推理强度 '{self.reasoning_effort}' 无效，已回退为 'medium'（合法值: {_valid}）")
+            effort = "medium"
+        return effort
+
+    def _generate_with_chat_api(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        max_tokens: Optional[int],
+        temperature: float
+    ) -> str:
+        # 限制 max_tokens 不超过模型常见上限
+        if max_tokens and max_tokens > 16384:
+            logging.warning(f"max_tokens ({max_tokens}) 过大，已限制为 16384")
+            max_tokens = 16384
+        params = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": temperature,
+        }
+        if max_tokens:
+            params["max_tokens"] = max_tokens
+        effort = self._get_reasoning_effort()
+        if effort:
+            params["extra_body"] = {"reasoning_effort": effort}
+            logging.info(f"Chat API 推理模式已启用，强度: {effort}")
+
+        response = client.chat.completions.create(**params)
+
+        content = self._extract_chat_content(response)
+        if content is None:
+            raise Exception("Chat Completions 返回空内容")
+        return content
+
+    def _generate_with_responses_api(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        max_tokens: Optional[int],
+        temperature: float
+    ) -> str:
+        if not self._supports_responses_api(client):
+            raise Exception("当前 openai SDK 不支持 Responses API，请升级到 openai>=1.66.0")
+
+        request_data = {
+            "model": model_name,
+            "input": prompt,
+            "temperature": temperature,
+        }
+        if max_tokens is not None:
+            if max_tokens > 16384:
+                logging.warning(f"max_output_tokens ({max_tokens}) 过大，已限制为 16384")
+                max_tokens = 16384
+            request_data["max_output_tokens"] = max_tokens
+        effort = self._get_reasoning_effort()
+        if effort:
+            request_data["reasoning"] = {"effort": effort}
+            logging.info(f"Responses API 推理模式已启用，强度: {effort}")
+
+        response = client.responses.create(**request_data)
+        content = self._extract_responses_content(response)
+        if content is None:
+            raise Exception("Responses API 返回空内容")
+        return content
+
+    def _generate_with_compatible_api(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        temperature: float = 0.7,
+        api_mode: Optional[str] = None
+    ) -> str:
+        """兼容 Chat Completions 与 Responses 两种接口"""
+        mode = (api_mode or self.api_mode).strip().lower()
+        if mode not in {"auto", "chat", "responses"}:
+            mode = "auto"
+
+        if mode == "chat":
+            return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature)
+
+        if mode == "responses":
+            return self._generate_with_responses_api(client, model_name, prompt, max_tokens, temperature)
+
+        # auto: 优先尝试 Responses，不可用或失败时回退 Chat
+        if self._supports_responses_api(client):
+            try:
+                return self._generate_with_responses_api(
+                    client, model_name, prompt, max_tokens, temperature
+                )
+            except Exception as responses_error:
+                logging.warning(f"Responses API 调用失败，回退 Chat Completions: {responses_error}")
+        else:
+            logging.info("当前客户端不支持 Responses API，自动使用 Chat Completions")
+
+        return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature)
     
     def _create_fallback_client(self):
         """创建备用客户端"""
@@ -165,50 +311,6 @@ class OpenAIModel(BaseModel):
             )
         return None
     
-    def _generate_with_volcengine(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """使用火山引擎DeepSeek-V3.1生成文本"""
-        logging.info(f"使用火山引擎DeepSeek-V3.1生成文本，提示词长度: {len(prompt)}")
-        
-        # 构建消息
-        messages = self._build_volcengine_messages(prompt)
-        
-        # 火山引擎 DeepSeek-V3.1 的 max_tokens 限制为 32768
-        effective_max_tokens = max_tokens or self.config.get("max_tokens", 8192)
-        if effective_max_tokens > 32768:
-            logging.warning(f"max_tokens {effective_max_tokens} 超过火山引擎限制，调整为 32768")
-            effective_max_tokens = 32768
-        
-        # 设置生成参数
-        generation_params = {
-            "model": self.model_name,
-            "messages": messages,
-            "temperature": self.config.get("temperature", 0.7),
-            "max_tokens": effective_max_tokens
-        }
-        
-        try:
-            response = self.volcengine_client.chat.completions.create(**generation_params)
-            content = response.choices[0].message.content
-            
-            if content is None:
-                raise Exception("火山引擎模型返回空内容")
-            
-            # 处理深度思考输出
-            if self.thinking_enabled:
-                content = self._process_thinking_output(content)
-            
-            logging.info(f"火山引擎生成成功，返回内容长度: {len(content)}")
-            return content
-            
-        except Exception as e:
-            logging.error(f"火山引擎生成失败: {str(e)}")
-            
-            # 尝试使用备用模型
-            if self.fallback_enabled and self.fallback_api_key:
-                return self._generate_with_fallback(prompt, max_tokens)
-            
-            raise e
-    
     def _generate_with_fallback(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """使用备用模型生成文本"""
         logging.warning(f"切换到备用模型: {self.fallback_model_name}")
@@ -220,16 +322,14 @@ class OpenAIModel(BaseModel):
         )
         
         try:
-            response = fallback_client.chat.completions.create(
-                model=self.fallback_model_name,
-                messages=[{"role": "user", "content": prompt}],
+            content = self._generate_with_compatible_api(
+                fallback_client,
+                self.fallback_model_name,
+                prompt,
                 max_tokens=max_tokens or 8192,
-                temperature=0.7
+                temperature=0.7,
+                api_mode="auto"
             )
-            
-            content = response.choices[0].message.content
-            if content is None:
-                raise Exception("备用模型返回空内容")
                 
             logging.info(f"备用模型生成成功，返回内容长度: {len(content)}")
             return content
@@ -244,11 +344,16 @@ class OpenAIModel(BaseModel):
             # 如果提示词太长，进行截断
             max_prompt_length = 65536  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
-                logging.warning(f"提示词过长 ({len(prompt)} 字符)，截断到 {max_prompt_length} 字符")
+                original_length = len(prompt)
+                truncated_chars = original_length - max_prompt_length
+                logging.warning(
+                    f"[网络客户端] 提示词过长 ({original_length} 字符)，截断到 {max_prompt_length} 字符。"
+                    f"丢失尾部 {truncated_chars} 字符（占比 {truncated_chars/original_length*100:.1f}%）"
+                )
                 prompt = prompt[:max_prompt_length]
-            
+
             messages = [{"role": "user", "content": prompt}]
-            
+
             # 使用网络管理客户端
             response_data = self.network_client.chat_completion(
                 model=self.model_name,
@@ -320,19 +425,68 @@ class OpenAIModel(BaseModel):
             logging.error(f"网络管理客户端嵌入出现未知错误: {str(e)}")
             raise e
         
-    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=60))
+    def _cancellable_call(self, fn, *args, **kwargs):
+        """在子线程中执行 API 调用，主线程每秒检查取消信号"""
+        if not self.cancel_checker:
+            return fn(*args, **kwargs)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(fn, *args, **kwargs)
+            elapsed = 0
+            while not future.done():
+                if self.cancel_checker():
+                    future.cancel()
+                    raise InterruptedError("用户取消生成")
+                try:
+                    return future.result(timeout=1.0)
+                except concurrent.futures.TimeoutError:
+                    elapsed += 1
+                    if elapsed % 30 == 0:
+                        logging.info(f"API 调用进行中... 已等待 {elapsed} 秒")
+                    continue
+                except Exception:
+                    raise  # 子线程异常直接抛出
+            return future.result()
+
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """生成文本"""
-        logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}")
-        
-        # 如果是火山引擎，使用专用的生成方法
-        if self.is_volcengine:
-            return self._generate_with_volcengine(prompt, max_tokens)
-        
-        # 优先使用网络管理客户端
-        if NETWORK_AVAILABLE and self.network_client:
+        """生成文本（含重试，支持取消检查）"""
+        max_attempts = 5
+        last_error = None
+
+        for attempt in range(1, max_attempts + 1):
+            # 每次尝试前检查取消信号
+            if self.cancel_checker and self.cancel_checker():
+                raise InterruptedError("用户取消生成")
+
             try:
-                return self._use_network_client_for_generation(prompt, max_tokens)
+                return self._generate_once(prompt, max_tokens)
+            except InterruptedError:
+                raise
+            except Exception as e:
+                last_error = e
+                logging.warning(f"生成失败 (尝试 {attempt}/{max_attempts}): {type(e).__name__}: {e}")
+                if attempt < max_attempts:
+                    wait = min(4 * (2 ** (attempt - 1)), 60)
+                    logging.info(f"等待 {wait} 秒后重试...")
+                    # 分段等待，每秒检查一次取消信号
+                    for _ in range(int(wait)):
+                        if self.cancel_checker and self.cancel_checker():
+                            raise InterruptedError("用户取消生成")
+                        time.sleep(1)
+
+        raise last_error
+
+    def _generate_once(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+        """单次生成尝试（支持取消检查）"""
+        logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}")
+
+        # 优先使用网络管理客户端（该客户端只支持 chat/completions）
+        if NETWORK_AVAILABLE and self.network_client and self.api_mode != "responses":
+            try:
+                return self._cancellable_call(
+                    self._use_network_client_for_generation, prompt, max_tokens)
+            except InterruptedError:
+                raise
             except Exception as e:
                 logging.warning(f"网络管理客户端失败，回退到原始客户端: {str(e)}")
         
@@ -341,19 +495,22 @@ class OpenAIModel(BaseModel):
             # 如果提示词太长，进行截断
             max_prompt_length = 65536  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
-                logging.warning(f"提示词过长 ({len(prompt)} 字符)，截断到 {max_prompt_length} 字符")
+                original_length = len(prompt)
+                truncated_chars = original_length - max_prompt_length
+                logging.warning(
+                    f"[原始客户端] 提示词过长 ({original_length} 字符)，截断到 {max_prompt_length} 字符。"
+                    f"丢失尾部 {truncated_chars} 字符（占比 {truncated_chars/original_length*100:.1f}%）"
+                )
                 prompt = prompt[:max_prompt_length]
             
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[{"role": "user", "content": prompt}],
+            content = self._cancellable_call(
+                self._generate_with_compatible_api,
+                self.client,
+                self.model_name,
+                prompt,
                 max_tokens=max_tokens,
                 temperature=0.7
             )
-            
-            content = response.choices[0].message.content
-            if content is None:
-                raise Exception("模型返回空内容")
                 
             logging.info(f"文本生成成功，返回内容长度: {len(content)}")
             return content
@@ -367,15 +524,14 @@ class OpenAIModel(BaseModel):
                 fallback_client = self._create_fallback_client()
                 if fallback_client:
                     try:
-                        response = fallback_client.chat.completions.create(
-                            model=self.fallback_model_name,  # 使用备用模型名称
-                            messages=[{"role": "user", "content": prompt}],
+                        content = self._generate_with_compatible_api(
+                            fallback_client,
+                            self.fallback_model_name,
+                            prompt,
                             max_tokens=max_tokens,
-                            temperature=0.7
+                            temperature=0.7,
+                            api_mode="auto"
                         )
-                        content = response.choices[0].message.content
-                        if content is None:
-                            raise Exception("备用模型返回空内容")
                             
                         logging.info(f"使用备用API生成成功，返回内容长度: {len(content)}")
                         return content
@@ -450,5 +606,5 @@ class OpenAIModel(BaseModel):
         """析构函数，确保资源清理"""
         try:
             self.close()
-        except:
-            pass 
+        except Exception:
+            pass

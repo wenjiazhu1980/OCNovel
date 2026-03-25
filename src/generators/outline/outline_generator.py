@@ -15,6 +15,7 @@ class OutlineGenerator:
         self.knowledge_base = knowledge_base
         self.output_dir = config.output_config["output_dir"]
         self.chapter_outlines = []
+        self.cancel_checker = None  # 可选：外部注入的取消检查回调，返回 True 表示应取消
         
         # 同步信息相关
         self.sync_info_file = os.path.join(self.output_dir, "sync_info.json")
@@ -133,12 +134,18 @@ class OutlineGenerator:
                 self.chapter_outlines.extend([None] * (end_chapter - len(self.chapter_outlines)))
                 logging.info(f"扩展大纲列表以容纳目标章节 {end_chapter}")
 
-            batch_size = 100 # 修改为100章一个批次
+            batch_size = self.config.generation_config.get("outline_batch_size", 100)  # 主批次大小，支持超长大纲
             successful_outlines_in_run = [] # 存储本次运行成功生成的
 
             num_batches = (total_chapters_to_generate + batch_size - 1) // batch_size
             all_batches_successful = True # 跟踪所有批次是否都成功
             for batch_idx in range(num_batches):
+                # 检查取消信号
+                if self.cancel_checker and self.cancel_checker():
+                    logging.info("大纲生成收到取消信号，中止。")
+                    self._save_outline()  # 保存已生成的部分
+                    raise InterruptedError("用户取消大纲生成")
+
                 batch_start_num = start_chapter + (batch_idx * batch_size)
                 # 确保批次结束不超过总的结束章节
                 batch_end_num = min(batch_start_num + batch_size - 1, end_chapter)
@@ -191,18 +198,23 @@ class OutlineGenerator:
             current_start_chapter_num=batch_start_num,
             current_batch_size=current_batch_size,
             existing_context=existing_context,
-            extra_prompt=extra_prompt
+            extra_prompt=extra_prompt,
+            novel_config=self.config.novel_config
         )
 
         # 新增：打印大纲生成提示词长度
         logging.info(f"本次大纲生成prompt长度为: {len(prompt)} 字符")
 
-        batch_size = self.config.generation_config.get("batch_size", 5)  # 默认每批5章
+        batch_size = self.config.generation_config.get("batch_size", 5)  # 每次API调用生成的章节数
 
         if current_batch_size > batch_size:
             logging.info(f"批次大小 ({current_batch_size}) 超过限制 ({batch_size})，将分批处理")
             success = True
             for sub_batch_start in range(batch_start_num, batch_end_num + 1, batch_size):
+                # 检查取消信号
+                if self.cancel_checker and self.cancel_checker():
+                    logging.info("大纲子批次生成收到取消信号，中止。")
+                    raise InterruptedError("用户取消大纲生成")
                 sub_batch_end = min(sub_batch_start + batch_size - 1, batch_end_num)
                 if not self._generate_batch(sub_batch_start, sub_batch_end, novel_type, theme, style, extra_prompt, successful_outlines_in_run):
                     success = False
@@ -256,12 +268,15 @@ class OutlineGenerator:
                 return False 
 
             if valid_count == current_batch_size:
-                # 移除outline模式下的同步信息更新，只有auto模式和finalize模式才更新
                 logging.info(f"outline模式不触发同步信息更新，仅保存大纲")
                 successful_outlines_in_run.extend([o for o in new_outlines_batch if isinstance(o, ChapterOutline)])
                 return True
             else:
-                logging.warning(f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过验证。")
+                logging.warning(
+                    f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过验证，"
+                    f"未通过的章节可能存在字段缺失或格式不符。"
+                    f"请检查模型输出质量，或尝试减小每批生成章节数（当前: {current_batch_size}）。"
+                )
                 return False
 
         except Exception as e:
@@ -270,63 +285,88 @@ class OutlineGenerator:
             return False
 
     def _parse_model_response(self, response: str):
-        """解析模型返回的 JSON 响应，兼容 markdown 包裹和多余前后缀，并处理 JSON 内部的换行符"""
+        """解析模型返回的 JSON 响应，采用渐进式解析策略：优先直接解析，逐步降级清理"""
         import json
         import re
-        try:
-            # 1. 去除 markdown 代码块包裹
-            response = response.strip()
-            if response.startswith('```'):
-                response = re.sub(r'^```[a-zA-Z]*\n?', '', response)
-                response = response.strip('`\n')
 
-            # 2. 健壮地转义字符串内部内容：确保所有双引号字符串内部的特殊字符都被正确转义。
-            #    使用 json.dumps 来进行健壮的转义，然后移除其添加的外部引号。
-            def escape_inner_content_for_json(match):
-                inner_content = match.group(0)[1:-1] # 获取双引号内的内容
-                # 使用 json.dumps 转义内容，然后移除 json.dumps 自动添加的首尾引号
-                escaped_inner_content = json.dumps(inner_content)[1:-1]
-                return f'"{escaped_inner_content}"'
+        def _strip_markdown_wrapper(text: str) -> str:
+            """去除 markdown 代码块包裹"""
+            text = text.strip()
+            if text.startswith('```'):
+                text = re.sub(r'^```[a-zA-Z]*\n?', '', text)
+                text = text.strip('`\n')
+            return text
 
-            # 这个正则表达式匹配双引号包围的字符串，包括内部已转义的引号和反斜杠
-            response = re.sub(r'(\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\")', escape_inner_content_for_json, response)
+        def _extract_json_boundaries(text: str) -> str:
+            """提取最外层的 JSON 数组或对象"""
+            json_start_square = text.find('[')
+            json_end_square = text.rfind(']') + 1
+            json_start_curly = text.find('{')
+            json_end_curly = text.rfind('}') + 1
 
-            # 3. Aggressively flatten the entire response into a single line
-            # This handles any unescaped newlines that prematurely terminate strings or break JSON structure.
-            processed_json_str = response.replace('\n', '').replace('\r', '')
-
-            # 4. Remove multiple consecutive commas (e.g., `,,` to `,`)
-            processed_json_str = re.sub(r',+', ',', processed_json_str)
-
-            # 5. Remove trailing commas before `}` or `]` (e.g., `],` -> `]`, `},` -> `}`)
-            processed_json_str = re.sub(r',\s*([}\]])', r'\\1', processed_json_str)
-
-            # 6. Try to fix missing commas: if `]` or `}` is followed directly by a new JSON element's start character (not a comma), insert a comma.
-            # This regex is specifically for inserting a comma between a closing bracket/brace and an opening new JSON element.
-            # It looks for a closing bracket/brace (Group 1) followed by optional whitespace, AND NOT followed by a comma (?!,).
-            # Then it asserts (positive lookahead) that the next character is the start of a valid JSON value.
-            processed_json_str = re.sub(r'([}\\]])\\s*(?!,)(?=[\\\[{\\\"-0123456789tfnal])', r'\\1,', processed_json_str)
-
-            # 7. Find the first `[` or `{` and the last `]` or `}` to extract the outermost JSON
-            json_start_square = processed_json_str.find('[')
-            json_end_square = processed_json_str.rfind(']') + 1
-            json_start_curly = processed_json_str.find('{')
-            json_end_curly = processed_json_str.rfind('}') + 1
-
-            # Prefer the outermost array or object
             if json_start_square != -1 and json_end_square > json_start_square and \
                (json_start_curly == -1 or json_start_square < json_start_curly):
-                final_json_str = processed_json_str[json_start_square:json_end_square]
+                return text[json_start_square:json_end_square]
             elif json_start_curly != -1 and json_end_curly > json_start_curly:
-                final_json_str = processed_json_str[json_start_curly:json_end_curly]
-            else:
-                final_json_str = processed_json_str # If no clear JSON boundary found, try to parse the entire string
+                return text[json_start_curly:json_end_curly]
+            return text
 
+        try:
+            cleaned = _strip_markdown_wrapper(response)
+
+            # === 策略1：直接解析（最安全，无数据损失） ===
             try:
-                return json.loads(final_json_str)
+                extracted = _extract_json_boundaries(cleaned)
+                result = json.loads(extracted)
+                logging.info("JSON 解析成功（直接解析）")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+            # === 策略2：仅修复常见的尾部逗号和多余逗号（低风险清理） ===
+            try:
+                light_cleaned = re.sub(r',\s*([}\]])', r'\1', cleaned)  # 去尾逗号
+                light_cleaned = re.sub(r',+', ',', light_cleaned)  # 去重复逗号
+                extracted = _extract_json_boundaries(light_cleaned)
+                result = json.loads(extracted)
+                logging.info("JSON 解析成功（轻度清理）")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+            # === 策略3：转义字符串内容后移除非字符串中的换行符（中等风险） ===
+            try:
+                def escape_inner_content_for_json(match):
+                    inner_content = match.group(0)[1:-1]
+                    escaped_inner_content = json.dumps(inner_content)[1:-1]
+                    return f'"{escaped_inner_content}"'
+
+                escaped = re.sub(r'(\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\")', escape_inner_content_for_json, cleaned)
+                # 现在字符串内的换行已被转义为 \\n，可以安全移除原始换行
+                flattened = escaped.replace('\n', ' ').replace('\r', '')
+                flattened = re.sub(r',+', ',', flattened)
+                flattened = re.sub(r',\s*([}\]])', r'\1', flattened)
+                extracted = _extract_json_boundaries(flattened)
+                result = json.loads(extracted)
+                logging.info("JSON 解析成功（转义+扁平化）")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+            # === 策略4：最激进的清理（最后手段，可能有数据损失） ===
+            try:
+                aggressive_cleaned = cleaned.replace('\n', '').replace('\r', '')
+                aggressive_cleaned = re.sub(r',+', ',', aggressive_cleaned)
+                aggressive_cleaned = re.sub(r',\s*([}\]])', r'\1', aggressive_cleaned)
+                aggressive_cleaned = re.sub(r'([}\]])\s*(?!,)(?=[\\[{\"-0123456789tfnal])', r'\1,', aggressive_cleaned)
+                extracted = _extract_json_boundaries(aggressive_cleaned)
+                result = json.loads(extracted)
+                logging.warning("JSON 解析成功（激进清理模式），字符串内容中的换行符可能已丢失")
+                return result
             except json.JSONDecodeError as e:
-                logging.error(f"_parse_model_response: JSON 解析失败: {e}\n原始内容: {final_json_str[:500]}...")
+                logging.error(f"所有 JSON 解析策略均失败: {e}\n原始内容前500字符: {response[:500]}...")
                 return None
+
         except Exception as e:
             logging.error(f"_parse_model_response: 处理响应时出错: {e}")
             return None
@@ -567,8 +607,9 @@ class OutlineGenerator:
         """获取批次的上下文信息"""
         context_parts = []
         
-        # 1. 获取更全面的前文信息
-        context_chapters_count = 10  # 增加到10章以提供更多上下文
+        # 1. 获取前文上下文
+        context_chapters_count = self.config.generation_config.get("outline_context_chapters", 10)
+        detail_chapters_count = self.config.generation_config.get("outline_detail_chapters", 5)
         start_index = max(0, batch_start_num - 1 - context_chapters_count)
         end_index = max(0, batch_start_num - 1)
         
@@ -582,7 +623,7 @@ class OutlineGenerator:
             # 重要事件时间线
             if self.sync_info.get("剧情发展", {}).get("重要事件"):
                 context_parts.append("重要事件时间线：")
-                for event in self.sync_info["剧情发展"]["重要事件"][-10:]:  # 增加到最近10个重要事件
+                for event in self.sync_info["剧情发展"]["重要事件"][-context_chapters_count:]:
                     context_parts.append(f"- {event}")
             
             # 进行中的冲突
@@ -595,8 +636,8 @@ class OutlineGenerator:
         previous_outlines = [o for o in self.chapter_outlines[start_index:end_index] if isinstance(o, ChapterOutline)]
         if previous_outlines:
             context_parts.append(f"\n[前 {len(previous_outlines)} 章详细大纲]")
-            # 只显示最近5章的详细信息
-            for prev_outline in previous_outlines[-5:]:
+            # 只显示最近 N 章的详细信息
+            for prev_outline in previous_outlines[-detail_chapters_count:]:
                 context_parts.append(f"\n第 {prev_outline.chapter_number} 章: {prev_outline.title}")
                 context_parts.append(f"关键点: {', '.join(prev_outline.key_points)}")
                 context_parts.append(f"涉及角色: {', '.join(prev_outline.characters)}")
@@ -604,15 +645,15 @@ class OutlineGenerator:
                 context_parts.append(f"冲突: {', '.join(prev_outline.conflicts)}")
         
             # 对于更早的章节，只显示章节号和标题
-            if len(previous_outlines) > 5:
+            if len(previous_outlines) > detail_chapters_count:
                 context_parts.append("\n[更早章节概要]")
-                for prev_outline in previous_outlines[:-5]:
+                for prev_outline in previous_outlines[:-detail_chapters_count]:
                     context_parts.append(f"第 {prev_outline.chapter_number} 章: {prev_outline.title}")
         
         # 4. 添加人物关系网络
         if self.sync_info.get("人物设定", {}).get("人物关系"):
             context_parts.append("\n[关键人物关系]")
-            for relation in self.sync_info["人物设定"]["人物关系"][-10:]:  # 增加到最近10个关系
+            for relation in self.sync_info["人物设定"]["人物关系"][-context_chapters_count:]:
                 context_parts.append(f"- {relation}")
         
         # 5. 添加世界观关键信息

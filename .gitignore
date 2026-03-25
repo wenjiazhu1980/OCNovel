@@ -28,7 +28,7 @@ build/
 
 # 项目特定文件
 data/
-src/gui/
+# src/gui/ — GUI代码已入库
 !data/*/.gitkeep
 config*.json
 .cursor/rules/*
@@ -41,8 +41,8 @@ tests/
 docs/
 examples/
 scripts/
-*_gui.*
-*
+# *_gui.* — GUI入口已入库
+
 # 环境变量
 .env
 !.env.example
@@ -53,3 +53,4 @@ Thumbs.db
 .cursorignore
 .cursorrules
 .qoderignore
+.ace-tool/

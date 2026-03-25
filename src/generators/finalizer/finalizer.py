@@ -109,9 +109,6 @@ class NovelFinalizer:
                 elif imitation_model_config["type"] == "openai":
                     from src.models.openai_model import OpenAIModel
                     imitation_model = OpenAIModel(imitation_model_config)
-                elif imitation_model_config["type"] == "volcengine":
-                    from src.models.openai_model import OpenAIModel
-                    imitation_model = OpenAIModel(imitation_model_config)  # 火山引擎复用OpenAI兼容实现
                 else:
                     logger.error(f"不支持的模型类型: {imitation_model_config['type']}")
                     imitation_model = self.content_model

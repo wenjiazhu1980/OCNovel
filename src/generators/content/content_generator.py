@@ -31,6 +31,7 @@ class ContentGenerator:
         self.chapter_outlines = []
         self.current_chapter = 0
         self.finalizer = finalizer
+        self.cancel_checker = None  # 可选：外部注入的取消检查回调，返回 True 表示应取消
         
         # 新增：缓存计数器和同步信息生成器
         self.chapters_since_last_cache = 0
@@ -175,6 +176,11 @@ class ContentGenerator:
             logger.error(f"生成章节内容时发生未预期错误: {str(e)}", exc_info=True)
             return False
 
+    def _check_cancelled(self):
+        """检查是否收到取消请求"""
+        if self.cancel_checker and self.cancel_checker():
+            raise InterruptedError("用户取消生成")
+
     def _process_single_chapter(self, chapter_num: int, external_prompt: Optional[str] = None, max_retries: int = 3, style_name: Optional[str] = None, is_target_chapter: bool = False) -> bool:
         """
         处理单个章节的生成、验证、保存和定稿，支持风格名
@@ -190,6 +196,7 @@ class ContentGenerator:
         for attempt in range(max_retries):
             logger.info(f"[Chapter {chapter_num}] 尝试 {attempt + 1}/{max_retries}")
             try:
+                self._check_cancelled()
                 # 1. 生成原始内容，拼接风格示例和风格要求
                 extra_prompt, style_example = self.get_style_reference(style_name)
                 style_block = ''
@@ -202,6 +209,7 @@ class ContentGenerator:
                 if not raw_content:
                     raise Exception("原始内容生成失败，返回为空。")
 
+                self._check_cancelled()
                 # 2. 加载同步信息
                 sync_info = self._load_sync_info()
                 
@@ -216,6 +224,7 @@ class ContentGenerator:
                     f"\n需要修改: {'是' if needs_logic_revision else '否'}"
                 )
 
+                self._check_cancelled()
                 # 4. 一致性验证
                 logger.info(f"[Chapter {chapter_num}] 开始一致性检查...")
                 final_content = self.consistency_checker.ensure_chapter_consistency(
@@ -226,6 +235,7 @@ class ContentGenerator:
                 )
                 logger.info(f"[Chapter {chapter_num}] 一致性检查完成")
 
+                self._check_cancelled()
                 # 5. 重复文字验证
                 duplicate_report, needs_duplicate_revision = self.duplicate_validator.check_duplicates(
                     final_content,

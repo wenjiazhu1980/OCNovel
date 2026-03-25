@@ -1,5 +1,5 @@
 # AI模型依赖
-openai>=1.0.0
+openai>=1.66.0,<2
 google-generativeai>=0.3.0
 
 # 向量数据库和嵌入
@@ -20,6 +20,9 @@ beautifulsoup4
 
 # GUI框架
 PySide6>=6.5.0
+
+# 打包工具
+pyinstaller>=6.0.0
 
 # 开发和测试
 pytest>=7.4.0

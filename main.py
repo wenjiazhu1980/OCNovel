@@ -41,8 +41,6 @@ def create_model(model_config: dict):
         return GeminiModel(model_config)
     elif model_config["type"] == "openai":
         return OpenAIModel(model_config)
-    elif model_config["type"] == "volcengine":
-        return OpenAIModel(model_config)  # 复用OpenAI兼容实现
     else:
         raise ValueError(f"不支持的模型类型: {model_config['type']}")
 
@@ -188,10 +186,12 @@ def main():
         content_model = create_model(content_model_config)
         embedding_model = create_model(embedding_model_config)
         
-        # 创建知识库
+        # 创建知识库（含 Reranker 配置）
+        reranker_config = ai_config.get_openai_config("reranker")
         knowledge_base = KnowledgeBase(
             config.knowledge_base_config,
-            embedding_model
+            embedding_model,
+            reranker_config=reranker_config
         )
         
         # --- 实例化 Finalizer ---
