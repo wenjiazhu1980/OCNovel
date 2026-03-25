@@ -66,6 +66,10 @@ class ProgressTab(QWidget):
         top_bar.addWidget(self.chk_force_outline)
         top_bar.addWidget(self.edit_extra_prompt, stretch=1)
 
+        self.btn_open_output = QPushButton("打开输出目录")
+        self.btn_open_output.clicked.connect(self._open_output_dir)
+        top_bar.addWidget(self.btn_open_output)
+
         root.addLayout(top_bar)
 
         # ---- 中部：章节列表 + 日志 ----
@@ -212,3 +216,18 @@ class ProgressTab(QWidget):
 
         # 清理 Worker 引用
         self._worker = None
+
+    def _open_output_dir(self):
+        """在 Finder 中打开输出目录"""
+        import subprocess
+        cfg = load_config(self._config_path)
+        output_dir = (cfg.get("output_config") or {}).get("output_dir", "")
+        if not output_dir:
+            output_dir = os.path.join(os.path.dirname(self._config_path), "data", "output")
+        # 相对路径基于配置文件目录
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
+        if os.path.isdir(output_dir):
+            subprocess.Popen(["open", output_dir])
+        else:
+            QMessageBox.warning(self, "目录不存在", f"输出目录不存在:\n{output_dir}")

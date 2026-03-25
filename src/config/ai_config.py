@@ -6,8 +6,8 @@ class AIConfig:
     """AI模型配置管理类"""
     
     def __init__(self):
-        # 加载环境变量
-        load_dotenv()
+        # 环境变量应由 Config 类统一加载，这里仅作兜底
+        load_dotenv(override=False)
 
         # OpenAI 配置（提前定义）
         self.openai_config = {

@@ -88,6 +88,9 @@ class PipelineWorker(QThread):
             outline_model = create_model(config.get_model_config("outline_model"))
             content_model = create_model(config.get_model_config("content_model"))
             embedding_model = create_model(config.get_model_config("embedding_model"))
+            # 注入取消检查到模型层，使 API 调用重试间隙可响应停止
+            outline_model.cancel_checker = self._stop_event.is_set
+            content_model.cancel_checker = self._stop_event.is_set
 
             # ---- 5. 创建知识库（含 Reranker 配置） ----
             from src.knowledge_base.knowledge_base import KnowledgeBase

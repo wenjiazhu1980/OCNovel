@@ -57,8 +57,12 @@ class Config:
         # base_dir 基于配置文件所在目录（支持 ~/OCNovel 等外部目录）
         self.base_dir = os.path.dirname(os.path.abspath(self.config_file))
         
-        # 加载环境变量
-        load_dotenv()
+        # 加载环境变量（优先使用配置文件同目录下的 .env）
+        env_file = os.path.join(self.base_dir, ".env")
+        if os.path.exists(env_file):
+            load_dotenv(env_file, override=True)
+        else:
+            load_dotenv()
         
         # 加载配置文件
         with open(self.config_file, 'r', encoding='utf-8') as f:

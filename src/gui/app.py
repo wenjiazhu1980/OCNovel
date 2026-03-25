@@ -89,8 +89,8 @@ QGroupBox {
     background-color: #FFFFFF;
     border: 1px solid #E8E8E8;
     border-radius: 10px;
-    margin-top: 14px;
-    padding: 24px 16px 16px 16px;
+    margin-top: 20px;
+    padding: 32px 16px 16px 16px;
     font-weight: 600;
     color: #1D2129;
 }
@@ -119,7 +119,8 @@ QGroupBox[cssClass="inner"] {
     background: transparent;
     border: 1px solid #EBEDF0;
     border-radius: 8px;
-    padding: 20px 12px 12px 12px;
+    margin-top: 18px;
+    padding: 28px 12px 12px 12px;
 }
 
 /* ══ 输入控件 ══ */

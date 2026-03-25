@@ -3,8 +3,9 @@ import numpy as np
 import time
 import logging
 import os
+import threading
 from typing import Optional, Dict, Any
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential
 from .base_model import BaseModel
 
 # 导入网络管理相关模块
@@ -19,6 +20,10 @@ except ImportError:
 
 class GeminiModel(BaseModel):
     """Gemini模型实现，支持官方和OpenAI兼容API分流"""
+
+    # 类级别的锁，保护 genai.configure() 全局状态
+    _configure_lock = threading.Lock()
+    _configured_api_key: Optional[str] = None
     
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
@@ -28,9 +33,14 @@ class GeminiModel(BaseModel):
         self.timeout = config.get('timeout', 60)
         self.retry_delay = config.get('retry_delay', 30)
         self.max_retries = config.get('max_retries', 5)
+        self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self.max_input_length = config.get('max_input_length', 500000)
         self.api_key = config.get('api_key', None)
         self.base_url = config.get('base_url', None)
+        self.api_mode = str(config.get("api_mode", "auto")).strip().lower()
+        if self.api_mode not in {"auto", "chat", "responses"}:
+            logging.warning(f"未知 API 模式: {self.api_mode}，已回退为 auto")
+            self.api_mode = "auto"
         # 判断是否为官方Gemini模型（支持带models/前缀的格式）
         gemini_official_models = [
             "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash",
@@ -80,7 +90,18 @@ class GeminiModel(BaseModel):
 
         # 初始化模型客户端
         if self.is_gemini_official:
-            genai.configure(api_key=self.api_key)
+            # 线程安全地配置 genai 全局 API Key
+            with GeminiModel._configure_lock:
+                if GeminiModel._configured_api_key != self.api_key:
+                    genai.configure(api_key=self.api_key)
+                    GeminiModel._configured_api_key = self.api_key
+                    logging.debug("genai.configure() 已更新 API Key")
+                if GeminiModel._configured_api_key and GeminiModel._configured_api_key != self.api_key:
+                    logging.warning(
+                        "检测到多个 GeminiModel 实例使用不同的 API Key，"
+                        "genai.configure() 为全局状态，后创建的实例会覆盖先前的配置。"
+                        "如果需要同时使用多个 API Key，请考虑使用 OpenAI 兼容 API 模式。"
+                    )
             
             # 导入安全配置管理器
             from .gemini_safety_config import GeminiSafetyConfig
@@ -116,8 +137,8 @@ class GeminiModel(BaseModel):
             self.fallback_model_name = ""
             logging.info("Gemini模型备用功能已禁用")
             return
-        self.fallback_base_url = self.config.get("fallback_base_url", "https://api.siliconflow.cn/v1")
-        self.fallback_api_key = self.config.get("fallback_api_key", os.getenv("OPENAI_EMBEDDING_API_KEY", ""))
+        self.fallback_base_url = self.config.get("fallback_base_url", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"))
+        self.fallback_api_key = self.config.get("fallback_api_key", os.getenv("FALLBACK_API_KEY", ""))
         fallback_models = self.config.get("fallback_models", {
             "flash": "deepseek-ai/DeepSeek-V3",
             "pro": "Qwen/Qwen3-235B-A22B-Thinking-2507", 
@@ -134,12 +155,154 @@ class GeminiModel(BaseModel):
     def _truncate_prompt(self, prompt: str) -> str:
         if len(prompt) <= self.max_input_length:
             return prompt
-        logging.warning(f"提示词长度 ({len(prompt)}) 超过限制 ({self.max_input_length})，将进行截断")
+        original_length = len(prompt)
         keep_start = int(self.max_input_length * 0.7)
         keep_end = int(self.max_input_length * 0.2)
+        truncated_middle = original_length - keep_start - keep_end
+        logging.warning(
+            f"提示词长度 ({original_length}) 超过限制 ({self.max_input_length})，将进行截断。"
+            f"保留前 {keep_start} 字符 + 后 {keep_end} 字符，"
+            f"中间 {truncated_middle} 字符已丢失（占比 {truncated_middle/original_length*100:.1f}%）"
+        )
         truncated = prompt[:keep_start] + "\n\n[内容过长，已截断中间部分...]\n\n" + prompt[-keep_end:]
         logging.info(f"截断后长度: {len(truncated)}")
         return truncated
+
+    def _supports_responses_api(self, client: Any) -> bool:
+        responses_attr = getattr(client, "responses", None)
+        return responses_attr is not None and hasattr(responses_attr, "create")
+
+    def _extract_chat_content(self, response: Any) -> Optional[str]:
+        content = response.choices[0].message.content
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str) and text:
+                        parts.append(text)
+                    continue
+                text = getattr(item, "text", None)
+                if isinstance(text, str) and text:
+                    parts.append(text)
+
+            merged = "".join(parts).strip()
+            return merged or None
+
+        return None
+
+    def _extract_responses_content(self, response: Any) -> Optional[str]:
+        output_text = getattr(response, "output_text", None)
+        if isinstance(output_text, str):
+            cleaned = output_text.strip()
+            if cleaned:
+                return cleaned
+
+        output_items = getattr(response, "output", None)
+        if not output_items:
+            return None
+
+        chunks = []
+        for item in output_items:
+            content_blocks = getattr(item, "content", None)
+            if content_blocks is None and isinstance(item, dict):
+                content_blocks = item.get("content")
+            if not content_blocks:
+                continue
+
+            for block in content_blocks:
+                text = getattr(block, "text", None)
+                if text is None and isinstance(block, dict):
+                    text = block.get("text")
+
+                if isinstance(text, str) and text:
+                    chunks.append(text)
+                    continue
+
+                nested_text = getattr(text, "value", None)
+                if nested_text is None and isinstance(text, dict):
+                    nested_text = text.get("value")
+                if isinstance(nested_text, str) and nested_text:
+                    chunks.append(nested_text)
+
+        merged = "".join(chunks).strip()
+        return merged or None
+
+    def _generate_with_chat_api(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        max_tokens: Optional[int]
+    ) -> str:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=self.temperature
+        )
+        content = self._extract_chat_content(response)
+        if not content:
+            raise Exception("Chat Completions 返回空内容")
+        return content
+
+    def _generate_with_responses_api(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        max_tokens: Optional[int]
+    ) -> str:
+        if not self._supports_responses_api(client):
+            raise Exception("当前 openai SDK 不支持 Responses API，请升级到 openai>=1.66.0")
+
+        request_data = {
+            "model": model_name,
+            "input": prompt,
+            "temperature": self.temperature,
+        }
+        if max_tokens is not None:
+            request_data["max_output_tokens"] = max_tokens
+
+        response = client.responses.create(**request_data)
+        content = self._extract_responses_content(response)
+        if not content:
+            raise Exception("Responses API 返回空内容")
+        return content
+
+    def _generate_with_compatible_api(
+        self,
+        client: Any,
+        model_name: str,
+        prompt: str,
+        max_tokens: Optional[int] = None,
+        api_mode: Optional[str] = None
+    ) -> str:
+        mode = (api_mode or self.api_mode).strip().lower()
+        if mode not in {"auto", "chat", "responses"}:
+            mode = "auto"
+
+        if mode == "chat":
+            return self._generate_with_chat_api(client, model_name, prompt, max_tokens)
+
+        if mode == "responses":
+            return self._generate_with_responses_api(client, model_name, prompt, max_tokens)
+
+        if self._supports_responses_api(client):
+            try:
+                return self._generate_with_responses_api(client, model_name, prompt, max_tokens)
+            except Exception as responses_error:
+                logging.warning(f"Responses API 调用失败，回退 Chat Completions: {responses_error}")
+        else:
+            logging.info("当前客户端不支持 Responses API，自动使用 Chat Completions")
+
+        return self._generate_with_chat_api(client, model_name, prompt, max_tokens)
     
     def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """使用网络管理客户端进行文本生成（仅用于OpenAI兼容API）"""
@@ -279,13 +442,13 @@ class GeminiModel(BaseModel):
                         timeout=self.config.get("fallback_timeout", 180)
                     )
                     logging.info(f"使用备用模型: {self.fallback_model_name}")
-                    response = fallback_client.chat.completions.create(
-                        model=self.fallback_model_name,
-                        messages=[{"role": "user", "content": prompt}],
+                    content = self._generate_with_compatible_api(
+                        fallback_client,
+                        self.fallback_model_name,
+                        prompt,
                         max_tokens=max_tokens,
-                        temperature=self.temperature
+                        api_mode="auto"
                     )
-                    content = response.choices[0].message.content
                     if content:
                         logging.info(f"备用模型调用成功，返回内容长度: {len(content)}")
                         return content
@@ -298,7 +461,7 @@ class GeminiModel(BaseModel):
         else:
             # OpenAI兼容API模型调用
             # 优先使用网络管理客户端
-            if NETWORK_AVAILABLE and self.network_client:
+            if NETWORK_AVAILABLE and self.network_client and self.api_mode != "responses":
                 try:
                     return self._use_network_client_for_generation(prompt, max_tokens)
                 except Exception as e:
@@ -309,13 +472,12 @@ class GeminiModel(BaseModel):
                 raise Exception("OpenAI兼容API客户端未初始化，无法调用自定义模型")
             try:
                 logging.info(f"直接调用OpenAI兼容API模型: {self.model_name}")
-                response = self.openai_client.chat.completions.create(
-                    model=self.model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_tokens,
-                    temperature=self.temperature
+                content = self._generate_with_compatible_api(
+                    self.openai_client,
+                    self.model_name,
+                    prompt,
+                    max_tokens=max_tokens
                 )
-                content = response.choices[0].message.content
                 if content:
                     logging.info(f"OpenAI兼容API模型调用成功，返回内容长度: {len(content)}")
                     return content
@@ -341,5 +503,5 @@ class GeminiModel(BaseModel):
         """析构函数，确保资源清理"""
         try:
             self.close()
-        except:
-            pass 
+        except Exception:
+            pass

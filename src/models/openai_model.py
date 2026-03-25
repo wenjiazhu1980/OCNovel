@@ -1,5 +1,7 @@
 from openai import OpenAI
 import numpy as np
+import time
+import concurrent.futures
 from typing import Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_fixed, wait_exponential
 from .base_model import BaseModel
@@ -27,6 +29,7 @@ class OpenAIModel(BaseModel):
         self.api_mode = "auto"
         self.reasoning_enabled = config.get("reasoning_enabled", False)
         self.reasoning_effort = config.get("reasoning_effort", "medium")
+        self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self._init_standard_client(config)
             
     def _init_standard_client(self, config: Dict[str, Any]):
@@ -190,6 +193,17 @@ class OpenAIModel(BaseModel):
         merged = "".join(chunks).strip()
         return merged or None
 
+    def _get_reasoning_effort(self) -> Optional[str]:
+        """获取校验后的推理强度值，未启用则返回 None"""
+        if not self.reasoning_enabled or not self.reasoning_effort:
+            return None
+        _valid = {"low", "medium", "high", "xhigh"}
+        effort = self.reasoning_effort.strip().lower()
+        if effort not in _valid:
+            logging.warning(f"推理强度 '{self.reasoning_effort}' 无效，已回退为 'medium'（合法值: {_valid}）")
+            effort = "medium"
+        return effort
+
     def _generate_with_chat_api(
         self,
         client: Any,
@@ -204,10 +218,10 @@ class OpenAIModel(BaseModel):
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        # 推理模式：部分模型支持 reasoning_effort 参数（如 DeepSeek-R1、Qwen3-Thinking）
-        if self.reasoning_enabled and self.reasoning_effort:
-            params["extra_body"] = {"reasoning_effort": self.reasoning_effort}
-            logging.info(f"推理模式已启用，强度: {self.reasoning_effort}")
+        effort = self._get_reasoning_effort()
+        if effort:
+            params["extra_body"] = {"reasoning_effort": effort}
+            logging.info(f"Chat API 推理模式已启用，强度: {effort}")
 
         response = client.chat.completions.create(**params)
 
@@ -234,6 +248,10 @@ class OpenAIModel(BaseModel):
         }
         if max_tokens is not None:
             request_data["max_output_tokens"] = max_tokens
+        effort = self._get_reasoning_effort()
+        if effort:
+            request_data["reasoning"] = {"effort": effort}
+            logging.info(f"Responses API 推理模式已启用，强度: {effort}")
 
         response = client.responses.create(**request_data)
         content = self._extract_responses_content(response)
@@ -399,15 +417,68 @@ class OpenAIModel(BaseModel):
             logging.error(f"网络管理客户端嵌入出现未知错误: {str(e)}")
             raise e
         
-    @retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=4, max=60))
+    def _cancellable_call(self, fn, *args, **kwargs):
+        """在子线程中执行 API 调用，主线程每秒检查取消信号"""
+        if not self.cancel_checker:
+            return fn(*args, **kwargs)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(fn, *args, **kwargs)
+            elapsed = 0
+            while not future.done():
+                if self.cancel_checker():
+                    future.cancel()
+                    raise InterruptedError("用户取消生成")
+                try:
+                    return future.result(timeout=1.0)
+                except concurrent.futures.TimeoutError:
+                    elapsed += 1
+                    if elapsed % 30 == 0:
+                        logging.info(f"API 调用进行中... 已等待 {elapsed} 秒")
+                    continue
+                except Exception:
+                    raise  # 子线程异常直接抛出
+            return future.result()
+
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """生成文本"""
+        """生成文本（含重试，支持取消检查）"""
+        max_attempts = 5
+        last_error = None
+
+        for attempt in range(1, max_attempts + 1):
+            # 每次尝试前检查取消信号
+            if self.cancel_checker and self.cancel_checker():
+                raise InterruptedError("用户取消生成")
+
+            try:
+                return self._generate_once(prompt, max_tokens)
+            except InterruptedError:
+                raise
+            except Exception as e:
+                last_error = e
+                logging.warning(f"生成失败 (尝试 {attempt}/{max_attempts}): {type(e).__name__}: {e}")
+                if attempt < max_attempts:
+                    wait = min(4 * (2 ** (attempt - 1)), 60)
+                    logging.info(f"等待 {wait} 秒后重试...")
+                    # 分段等待，每秒检查一次取消信号
+                    for _ in range(int(wait)):
+                        if self.cancel_checker and self.cancel_checker():
+                            raise InterruptedError("用户取消生成")
+                        time.sleep(1)
+
+        raise last_error
+
+    def _generate_once(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+        """单次生成尝试（支持取消检查）"""
         logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}")
 
         # 优先使用网络管理客户端（该客户端只支持 chat/completions）
         if NETWORK_AVAILABLE and self.network_client and self.api_mode != "responses":
             try:
-                return self._use_network_client_for_generation(prompt, max_tokens)
+                return self._cancellable_call(
+                    self._use_network_client_for_generation, prompt, max_tokens)
+            except InterruptedError:
+                raise
             except Exception as e:
                 logging.warning(f"网络管理客户端失败，回退到原始客户端: {str(e)}")
         
@@ -424,7 +495,8 @@ class OpenAIModel(BaseModel):
                 )
                 prompt = prompt[:max_prompt_length]
             
-            content = self._generate_with_compatible_api(
+            content = self._cancellable_call(
+                self._generate_with_compatible_api,
                 self.client,
                 self.model_name,
                 prompt,
