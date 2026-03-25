@@ -127,7 +127,7 @@
       "outline_context_chapters": 10,
       "outline_detail_chapters": 5,
       "model_timeout": 60,
-      "max_tokens": 65536,
+      "max_tokens": 16384,
       "force_rebuild_kb": false,
       "model_selection": {
         "outline": {

@@ -212,12 +212,17 @@ class OpenAIModel(BaseModel):
         max_tokens: Optional[int],
         temperature: float
     ) -> str:
+        # 限制 max_tokens 不超过模型常见上限
+        if max_tokens and max_tokens > 16384:
+            logging.warning(f"max_tokens ({max_tokens}) 过大，已限制为 16384")
+            max_tokens = 16384
         params = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": max_tokens,
             "temperature": temperature,
         }
+        if max_tokens:
+            params["max_tokens"] = max_tokens
         effort = self._get_reasoning_effort()
         if effort:
             params["extra_body"] = {"reasoning_effort": effort}
@@ -247,6 +252,9 @@ class OpenAIModel(BaseModel):
             "temperature": temperature,
         }
         if max_tokens is not None:
+            if max_tokens > 16384:
+                logging.warning(f"max_output_tokens ({max_tokens}) 过大，已限制为 16384")
+                max_tokens = 16384
             request_data["max_output_tokens"] = max_tokens
         effort = self._get_reasoning_effort()
         if effort:

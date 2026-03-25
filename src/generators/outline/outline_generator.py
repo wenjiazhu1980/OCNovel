@@ -268,12 +268,15 @@ class OutlineGenerator:
                 return False 
 
             if valid_count == current_batch_size:
-                # 移除outline模式下的同步信息更新，只有auto模式和finalize模式才更新
                 logging.info(f"outline模式不触发同步信息更新，仅保存大纲")
                 successful_outlines_in_run.extend([o for o in new_outlines_batch if isinstance(o, ChapterOutline)])
                 return True
             else:
-                logging.warning(f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过验证。")
+                logging.warning(
+                    f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过验证，"
+                    f"未通过的章节可能存在字段缺失或格式不符。"
+                    f"请检查模型输出质量，或尝试减小每批生成章节数（当前: {current_batch_size}）。"
+                )
                 return False
 
         except Exception as e:
