@@ -336,13 +336,15 @@ class ContentGenerator:
             sync_info = self._load_sync_info()
 
             # 使用 prompts.py 中的方法
+            humanization_config = self.config.generation_config.get("humanization", {}) if hasattr(self.config, 'generation_config') else {}
             prompt = get_chapter_prompt(
                 outline=chapter_outline.__dict__,
                 references=references,
                 extra_prompt=extra_prompt or "",
                 context_info=context,
                 story_config=story_config,  # 新增：传递故事设定
-                sync_info=sync_info  # 新增：传递同步信息
+                sync_info=sync_info,  # 新增：传递同步信息
+                humanization_config=humanization_config
             )
             logger.debug(f"完整提示词: {prompt}")
 
@@ -733,11 +735,11 @@ class ContentGenerator:
             existing_progress = int(existing_progress)
             
             # 验证章节号的合理性
-            if current_generating_chapter <= 0:
+            if current_generating_chapter < 0:
                 logger.warning(f"当前章节号无效 ({current_generating_chapter})，不保护现有进度")
                 return False
             
-            if existing_progress <= 0:
+            if existing_progress < 0:
                 logger.warning(f"现有进度无效 ({existing_progress})，正常更新进度")
                 return False
                 
@@ -792,7 +794,7 @@ class ContentGenerator:
                         existing_progress = int(existing_progress)
                     
                     # 验证现有进度的合理性
-                    if existing_progress is not None and existing_progress <= 0:
+                    if existing_progress is not None and existing_progress < 0:
                         logger.warning(f"现有进度值无效 ({existing_progress})，视为无现有进度")
                         existing_progress = None
                         
@@ -1048,7 +1050,7 @@ class ContentGenerator:
                             try:
                                 # 尝试转换为整数
                                 chapter_num = int(current_chapter.strip())
-                                if chapter_num <= 0:
+                                if chapter_num < 0:
                                     logger.warning(f"同步信息中'当前章节'字段值无效 ({chapter_num})，设置为None")
                                     sync_info["当前章节"] = None
                                 else:
@@ -1060,7 +1062,7 @@ class ContentGenerator:
                         
                         # 处理字段值为浮点数的情况
                         elif isinstance(current_chapter, float):
-                            if current_chapter.is_integer() and current_chapter > 0:
+                            if current_chapter.is_integer() and current_chapter >= 0:
                                 sync_info["当前章节"] = int(current_chapter)
                                 logger.debug(f"将'当前章节'字段从浮点数转换为整数: {int(current_chapter)}")
                             else:
@@ -1077,8 +1079,8 @@ class ContentGenerator:
                             logger.warning(f"同步信息中'当前章节'字段类型异常: {type(current_chapter)}，设置为None")
                             sync_info["当前章节"] = None
                         
-                        # 处理字段值为负数或零的情况
-                        elif isinstance(current_chapter, int) and current_chapter <= 0:
+                        # 处理字段值为负数的情况
+                        elif isinstance(current_chapter, int) and current_chapter < 0:
                             logger.warning(f"同步信息中'当前章节'字段值无效: {current_chapter}，设置为None")
                             sync_info["当前章节"] = None
                     

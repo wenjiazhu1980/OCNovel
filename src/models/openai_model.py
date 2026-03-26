@@ -95,9 +95,10 @@ class OpenAIModel(BaseModel):
         self.client = OpenAI(
             api_key=config["api_key"],
             base_url=base_url,
-            timeout=timeout
+            timeout=timeout,
+            max_retries=0  # 防止 openai 库内部的 2 次重试（1 次变 3 次）导致严重等待情况
         )
-        logging.info(f"OpenAI model initialized with base URL: {base_url}, timeout: {timeout}s")
+        logging.info(f"OpenAI model initialized with base URL: {base_url}, timeout: {timeout}s, max_retries: 0")
         
     def _process_thinking_output(self, content: str) -> str:
         """处理包含思考过程的输出"""
@@ -212,18 +213,40 @@ class OpenAIModel(BaseModel):
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": temperature,
+            "stream": True,  # 使用流式传输，防止反向代理(如Nginx)产生60秒空闲连接超时
         }
         if max_tokens:
             params["max_tokens"] = max_tokens
         if self._is_reasoning_enabled():
             logging.info("Chat API 推理模式已启用，由模型自行决定推理强度")
 
-        response = client.chat.completions.create(**params)
-
-        content = self._extract_chat_content(response)
-        if content is None:
-            raise Exception("Chat Completions 返回空内容")
-        return content
+        try:
+            response = client.chat.completions.create(**params)
+            
+            chunks = []
+            for chunk in response:
+                if self.cancel_checker and self.cancel_checker():
+                    raise InterruptedError("用户取消生成")
+                    
+                if hasattr(chunk, "choices") and chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, "content") and delta.content:
+                        chunks.append(delta.content)
+            
+            content = "".join(chunks).strip()
+            if not content:
+                raise Exception("Chat Completions 响应流为空")
+            return content
+        except Exception as e:
+            if "Empty chunks" in str(e) or "stream" in str(e).lower() or type(e).__name__ in ("TypeError", "AttributeError"):
+                logging.warning(f"流式请求失败或不受支持，回退至非流式请求: {e}")
+                params["stream"] = False
+                response = client.chat.completions.create(**params)
+                content = self._extract_chat_content(response)
+                if content is None:
+                    raise Exception("Chat Completions 非流式请求返回空内容")
+                return content
+            raise e
 
     def _generate_with_responses_api(
         self,
@@ -295,7 +318,8 @@ class OpenAIModel(BaseModel):
             return OpenAI(
                 api_key=self.fallback_api_key,
                 base_url=self.fallback_base_url,
-                timeout=180  # 备用API使用更长的超时时间
+                timeout=180,  # 备用API使用更长的超时时间
+                max_retries=0
             )
         return None
     
@@ -306,7 +330,8 @@ class OpenAIModel(BaseModel):
         fallback_client = OpenAI(
             api_key=self.fallback_api_key,
             base_url=self.fallback_base_url,
-            timeout=180
+            timeout=180,
+            max_retries=0
         )
         
         try:

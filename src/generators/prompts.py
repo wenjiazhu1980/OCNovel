@@ -4,14 +4,11 @@ import json
 import os
 import logging
 from .humanization_prompts import (
-    get_humanization_prompt, 
-    get_dialogue_enhancement_prompt, 
-    get_simplification_prompt,
-    get_zhuque_optimized_prompt,
+    get_humanization_prompt,
+    get_chinese_punctuation_rules,
+    get_zhuque_optimization_prompt,
     generate_adaptive_humanization_prompt,
     get_rewrite_prompt_for_high_ai_content,
-    get_chinese_punctuation_rules,
-    get_enhanced_zhuque_prompt_with_punctuation
 )
 
 # 如果 ChapterOutline 只在此处用作类型提示，可以简化或使用 Dict
@@ -172,7 +169,8 @@ def get_chapter_prompt(
     extra_prompt: str = "",
     context_info: str = "",
     story_config: Optional[Dict] = None,
-    sync_info: Optional[Dict] = None
+    sync_info: Optional[Dict] = None,
+    humanization_config: Optional[Dict] = None
 ) -> str:
     """生成用于创建章节内容的提示词"""
     
@@ -221,6 +219,12 @@ def get_chapter_prompt(
         character_guide = writing_guide.get("character_guide", {})
         style_guide = writing_guide.get("style_guide", {})
         
+        # 安全获取描写重点
+        focus_list = style_guide.get('description_focus', [])
+        focus_1 = focus_list[0] if len(focus_list) > 0 else '[描写的第一个侧重点，如：战斗场面、世界观奇观、人物内心等]'
+        focus_2 = focus_list[1] if len(focus_list) > 1 else '[描写的第二个侧重点，如：势力间的权谋博弈、神秘氛围的营造等]'
+        focus_3 = focus_list[2] if len(focus_list) > 2 else '[描写的第三个侧重点，如：主角的成长与反思、配角群像的刻画等]'
+        
         base_prompt += f"""
 
 [故事设定]
@@ -248,9 +252,9 @@ def get_chapter_prompt(
 1. 基调：{style_guide.get('tone', '[故事的整体基调，如：热血、黑暗、幽默、悬疑、史诗等]')}
 2. 节奏：{style_guide.get('pacing', '[故事的节奏，如：快节奏、单元剧、慢热、张弛有度等]')}
 3. 描写重点：
-- {style_guide.get('description_focus', ['[描写的第一个侧重点，如：战斗场面、世界观奇观、人物内心等]'])[0]}
-- {style_guide.get('description_focus', ['[描写的第二个侧重点，如：势力间的权谋博弈、神秘氛围的营造等]'])[1]}
-- {style_guide.get('description_focus', ['[描写的第三个侧重点，如：主角的成长与反思、配角群像的刻画等]'])[2]}"""
+- {focus_1}
+- {focus_2}
+- {focus_3}"""
 
     # 添加同步信息（如果提供）
     if sync_info:
@@ -334,42 +338,18 @@ def get_chapter_prompt(
 4. 环境描写是否精炼而富有画面感？
 5. 人物刻画是否立体，情感表达是否真实？"""
 
-    # 添加人性化写作指导
-    base_prompt += f"{chr(10)}{get_humanization_prompt()}"
-    base_prompt += f"{chr(10)}{get_dialogue_enhancement_prompt()}"
-    base_prompt += f"{chr(10)}{get_simplification_prompt()}"
-    
-    # 添加集成了中文标点符号规范的朱雀优化提示词
-    base_prompt += f"{chr(10)}{get_enhanced_zhuque_prompt_with_punctuation()}"
-    
-    # 添加中文标点符号专项规范
-    base_prompt += f"{chr(10)}{get_chinese_punctuation_rules()}"
-    
-    # 添加朱雀AI检测专项优化
-    base_prompt += f"""{chr(10)}
-[🚨 朱雀AI检测最终要求 - 必须200%执行]
-1. **超级强制犹豫表达**：每15-20字必须包含1个犹豫词汇
-2. **超级对话密度要求**：对话比例必须超过65%，连续叙述不得超过30字
-3. **极限句式破坏要求**：绝对禁止任何2句使用相同句式结构
-4. **超级语言瑕疵要求**：每句必须包含5种以上不完整句子和口语化错误
-5. **超级生活细节强制**：每段必须包含5-8个无关紧要的生活化细节
-6. **超级情感混乱要求**：人物情感要有极度矛盾和犹豫，绝对不能过于完美
-7. **中文标点符号强制规范**：
-   - 省略号必须用「……」或「…………」，绝对禁止「...」
-   - 破折号必须用「——」，绝对禁止「--」
-   - 引号必须用「“”」和「‘’」，绝对禁止英文引号
-   - 所有标点必须是中文全角字符，绝对禁止英文标点！
+    # 从配置中读取对话比例目标，默认 0.4
+    _hum = humanization_config or {}
+    dialogue_ratio_target = float(_hum.get("dialogue_ratio", 0.4))
 
-⚠️ 紧急警告：当前文本被朱雀AI检测识别为100%AI，如果不严格按超级要求执行，将继续被识别为100%AI！
-"""
+    # 添加人性化写作指导（已合并对话增强和简化策略）
+    base_prompt += f"{chr(10)}{get_humanization_prompt(dialogue_ratio_target)}"
     
-    # 添加超级自适应优化
-    adaptive_humanization = generate_adaptive_humanization_prompt(
-        ai_score=80.0,  # 假设高风险（因为被识别为100%AI）
-        dialogue_ratio=0.2,  # 假设当前对话比例低
-        content_type="chapter"
-    )
-    base_prompt += f"{chr(10)}{adaptive_humanization}"
+    # 添加朱雀AI检测优化
+    base_prompt += f"{chr(10)}{get_zhuque_optimization_prompt(dialogue_ratio_target)}"
+    
+    # 添加中文标点符号规范
+    base_prompt += f"{chr(10)}{get_chinese_punctuation_rules()}"
 
     # 添加额外要求
     if extra_prompt:
@@ -968,81 +948,3 @@ def get_imitation_prompt(
     
     return prompt
 
-def get_enhanced_chapter_prompt(
-    outline: Dict,
-    references: Dict,
-    extra_prompt: str = "",
-    context_info: str = "",
-    story_config: Optional[Dict] = None,
-    sync_info: Optional[Dict] = None,
-    ai_score_target: float = 20.0,
-    current_dialogue_ratio: float = 0.0
-) -> str:
-    """生成增强版章节内容提示词，针对性降低AI浓度"""
-    
-    # 获取基本信息
-    novel_number = outline.get('chapter_number', 0)
-    chapter_title = outline.get('title', '未知')
-    
-    # 格式化关键情节点
-    key_points_list = outline.get('key_points', [])
-    key_points_display = chr(10).join([f"- {point}" for point in key_points_list])
-    
-    # 其他信息
-    characters = ', '.join(outline.get('characters', []))
-    settings = ', '.join(outline.get('settings', []))
-    conflicts = ', '.join(outline.get('conflicts', []))
-
-    base_prompt = f"""你是一名专业网文作者，熟知起点中文网、番茄小说网、晋江文学城的网文创作技巧，你的文笔节奏、表达富于变化，语句总是超出预测，同时扣人心弦。你特别擅长创作节奏紧凑、对话生动、且极具人性化特色的网络小说。
-
-⚠️ 特别重要：本次创作必须通过专业AI检测工具的验证，目标AI检测结果低于{ai_score_target:.0f}%。
-
-[AI检测优化要求]
-1. **对话主导原则**（最重要）：
-   - 对话比例必须达到45%以上（当前仅{current_dialogue_ratio:.1%}）
-   - 用对话推进剧情，大幅减少叙述
-   - 每个人物说话要有明显的个人特色
-   - 加入"呃"、"那个"、"怎么说呢"等停顿词
-
-2. **词汇彻底去 AI化**：
-   - 禁止使用：伴随着、与此同时、紧接着、毫无疑问、显而易见
-   - 优先使用：然后、接着、突然、结果、没想到、谁知道
-   - 多用口语化表达：这玩意儿、什么鬼、搞什么
-
-[章节信息]
-章节号: {novel_number}
-标题: {chapter_title}
-关键情节点:
-{key_points_display}
-
-[核心元素]
-人物: {characters}
-场景: {settings}
-冲突: {conflicts}
-
-[输出要求]
-1. 仅返回章节正文文本，以“第{novel_number}章 {chapter_title}”开头。
-2. 严格使用简体中文及中文标点符号“”。
-3. 确保对话比例达到45%以上。
-4. 必须大量使用口语化表达和自然停顿。"""
-
-    # 生成自适应人性化提示词
-    adaptive_prompt = generate_adaptive_humanization_prompt(
-        ai_score=100 - ai_score_target,
-        dialogue_ratio=current_dialogue_ratio,
-        content_type="chapter"
-    )
-    base_prompt += f"{chr(10)}{adaptive_prompt}"
-
-    # 添加额外要求
-    if extra_prompt:
-        base_prompt += f"{chr(10)}[额外要求]{chr(10)}{extra_prompt}"
-
-    # 添加上下文信息
-    if context_info:
-        max_context_length = 1000
-        if len(context_info) > max_context_length:
-            context_info = context_info[-max_context_length:] + "...(前文已省略)"
-        base_prompt += f"{chr(10)}[上下文信息]{chr(10)}{context_info}"
-
-    return base_prompt
