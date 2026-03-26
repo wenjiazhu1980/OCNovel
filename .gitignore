@@ -54,3 +54,7 @@ Thumbs.db
 .cursorrules
 .qoderignore
 .ace-tool/
+
+*.bak.*
+*.png
+*.jpg
