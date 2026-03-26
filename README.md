@@ -18,7 +18,7 @@ OCNovel/
 │
 ├── src/
 │   ├── config/                # 配置管理
-│   │   ├── ai_config.py       # AI 模型配置（Gemini/OpenAI/VolcEngine）
+│   │   ├── ai_config.py       # AI 模型配置（Gemini/OpenAI）
 │   │   └── config.py          # 通用配置管理
 │   │
 │   ├── generators/            # 内容生成器
@@ -33,7 +33,7 @@ OCNovel/
 │   ├── models/                # AI 模型接口
 │   │   ├── base_model.py      # 基础模型抽象类
 │   │   ├── gemini_model.py    # Google Gemini 实现
-│   │   └── openai_model.py    # OpenAI 兼容实现（含 VolcEngine 复用）
+│   │   └── openai_model.py    # OpenAI 兼容实现
 │   │
 │   ├── knowledge_base/        # 知识库（向量检索 + Reranker）
 │   │   └── knowledge_base.py
@@ -145,7 +145,7 @@ pyinstaller ocnovel.spec --clean
 
 ## 核心架构
 
-- **模型抽象** — `BaseModel` ABC → `OpenAIModel` / `GeminiModel`，VolcEngine 复用 OpenAI 实现
+- **模型抽象** — `BaseModel` ABC → `OpenAIModel` / `GeminiModel`
 - **配置分层** — `config.json`（小说参数）+ `.env`（API 密钥）+ `AIConfig`（模型默认值）
 - **生成流水线** — outline → content → finalize，通过 `auto` 命令串联
 - **知识库** — 文本分块 → 嵌入向量 → FAISS 检索 → Reranker API 精排
@@ -166,3 +166,25 @@ pyinstaller ocnovel.spec --clean
 - Python 3.9+
 - macOS / Linux / Windows
 - 至少配置一组 AI 模型 API 密钥（OpenAI 兼容 / Gemini）
+
+## 常见问题 (FAQ)
+
+### 1. 如何下载和运行 Mac App？
+
+1. 下载最新发布的 Mac App 压缩包。
+2. 解压后将 `OCNovel.app` 拖入“应用程序”文件夹（或在你希望的目录下）。
+3. 如果首次打开时系统提示应用“已损坏，无法打开”或“无法验证开发者”，请在终端执行以下命令清除隔离属性：
+
+   ```bash
+   sudo xattr -rd com.apple.quarantine /path/to/OCNovel.app
+   ```
+
+   *(请将 `/path/to/OCNovel.app` 替换为你实际存放 App 的路径)*，然后再次尝试打开该应用。
+
+### 2. 关于硅基流动注册邀请链接的说明
+
+我们在文档中可能会提供带有邀请码（aff）的硅基流动（SiliconFlow）注册连接：
+
+- 通过该邀请链接注册，您通常能获得该平台提供的新用户免费体验额度，同时作为推荐人我们也会获得一定比例的代金券或算力奖励。
+- 我们通过这些推广链接获得的奖励，将全部投入到本项目后续的模型 API 调用测试及新功能的开发中。
+- 这并非强制使用，您完全可以自行访问平台官网进行无邀请码的独立注册。非常感谢您的支持与理解！

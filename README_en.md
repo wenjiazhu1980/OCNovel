@@ -18,7 +18,7 @@ OCNovel/
 │
 ├── src/
 │   ├── config/                # Configuration Management
-│   │   ├── ai_config.py       # AI model configuration (Gemini/OpenAI/VolcEngine)
+│   │   ├── ai_config.py       # AI model configuration (Gemini/OpenAI)
 │   │   └── config.py          # General configuration management
 │   │
 │   ├── generators/            # Content Generators
@@ -33,7 +33,7 @@ OCNovel/
 │   ├── models/                # AI Model Interfaces
 │   │   ├── base_model.py      # Base model abstract class
 │   │   ├── gemini_model.py    # Google Gemini implementation
-│   │   └── openai_model.py    # OpenAI compatible implementation (includes VolcEngine reuse)
+│   │   └── openai_model.py    # OpenAI compatible implementation
 │   │
 │   ├── knowledge_base/        # Knowledge Base (Vector retrieval + Reranker)
 │   │   └── knowledge_base.py
@@ -148,7 +148,7 @@ pyinstaller ocnovel.spec --clean
 
 ## Core Architecture
 
-- **Model Abstraction** — `BaseModel` ABC → `OpenAIModel` / `GeminiModel`, VolcEngine reuses OpenAI implementation.
+- **Model Abstraction** — `BaseModel` ABC → `OpenAIModel` / `GeminiModel`
 - **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values).
 - **Generation Pipeline** — outline → content → finalize, connected via the `auto` command.
 - **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking.
@@ -169,3 +169,25 @@ pyinstaller ocnovel.spec --clean
 - Python 3.9+
 - macOS / Linux / Windows
 - At least one set of AI model API keys configured (OpenAI compatible / Gemini)
+
+## FAQ
+
+### 1. How to download and run the Mac App?
+
+1. Download the latest Mac App zip archive from the project releases.
+2. Unzip it and place `OCNovel.app` in your Applications folder (or any directory you prefer).
+3. If macOS displays a warning that the app is "damaged and can't be opened" or "from an unidentified developer" when you first open it, open Terminal and run the following command to remove the quarantine attributes:
+
+   ```bash
+   sudo xattr -rd com.apple.quarantine /path/to/OCNovel.app
+   ```
+
+   *(Please replace `/path/to/OCNovel.app` with the actual path to your App)*, and then try to launch the application again.
+
+### 2. Notes on the SiliconFlow referral link
+
+In our documentation, we may provide a SiliconFlow registration link with an invitation code (aff):
+
+- Registering via this invitation link usually grants you a free trial API quota as a new user, while we also receive a certain percentage of coupons/computing rewards.
+- The rewards earned through these promotional links will be entirely invested in the subsequent AI model API testing and the development of new features for this project.
+- This is entirely optional. You are perfectly free to register directly on their official website without any affiliate links. Thank you very much for your support and understanding!
