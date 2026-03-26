@@ -392,7 +392,7 @@ class OutlineGenerator:
                 "进行中冲突": []
             },
             "前情提要": [],
-            "当前章节": 0,
+            "最后更新章节": 0,
             "最后更新时间": ""
         }
 
@@ -493,7 +493,7 @@ class OutlineGenerator:
                     return self._fallback_sync_info_update(batch_start, batch_end)
             
             # 3. 验证 JSON 结构
-            required_keys = ["世界观", "人物设定", "剧情发展", "前情提要", "当前章节", "最后更新时间"]
+            required_keys = ["世界观", "人物设定", "剧情发展", "前情提要", "最后更新章节", "最后更新时间"]
             if not all(key in updated_sync_info for key in required_keys):
                 logging.warning(f"模型返回的同步信息缺少一些必要顶层键: {[k for k in required_keys if k not in updated_sync_info]}")
             
@@ -531,8 +531,8 @@ class OutlineGenerator:
             if "前情提要" in updated_sync_info and isinstance(updated_sync_info["前情提要"], list):
                 self._merge_list_unique(self.sync_info.setdefault("前情提要", []), updated_sync_info["前情提要"])
 
-            # 当前章节和最后更新时间由内部逻辑设定，不依赖模型输出
-            self.sync_info["当前章节"] = batch_end
+            # 最后更新章节和最后更新时间由内部逻辑设定，不依赖模型输出
+            self.sync_info["最后更新章节"] = batch_end
             self.sync_info["最后更新时间"] = time.strftime("%Y-%m-%d %H:%M:%S")
             
             return self._save_sync_info()
@@ -573,8 +573,8 @@ class OutlineGenerator:
         try:
             logging.info("使用降级方案更新同步信息")
             
-            # 手动更新当前章节进度
-            self.sync_info["当前章节"] = batch_end
+            # 手动更新最后更新章节进度
+            self.sync_info["最后更新章节"] = batch_end
             self.sync_info["最后更新时间"] = time.strftime("%Y-%m-%d %H:%M:%S")
             
             # 添加新的前情提要
@@ -751,9 +751,9 @@ class OutlineGenerator:
                 search_queries.extend(outline.characters)
                 search_queries.extend(outline.settings)
             
-            # 2. 基于同步信息的关键信息（限制为当前章节前3章内的信息）
+            # 2. 基于同步信息的关键信息（限制为最后更新章节前3章内的信息）
             if self.sync_info:
-                # 计算需要参考的章节范围：当前章节前3章
+                # 计算需要参考的章节范围：最后更新章节前3章
                 reference_start = max(1, batch_start - 3)
                 reference_end = batch_start - 1
                 
@@ -783,7 +783,7 @@ class OutlineGenerator:
                         if char_name in recent_characters:
                             search_queries.append(char_name)
             
-            # 3. 基于当前章节范围的查询
+            # 3. 基于最后更新章节范围的查询
             search_queries.append(f"第{batch_start}章到第{batch_end}章")
             
             # 去重并过滤空值

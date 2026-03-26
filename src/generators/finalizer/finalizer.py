@@ -418,7 +418,7 @@ class NovelFinalizer:
             with open(sync_info_file, 'r', encoding='utf-8') as f:
                 sync_info = json.load(f)
 
-            current_chapter = sync_info.get("当前章节")
+            current_chapter = sync_info.get("最后更新章节", sync_info.get("当前章节"))
             if current_chapter is not None:
                 return int(current_chapter)
             return None
@@ -456,7 +456,7 @@ class NovelFinalizer:
             temp_content_gen.current_chapter = chapter_num
             temp_content_gen._load_outline()  # 主动加载大纲
             temp_content_gen._trigger_sync_info_update(self.content_model)
-            logger.info(f"finalize模式已更新sync_info.json，当前章节: {chapter_num}")
+            logger.info(f"finalize模式已更新sync_info.json，最后更新章节: {chapter_num}")
             return True
             
         except Exception as e:

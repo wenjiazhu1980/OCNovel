@@ -553,9 +553,9 @@ class ContentGenerator:
     def _check_and_update_cache(self, chapter_num: int) -> None:
         """检查是否需要更新缓存，每5章更新一次"""
         # 修改判断逻辑，检查是否是第5/10/15...章
-        logger.info(f"检查是否需要更新缓存，当前章节: {chapter_num}, 缓存条件: (chapter_num % 5) == 0, 结果: {(chapter_num % 5) == 0}")
+        logger.info(f"检查是否需要更新缓存，最后更新章节: {chapter_num}, 缓存条件: (chapter_num % 5) == 0, 结果: {(chapter_num % 5) == 0}")
         if (chapter_num % 5) == 0:  # 正好是5的倍数章节
-            # 先更新当前章节进度，确保包含当前章节
+            # 先更新最后更新章节进度，确保包含最后更新章节
             self.current_chapter = chapter_num
             logger.info(f"已完成第 {chapter_num} 章，开始更新缓存...")
             self._update_content_cache()
@@ -564,14 +564,14 @@ class ContentGenerator:
             self.chapters_since_last_cache = 0
         else:
             self.chapters_since_last_cache += 1
-            logger.info(f"当前章节 {chapter_num} 不需要更新缓存，距离上次更新已经处理了 {self.chapters_since_last_cache} 章。")
+            logger.info(f"最后更新章节 {chapter_num} 不需要更新缓存，距离上次更新已经处理了 {self.chapters_since_last_cache} 章。")
 
     def _update_content_cache(self) -> None:
         """更新正文知识库缓存"""
         try:
-            # 获取所有已完成章节的内容（包括当前章节）
+            # 获取所有已完成章节的内容（包括最后更新章节）
             chapter_contents = []
-            # 修改这里，使用 self.current_chapter + 1 确保包含当前章节
+            # 修改这里，使用 self.current_chapter + 1 确保包含最后更新章节
             for chapter_num in range(1, self.current_chapter + 1):
                 filename = f"第{chapter_num}章_{self._clean_filename(self.chapter_outlines[chapter_num-1].title)}.txt"
                 filepath = os.path.join(self.output_dir, filename)
@@ -598,7 +598,7 @@ class ContentGenerator:
         """触发同步信息更新"""
         os.makedirs(os.path.dirname(self.sync_info_file), exist_ok=True)
         # 使用 self.current_chapter 而不是其他变量
-        logger.info(f"准备更新同步信息，当前章节进度: {self.current_chapter}，同步信息文件: {self.sync_info_file}")
+        logger.info(f"准备更新同步信息，最后更新章节进度: {self.current_chapter}，同步信息文件: {self.sync_info_file}")
         try:
             all_content = ""
             # 修改：只读取最近5章的内容来更新同步信息
@@ -722,7 +722,7 @@ class ContentGenerator:
             if isinstance(current_generating_chapter, str):
                 current_generating_chapter = current_generating_chapter.strip()
                 if not current_generating_chapter:
-                    logger.warning("当前章节号为空字符串，无法比较进度，不保护现有进度")
+                    logger.warning("最后更新章节号为空字符串，无法比较进度，不保护现有进度")
                     return False
             
             if isinstance(existing_progress, str):
@@ -736,7 +736,7 @@ class ContentGenerator:
             
             # 验证章节号的合理性
             if current_generating_chapter < 0:
-                logger.warning(f"当前章节号无效 ({current_generating_chapter})，不保护现有进度")
+                logger.warning(f"最后更新章节号无效 ({current_generating_chapter})，不保护现有进度")
                 return False
             
             if existing_progress < 0:
@@ -776,7 +776,8 @@ class ContentGenerator:
             
             # 加载现有同步信息以获取真实的当前进度
             existing_sync_info = self._load_sync_info()
-            existing_progress = existing_sync_info.get("当前章节")
+            # 处理现有进度的各种异常情况，兼容旧版字段
+            existing_progress = existing_sync_info.get("最后更新章节", existing_sync_info.get("当前章节"))
             
             # 处理现有进度的各种异常情况
             if existing_progress is not None:
@@ -799,17 +800,17 @@ class ContentGenerator:
                         existing_progress = None
                         
                 except (ValueError, TypeError) as e:
-                    logger.warning(f"现有进度格式错误，无法解析: {existing_sync_info.get('当前章节')} - {e}，视为无现有进度")
+                    logger.warning(f"现有进度格式错误，无法解析: {existing_sync_info.get('最后更新章节')} - {e}，视为无现有进度")
                     existing_progress = None
             
             # 判断是否需要保护进度
             if self._should_protect_progress(current_chapter, existing_progress):
                 # 保护现有进度，使用现有同步信息中的进度
-                sync_info_dict["当前章节"] = existing_progress
+                sync_info_dict["最后更新章节"] = existing_progress
                 logger.info(f"应用进度保护：保持现有进度 {existing_progress}，不更新为 {current_chapter}")
             else:
                 # 正常更新进度
-                sync_info_dict["当前章节"] = current_chapter
+                sync_info_dict["最后更新章节"] = current_chapter
                 logger.info(f"正常更新进度：从 {existing_progress} 更新为 {current_chapter}")
             
             # 始终更新"最后更新时间"字段
@@ -818,7 +819,7 @@ class ContentGenerator:
             # 确保向后兼容性：保留其他现有字段（如果存在）
             if existing_sync_info:
                 for key, value in existing_sync_info.items():
-                    if key not in sync_info_dict and key != "当前章节":
+                    if key not in sync_info_dict and key != "最后更新章节":
                         # 保留现有字段，但不覆盖新生成的字段
                         sync_info_dict[key] = value
                         logger.debug(f"保留现有字段: {key}")
@@ -834,21 +835,21 @@ class ContentGenerator:
             # 尝试保留原有的sync_info_dict内容
             try:
                 # 确保至少有基本字段
-                sync_info_dict["当前章节"] = current_chapter
+                sync_info_dict["最后更新章节"] = current_chapter
                 sync_info_dict["最后更新时间"] = time.strftime("%Y-%m-%d %H:%M:%S")
                 
                 # 尝试从现有文件中恢复其他字段以保持向后兼容性
                 existing_sync_info = self._load_sync_info()
                 if existing_sync_info:
                     for key, value in existing_sync_info.items():
-                        if key not in sync_info_dict and key != "当前章节":
+                        if key not in sync_info_dict and key != "最后更新章节":
                             sync_info_dict[key] = value
                             
             except Exception as recovery_error:
                 logger.error(f"恢复同步信息字段时也出错: {recovery_error}")
                 # 最后的保底措施
                 sync_info_dict = {
-                    "当前章节": current_chapter,
+                    "最后更新章节": current_chapter,
                     "最后更新时间": time.strftime("%Y-%m-%d %H:%M:%S")
                 }
             
@@ -870,7 +871,7 @@ class ContentGenerator:
             if not existing_sync_info:
                 logger.info("创建新的同步信息结构")
                 existing_sync_info = {
-                    "当前章节": None,
+                    "最后更新章节": None,
                     "最后更新时间": None,
                     "世界观": {},
                     "人物设定": {},
@@ -968,9 +969,9 @@ class ContentGenerator:
             # 最后的保底措施：创建最基本的同步信息文件
             try:
                 minimal_sync_info = {
-                    "当前章节": self.current_chapter,
+                    "最后更新章节": self.current_chapter,
                     "最后更新时间": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "前情提要": [f"降级方案生成 - 当前章节: {self.current_chapter}"]
+                    "前情提要": [f"降级方案生成 - 最后更新章节: {self.current_chapter}"]
                 }
                 
                 os.makedirs(os.path.dirname(self.sync_info_file), exist_ok=True)
@@ -1032,18 +1033,18 @@ class ContentGenerator:
                         logger.error(f"同步信息文件内容不是字典格式: {type(sync_info)}，返回空字典")
                         return {}
                     
-                    # 处理"当前章节"字段的各种异常情况
-                    if "当前章节" in sync_info:
-                        current_chapter = sync_info["当前章节"]
+                    # 处理"最后更新章节"字段的各种异常情况（兼容旧版"当前章节"）
+                    if "最后更新章节" in sync_info or "当前章节" in sync_info:
+                        current_chapter = sync_info.get("最后更新章节", sync_info.get("当前章节"))
                         
                         # 处理字段值为None的情况
                         if current_chapter is None:
-                            logger.warning("同步信息中'当前章节'字段为None，保持原样")
+                            logger.warning("同步信息中'最后更新章节'字段为None，保持原样")
                         
                         # 处理字段值为空字符串的情况
                         elif isinstance(current_chapter, str) and not current_chapter.strip():
-                            logger.warning("同步信息中'当前章节'字段为空字符串，设置为None")
-                            sync_info["当前章节"] = None
+                            logger.warning("同步信息中'最后更新章节'字段为空字符串，设置为None")
+                            sync_info["最后更新章节"] = None
                         
                         # 处理字段值为非数字字符串的情况
                         elif isinstance(current_chapter, str):
@@ -1051,38 +1052,38 @@ class ContentGenerator:
                                 # 尝试转换为整数
                                 chapter_num = int(current_chapter.strip())
                                 if chapter_num < 0:
-                                    logger.warning(f"同步信息中'当前章节'字段值无效 ({chapter_num})，设置为None")
-                                    sync_info["当前章节"] = None
+                                    logger.warning(f"同步信息中'最后更新章节'字段值无效 ({chapter_num})，设置为None")
+                                    sync_info["最后更新章节"] = None
                                 else:
-                                    sync_info["当前章节"] = chapter_num
-                                    logger.debug(f"成功将'当前章节'字段从字符串转换为整数: {chapter_num}")
+                                    sync_info["最后更新章节"] = chapter_num
+                                    logger.debug(f"成功将'最后更新章节'字段从字符串转换为整数: {chapter_num}")
                             except ValueError:
-                                logger.warning(f"同步信息中'当前章节'字段无法转换为整数: '{current_chapter}'，设置为None")
-                                sync_info["当前章节"] = None
+                                logger.warning(f"同步信息中'最后更新章节'字段无法转换为整数: '{current_chapter}'，设置为None")
+                                sync_info["最后更新章节"] = None
                         
                         # 处理字段值为浮点数的情况
                         elif isinstance(current_chapter, float):
                             if current_chapter.is_integer() and current_chapter >= 0:
-                                sync_info["当前章节"] = int(current_chapter)
-                                logger.debug(f"将'当前章节'字段从浮点数转换为整数: {int(current_chapter)}")
+                                sync_info["最后更新章节"] = int(current_chapter)
+                                logger.debug(f"将'最后更新章节'字段从浮点数转换为整数: {int(current_chapter)}")
                             else:
-                                logger.warning(f"同步信息中'当前章节'字段为无效浮点数: {current_chapter}，设置为None")
-                                sync_info["当前章节"] = None
+                                logger.warning(f"同步信息中'最后更新章节'字段为无效浮点数: {current_chapter}，设置为None")
+                                sync_info["最后更新章节"] = None
                         
                         # 处理字段值为布尔类型的情况
                         elif isinstance(current_chapter, bool):
-                            logger.warning(f"同步信息中'当前章节'字段为布尔类型: {current_chapter}，设置为None")
-                            sync_info["当前章节"] = None
+                            logger.warning(f"同步信息中'最后更新章节'字段为布尔类型: {current_chapter}，设置为None")
+                            sync_info["最后更新章节"] = None
                         
                         # 处理字段值为其他类型的情况
                         elif not isinstance(current_chapter, int):
-                            logger.warning(f"同步信息中'当前章节'字段类型异常: {type(current_chapter)}，设置为None")
-                            sync_info["当前章节"] = None
+                            logger.warning(f"同步信息中'最后更新章节'字段类型异常: {type(current_chapter)}，设置为None")
+                            sync_info["最后更新章节"] = None
                         
                         # 处理字段值为负数的情况
                         elif isinstance(current_chapter, int) and current_chapter < 0:
-                            logger.warning(f"同步信息中'当前章节'字段值无效: {current_chapter}，设置为None")
-                            sync_info["当前章节"] = None
+                            logger.warning(f"同步信息中'最后更新章节'字段值无效: {current_chapter}，设置为None")
+                            sync_info["最后更新章节"] = None
                     
                     logger.debug(f"成功加载同步信息，包含 {len(sync_info)} 个字段")
                     return sync_info

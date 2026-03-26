@@ -439,7 +439,7 @@ def get_sync_info_prompt(
         "进行中冲突": []
     }},
     "前情提要": [],
-    "当前章节": {current_chapter},
+    "最后更新章节": {current_chapter},
     "最后更新时间": ""
 }}"""
 
