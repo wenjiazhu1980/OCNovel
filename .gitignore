@@ -27,6 +27,7 @@ build/
 .qoder/
 
 # 项目特定文件
+ocnovel-ui/
 data/
 # src/gui/ — GUI代码已入库
 !data/*/.gitkeep
@@ -54,7 +55,7 @@ Thumbs.db
 .cursorrules
 .qoderignore
 .ace-tool/
-
-*.bak.*
 *.png
 *.jpg
+*.bak.*
+.gitignore
