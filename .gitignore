@@ -55,4 +55,7 @@ Thumbs.db
 .cursorrules
 .qoderignore
 .ace-tool/
-cookies.json
+*.png
+*.jpg
+*.bak.*
+.gitignore

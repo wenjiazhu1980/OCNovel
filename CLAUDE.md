@@ -11,10 +11,10 @@ main.py                          # CLI入口，argparse子命令
 src/
   config/
     config.py                    # Config类，加载config.json + .env
-    ai_config.py                 # AIConfig类，多模型配置(Gemini/OpenAI/VolcEngine)
+    ai_config.py                 # AIConfig类，多模型配置(Gemini/OpenAI)
   models/
     base_model.py                # BaseModel ABC: generate() + embed()
-    openai_model.py              # OpenAI兼容实现（含VolcEngine复用）
+    openai_model.py              # OpenAI兼容实现
     gemini_model.py              # Google Gemini实现
   generators/
     outline/outline_generator.py # 大纲生成
@@ -39,7 +39,7 @@ data/                            # 运行时数据（gitignored）
 
 ## Key Patterns
 
-- **Model abstraction**: `BaseModel` ABC → `OpenAIModel` / `GeminiModel`。VolcEngine复用OpenAI实现。
+- **Model abstraction**: `BaseModel` ABC → `OpenAIModel` / `GeminiModel`。
 - **Config layering**: `config.json`（小说参数） + `.env`（API密钥/敏感配置） + `AIConfig`（模型默认值）。`config.json`中的`model_config`优先级高于AIConfig defaults。
 - **Pipeline**: outline → content → finalize，通过`auto`命令串联。
 - **Retry/Fallback**: tenacity重试 + 备用模型机制。

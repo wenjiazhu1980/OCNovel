@@ -28,7 +28,6 @@ class OpenAIModel(BaseModel):
         self._validate_config()
         self.api_mode = "auto"
         self.reasoning_enabled = config.get("reasoning_enabled", False)
-        self.reasoning_effort = config.get("reasoning_effort", "medium")
         self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self._init_standard_client(config)
             
@@ -193,16 +192,9 @@ class OpenAIModel(BaseModel):
         merged = "".join(chunks).strip()
         return merged or None
 
-    def _get_reasoning_effort(self) -> Optional[str]:
-        """获取校验后的推理强度值，未启用则返回 None"""
-        if not self.reasoning_enabled or not self.reasoning_effort:
-            return None
-        _valid = {"low", "medium", "high", "xhigh"}
-        effort = self.reasoning_effort.strip().lower()
-        if effort not in _valid:
-            logging.warning(f"推理强度 '{self.reasoning_effort}' 无效，已回退为 'medium'（合法值: {_valid}）")
-            effort = "medium"
-        return effort
+    def _is_reasoning_enabled(self) -> bool:
+        """检查是否启用推理模式"""
+        return bool(self.reasoning_enabled)
 
     def _generate_with_chat_api(
         self,
@@ -223,10 +215,8 @@ class OpenAIModel(BaseModel):
         }
         if max_tokens:
             params["max_tokens"] = max_tokens
-        effort = self._get_reasoning_effort()
-        if effort:
-            params["extra_body"] = {"reasoning_effort": effort}
-            logging.info(f"Chat API 推理模式已启用，强度: {effort}")
+        if self._is_reasoning_enabled():
+            logging.info("Chat API 推理模式已启用，由模型自行决定推理强度")
 
         response = client.chat.completions.create(**params)
 
@@ -256,10 +246,8 @@ class OpenAIModel(BaseModel):
                 logging.warning(f"max_output_tokens ({max_tokens}) 过大，已限制为 16384")
                 max_tokens = 16384
             request_data["max_output_tokens"] = max_tokens
-        effort = self._get_reasoning_effort()
-        if effort:
-            request_data["reasoning"] = {"effort": effort}
-            logging.info(f"Responses API 推理模式已启用，强度: {effort}")
+        if self._is_reasoning_enabled():
+            logging.info("Responses API 推理模式已启用，由模型自行决定推理强度")
 
         response = client.responses.create(**request_data)
         content = self._extract_responses_content(response)

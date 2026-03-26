@@ -154,8 +154,6 @@ class ModelConfigTab(QWidget):
         cb = QCheckBox("启用推理（Thinking/Reasoning）")
         form.addRow("", cb)
         self._fields["OPENAI_OUTLINE_REASONING_ENABLED"] = cb
-        self._add_field(form, "推理强度", "OPENAI_OUTLINE_REASONING_EFFORT",
-                        placeholder="medium (low/medium/high)")
         self._add_test_button(form, "openai_outline")
 
     def _build_content_model_group(self):
@@ -170,8 +168,6 @@ class ModelConfigTab(QWidget):
         cb = QCheckBox("启用推理（Thinking/Reasoning）")
         form.addRow("", cb)
         self._fields["OPENAI_CONTENT_REASONING_ENABLED"] = cb
-        self._add_field(form, "推理强度", "OPENAI_CONTENT_REASONING_EFFORT",
-                        placeholder="medium (low/medium/high)")
         self._add_test_button(form, "openai_content")
 
     def _build_fallback_group(self):

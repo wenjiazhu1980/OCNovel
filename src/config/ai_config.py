@@ -30,7 +30,6 @@ class AIConfig:
                     "api_mode": os.getenv("OPENAI_OUTLINE_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
                     "timeout": int(os.getenv("OPENAI_OUTLINE_TIMEOUT", "120")),
                     "reasoning_enabled": os.getenv("OPENAI_OUTLINE_REASONING_ENABLED", "false").lower() == "true",
-                    "reasoning_effort": os.getenv("OPENAI_OUTLINE_REASONING_EFFORT", "medium"),
                 },
                 "content": {
                     "name": os.getenv("OPENAI_CONTENT_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
@@ -40,7 +39,6 @@ class AIConfig:
                     "api_mode": os.getenv("OPENAI_CONTENT_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
                     "timeout": int(os.getenv("OPENAI_CONTENT_TIMEOUT", "180")),
                     "reasoning_enabled": os.getenv("OPENAI_CONTENT_REASONING_ENABLED", "false").lower() == "true",
-                    "reasoning_effort": os.getenv("OPENAI_CONTENT_REASONING_EFFORT", "medium"),
                 },
                 "reranker": {
                     "name": os.getenv("OPENAI_RERANKER_MODEL", "Qwen/Qwen3-Reranker-0.6B"),
@@ -176,7 +174,6 @@ class AIConfig:
             "retry_delay": self.openai_config["retry_delay"],
             "timeout": model_config.get("timeout", 60),
             "reasoning_enabled": model_config.get("reasoning_enabled", False),
-            "reasoning_effort": model_config.get("reasoning_effort", "medium"),
         }
     
     def get_model_config(self, model_type: str) -> Dict[str, Any]:
