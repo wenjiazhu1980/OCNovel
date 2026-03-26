@@ -96,8 +96,8 @@ app = BUNDLE(
     bundle_identifier='com.ocnovel.app',
     info_plist={
         'CFBundleDisplayName': 'OCNovel',
-        'CFBundleShortVersionString': '1.0.0',
-        'CFBundleVersion': '1.0.0',
+        'CFBundleShortVersionString': '1.0.1',
+        'CFBundleVersion': '1.0.1',
         'NSHighResolutionCapable': True,
         'LSMinimumSystemVersion': '12.0',
         'NSRequiresAquaSystemAppearance': False,  # 支持 Dark Mode

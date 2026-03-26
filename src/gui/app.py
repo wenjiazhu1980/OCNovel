@@ -18,7 +18,7 @@ def create_app(argv=None) -> QApplication:
     app = QApplication(argv)
     app.setApplicationName("OCNovel")
     app.setOrganizationName("OCNovel")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("1.0.1")
 
     # 全局默认字体
     font = QFont("PingFang SC", 13)
