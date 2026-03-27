@@ -77,8 +77,18 @@ class ConsistencyChecker:
         try:
             check_result = self.content_model.generate(prompt)
             
-            # 解析检查结果
-            needs_revision = "需要修改" in check_result
+            # 解析检查结果 - 更严谨的判断逻辑
+            # 首先尝试使用正则精准匹配提示词要求输出的 [修改必要性]
+            revision_match = re.search(r'\[修改必要性\]\s*:\s*([\s\S]+?)(?=\n|$)', check_result)
+            if revision_match:
+                val = revision_match.group(1).replace('"', '').replace("'", '').strip()
+                needs_revision = ("需要" in val and "无需" not in val and "否" not in val)
+            else:
+                # 降级处理：防止仅仅是因为包含了 "需要修改: 否" 导致的误判
+                needs_revision = ("需要修改" in check_result and 
+                                 "无需" not in check_result and 
+                                 "需要修改: 否" not in check_result and
+                                 "不需要修改" not in check_result)
             
             # 提取分数
             score_match = re.search(r'\[总体评分\]\s*:\s*(\d+)', check_result)
@@ -160,8 +170,8 @@ class ConsistencyChecker:
                 chapter_content, chapter_outline, chapter_idx, characters, previous_scene, sync_info
             )
             
-            # 如果分数达标或不需要修改，则跳出循环
-            if score >= self.min_acceptable_score or not needs_revision:
+            # 必须同时满足分数达标和不需要修改，才跳出循环
+            if score >= self.min_acceptable_score and not needs_revision:
                 logging.info(f"第 {chapter_idx + 1} 章: 内容一致性检查通过，得分: {score}")
                 break
                 
