@@ -219,9 +219,16 @@ class OpenAIModel(BaseModel):
             params["max_tokens"] = max_tokens
         if self._is_reasoning_enabled():
             logging.info("Chat API 推理模式已启用，由模型自行决定推理强度")
+            # 推理模型首 token 前思考时间可能很长，使用更长的超时
+            stream_timeout = max(self.config.get("timeout", 120), 300)
+        else:
+            stream_timeout = None  # 使用客户端默认超时
 
         try:
-            response = client.chat.completions.create(**params)
+            create_kwargs = dict(**params)
+            if stream_timeout is not None:
+                create_kwargs["timeout"] = stream_timeout
+            response = client.chat.completions.create(**create_kwargs)
             
             chunks = []
             for chunk in response:
@@ -238,10 +245,15 @@ class OpenAIModel(BaseModel):
                 raise Exception("Chat Completions 响应流为空")
             return content
         except Exception as e:
-            if "Empty chunks" in str(e) or "stream" in str(e).lower() or type(e).__name__ in ("TypeError", "AttributeError"):
+            if ("Empty chunks" in str(e) or "stream" in str(e).lower()
+                    or "响应流为空" in str(e)
+                    or type(e).__name__ in ("TypeError", "AttributeError")):
                 logging.warning(f"流式请求失败或不受支持，回退至非流式请求: {e}")
                 params["stream"] = False
-                response = client.chat.completions.create(**params)
+                non_stream_kwargs = dict(**params)
+                if stream_timeout is not None:
+                    non_stream_kwargs["timeout"] = stream_timeout
+                response = client.chat.completions.create(**non_stream_kwargs)
                 content = self._extract_chat_content(response)
                 if content is None:
                     raise Exception("Chat Completions 非流式请求返回空内容")
@@ -271,6 +283,8 @@ class OpenAIModel(BaseModel):
             request_data["max_output_tokens"] = max_tokens
         if self._is_reasoning_enabled():
             logging.info("Responses API 推理模式已启用，由模型自行决定推理强度")
+            # 推理模型首 token 前思考时间可能很长，使用更长的超时
+            request_data["timeout"] = max(self.config.get("timeout", 120), 300)
 
         response = client.responses.create(**request_data)
         content = self._extract_responses_content(response)

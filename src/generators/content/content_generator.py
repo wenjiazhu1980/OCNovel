@@ -3,6 +3,15 @@ import logging
 import time
 from typing import Optional, List, Any, Dict
 import math
+
+
+class ChapterLengthError(Exception):
+    """章节字数偏差过大时抛出的异常"""
+    def __init__(self, message: str, actual: int, target: int, content: str = ""):
+        super().__init__(message)
+        self.actual = actual
+        self.target = target
+        self.content = content  # 保留已生成的内容，用于缩写/扩写
 from .consistency_checker import ConsistencyChecker
 from .validators import LogicValidator, DuplicateValidator
 from ..common.data_structures import ChapterOutline
@@ -193,42 +202,65 @@ class ContentGenerator:
         chapter_outline = self.chapter_outlines[chapter_num - 1]
         logger.info(f"[Chapter {chapter_num}] 开始处理章节: {chapter_outline.title}")
         success = False
+        length_hint = ""  # 字数约束提示，重试时追加到 prompt
+        pending_adjustment = None  # 待调整的内容 (content, actual, target)
         for attempt in range(max_retries):
             logger.info(f"[Chapter {chapter_num}] 尝试 {attempt + 1}/{max_retries}")
             try:
                 self._check_cancelled()
-                # 1. 生成原始内容，拼接风格示例和风格要求
-                extra_prompt, style_example = self.get_style_reference(style_name)
-                style_block = ''
-                if style_example:
-                    style_block += f"【风格示例】\n{style_example}\n"
-                if extra_prompt:
-                    style_block += f"【风格要求】{extra_prompt}\n"
-                merged_prompt = style_block + (external_prompt or '')
-                raw_content = self._generate_chapter_content(chapter_outline, merged_prompt)
-                if not raw_content:
-                    raise Exception("原始内容生成失败，返回为空。")
+
+                if pending_adjustment:
+                    # 基于上次生成的内容做字数调整，而非重新生成
+                    prev_content, prev_actual, prev_target = pending_adjustment
+                    pending_adjustment = None
+                    logger.info(
+                        f"[Chapter {chapter_num}] 基于已有内容进行字数调整 "
+                        f"({prev_actual} → {prev_target})"
+                    )
+                    raw_content = self._adjust_chapter_length(
+                        prev_content, prev_actual, prev_target, chapter_outline
+                    )
+                    if not raw_content:
+                        raise Exception("字数调整失败，返回为空，将重新生成。")
+                else:
+                    # 正常生成：拼接风格示例和风格要求
+                    extra_prompt, style_example = self.get_style_reference(style_name)
+                    style_block = ''
+                    if style_example:
+                        style_block += f"【风格示例】\n{style_example}\n"
+                    if extra_prompt:
+                        style_block += f"【风格要求】{extra_prompt}\n"
+                    merged_prompt = style_block + (external_prompt or '') + length_hint
+                    raw_content = self._generate_chapter_content(chapter_outline, merged_prompt)
+                    if not raw_content:
+                        raise Exception("原始内容生成失败，返回为空。")
 
                 # 1.5. 字数检测
                 target_length = self.config.generator_config.get("chapter_length", 0) if hasattr(self.config, 'generator_config') else 0
                 if target_length > 0:
                     actual_length = len(raw_content)
-                    min_acceptable = int(target_length * 0.8)
-                    max_acceptable = int(target_length * 1.2)
-                    if actual_length < min_acceptable:
+                    deviation = abs(actual_length - target_length) / target_length
+
+                    if deviation > 0.5:
+                        direction = "偏少" if actual_length < target_length else "偏多"
                         logger.warning(
-                            f"[Chapter {chapter_num}] 字数偏少: 实际 {actual_length} 字，"
-                            f"目标 {target_length} 字（允许范围 {min_acceptable}~{max_acceptable}）"
+                            f"[Chapter {chapter_num}] 字数严重{direction}: "
+                            f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}），触发字数调整"
                         )
-                    elif actual_length > max_acceptable:
+                        raise ChapterLengthError(
+                            f"字数{direction}（{actual_length}/{target_length}，偏差 {deviation:.0%}）",
+                            actual=actual_length, target=target_length, content=raw_content
+                        )
+                    elif deviation > 0.2:
+                        direction = "偏少" if actual_length < target_length else "偏多"
                         logger.warning(
-                            f"[Chapter {chapter_num}] 字数偏多: 实际 {actual_length} 字，"
-                            f"目标 {target_length} 字（允许范围 {min_acceptable}~{max_acceptable}）"
+                            f"[Chapter {chapter_num}] 字数{direction}: "
+                            f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}）"
                         )
                     else:
                         logger.info(
-                            f"[Chapter {chapter_num}] 字数检测通过: 实际 {actual_length} 字，"
-                            f"目标 {target_length} 字"
+                            f"[Chapter {chapter_num}] 字数检测通过: "
+                            f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}）"
                         )
 
                 self._check_cancelled()
@@ -295,6 +327,15 @@ class ContentGenerator:
                     break
                 else:
                     raise Exception("保存最终内容失败")
+            except ChapterLengthError as e:
+                # 字数偏差已在上面记录，不重复打 traceback
+                # 保存内容用于下次迭代做缩写/扩写调整
+                if e.content:
+                    pending_adjustment = (e.content, e.actual, e.target)
+                success = False
+                if attempt >= max_retries - 1:
+                    logger.error(f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标，放弃")
+                    return False
             except Exception as e:
                 logger.error(f"[Chapter {chapter_num}] 处理出错: {str(e)}", exc_info=True)
                 success = False
@@ -340,6 +381,64 @@ class ContentGenerator:
             logger.info(f"没有需要生成的剩余章节（当前进度索引: {self.current_chapter}）。")
             return True
 
+    def merge_all_chapters(self, output_filename: Optional[str] = None) -> Optional[str]:
+        """
+        将所有已生成的章节合并为一个完整的 txt 文件。
+
+        Args:
+            output_filename: 输出文件名（不含路径），默认使用小说标题
+
+        Returns:
+            合并后的文件路径，失败返回 None
+        """
+        try:
+            self._load_outline()
+            if not self.chapter_outlines:
+                logger.warning("大纲为空，无法合并章节。")
+                return None
+
+            # 确定输出文件名
+            if not output_filename:
+                novel_title = getattr(self.config, 'novel_config', {}).get('title', '未命名小说')
+                output_filename = f"{novel_title}_完整版.txt"
+
+            merged_parts = []
+            found_count = 0
+
+            for outline in self.chapter_outlines:
+                chapter_num = outline.chapter_number
+                cleaned_title = self._clean_filename(outline.title)
+                filename = f"第{chapter_num}章_{cleaned_title}.txt"
+                filepath = os.path.join(self.output_dir, filename)
+
+                if os.path.exists(filepath):
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        content = f.read().strip()
+                    if content:
+                        merged_parts.append(content)
+                        found_count += 1
+                else:
+                    logger.warning(f"章节文件不存在，跳过: {filename}")
+
+            if not merged_parts:
+                logger.error("未找到任何章节文件，无法合并。")
+                return None
+
+            # 用双换行分隔各章节
+            merged_content = "\n\n".join(merged_parts)
+
+            # 保存合并文件
+            output_path = os.path.join(self.output_dir, output_filename)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(merged_content)
+
+            logger.info(f"已合并 {found_count}/{len(self.chapter_outlines)} 章到 {output_path}，总字数: {len(merged_content)}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"合并章节时出错: {str(e)}", exc_info=True)
+            return None
+
     def _regenerate_specific_chapter(self, chapter_num: int, external_prompt: Optional[str] = None) -> bool:
          """重新生成指定章节的入口"""
          logger.info(f"请求重新生成第 {chapter_num} 章...")
@@ -383,6 +482,78 @@ class ContentGenerator:
 
         except Exception as e:
             logger.error(f"生成第 {chapter_outline.chapter_number} 章原始内容时出错: {str(e)}", exc_info=True)
+            return None
+
+    def _adjust_chapter_length(
+        self,
+        content: str,
+        actual_length: int,
+        target_length: int,
+        chapter_outline: ChapterOutline
+    ) -> Optional[str]:
+        """基于已有内容进行字数缩写或扩写调整
+
+        Args:
+            content: 已生成的章节内容
+            actual_length: 当前字数
+            target_length: 目标字数
+            chapter_outline: 章节大纲
+
+        Returns:
+            调整后的内容，失败返回 None
+        """
+        try:
+            min_len = int(target_length * 0.8)
+            max_len = int(target_length * 1.2)
+
+            if actual_length > target_length:
+                # 缩写
+                action = "精简缩写"
+                instruction = (
+                    f"当前内容 {actual_length} 字，目标 {target_length} 字（允许 {min_len}~{max_len}）。\n"
+                    "请对以下章节内容进行精简缩写，要求：\n"
+                    "1. 保留所有关键剧情点、人物对话的核心内容和重要转折\n"
+                    "2. 删减冗余的环境描写、重复的心理活动、过度的修饰语\n"
+                    "3. 压缩过长的动作描写和场景过渡\n"
+                    "4. 保持故事连贯性和人物性格一致性\n"
+                    "5. 直接输出缩写后的完整章节内容，不要添加任何说明"
+                )
+            else:
+                # 扩写
+                action = "扩展充实"
+                instruction = (
+                    f"当前内容 {actual_length} 字，目标 {target_length} 字（允许 {min_len}~{max_len}）。\n"
+                    "请对以下章节内容进行扩展充实，要求：\n"
+                    "1. 围绕现有剧情点增加细节描写、人物对话和心理活动\n"
+                    "2. 补充环境氛围描写和角色互动\n"
+                    "3. 不要改变原有剧情走向和人物设定\n"
+                    "4. 新增内容要自然融入，不能有拼凑感\n"
+                    "5. 直接输出扩写后的完整章节内容，不要添加任何说明"
+                )
+
+            prompt = (
+                f"【章节信息】第{chapter_outline.chapter_number}章：{chapter_outline.title}\n"
+                f"【任务】{action}\n"
+                f"{instruction}\n\n"
+                f"【原始内容】\n{content}"
+            )
+
+            logger.info(f"[Chapter {chapter_outline.chapter_number}] 开始{action}，prompt 长度: {len(prompt)}")
+            adjusted = self.content_model.generate(prompt)
+
+            if adjusted and adjusted.strip():
+                new_length = len(adjusted.strip())
+                logger.info(
+                    f"[Chapter {chapter_outline.chapter_number}] {action}完成: "
+                    f"{actual_length} → {new_length} 字"
+                )
+                return adjusted.strip()
+            else:
+                logger.warning(f"[Chapter {chapter_outline.chapter_number}] {action}返回为空")
+                return None
+
+        except Exception as e:
+            logger.error(f"[Chapter {chapter_outline.chapter_number}] 字数调整出错: {str(e)}")
             return None
 
     def _clean_filename(self, filename: str) -> str:
@@ -629,21 +800,26 @@ class ContentGenerator:
         logger.info(f"准备更新同步信息，最后更新章节进度: {self.current_chapter}，同步信息文件: {self.sync_info_file}")
         try:
             all_content = ""
-            # 修改：只读取最近5章的内容来更新同步信息
-            # 确保从第1章开始，且不超过当前已完成的章节
+            # 只读取最近5章的内容来更新同步信息
             num_chapters_to_include = 5
             start_chapter_for_sync = max(1, self.current_chapter - num_chapters_to_include + 1)
-            
+
             logger.info(f"将读取第 {start_chapter_for_sync} 章到第 {self.current_chapter} 章的内容来生成同步信息。")
 
             for chapter_num in range(start_chapter_for_sync, self.current_chapter + 1):
-                if chapter_num - 1 < len(self.chapter_outlines): # 确保章节索引有效
+                if chapter_num - 1 < len(self.chapter_outlines):
                     filename = f"第{chapter_num}章_{self._clean_filename(self.chapter_outlines[chapter_num-1].title)}.txt"
                     filepath = os.path.join(self.output_dir, filename)
                     logger.debug(f"尝试读取章节文件: {filepath}")
                     if os.path.exists(filepath):
                         with open(filepath, 'r', encoding='utf-8') as f:
-                            all_content += f.read() + "\n\n"
+                            chapter_text = f.read()
+                            # 每章限制最多 6000 字符，保留首尾各 3000
+                            max_per_chapter = 6000
+                            if len(chapter_text) > max_per_chapter:
+                                half = max_per_chapter // 2
+                                chapter_text = chapter_text[:half] + "\n...(中间省略)...\n" + chapter_text[-half:]
+                            all_content += chapter_text + "\n\n"
                     else:
                         logger.warning(f"文件不存在，无法读取: {filepath}")
                 else:
@@ -1021,6 +1197,16 @@ class ContentGenerator:
                     existing_sync_info = f.read()
             except Exception as e:
                 logger.warning(f"读取现有同步信息时出错: {str(e)}")
+
+        # 限制各部分长度，防止 prompt 超过模型输入限制
+        max_sync_info_len = 8000
+        max_story_len = 30000
+        if len(existing_sync_info) > max_sync_info_len:
+            logger.warning(f"现有同步信息过长 ({len(existing_sync_info)} 字符)，截断到 {max_sync_info_len}")
+            existing_sync_info = existing_sync_info[:max_sync_info_len] + "\n...(已截断)"
+        if len(story_content) > max_story_len:
+            logger.warning(f"故事内容过长 ({len(story_content)} 字符)，截断到 {max_story_len}")
+            story_content = story_content[:max_story_len] + "\n...(已截断)"
 
         return get_sync_info_prompt(
             story_content=story_content,

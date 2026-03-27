@@ -242,6 +242,11 @@ def main():
                 target_chapter=target_chapter_to_generate,
                 external_prompt=args.extra_prompt
             )
+            if success and target_chapter_to_generate is None:
+                # 非单章重生成模式下，全部完成后自动合并
+                merged_path = generator.merge_all_chapters()
+                if merged_path:
+                    print(f"已合并所有章节到: {merged_path}")
             print("内容生成成功！" if success else "内容生成失败，请查看日志文件了解详细信息。")
             
         elif args.command == 'finalize':
@@ -342,6 +347,11 @@ def main():
                      print("内容生成或定稿过程中失败，停止流程。")
                      return
                  print("内容生成及定稿成功！")
+
+                 # 全部章节完成后自动合并
+                 merged_path = content_generator.merge_all_chapters()
+                 if merged_path:
+                     print(f"已合并所有章节到: {merged_path}")
 
             print("自动生成流程全部完成！")
 

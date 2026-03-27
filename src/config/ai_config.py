@@ -28,7 +28,7 @@ class AIConfig:
                     "api_key": os.getenv("OPENAI_OUTLINE_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_OUTLINE_API_BASE", "https://api.siliconflow.cn/v1"),
                     "api_mode": os.getenv("OPENAI_OUTLINE_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
-                    "timeout": int(os.getenv("OPENAI_OUTLINE_TIMEOUT", "120")),
+                    "timeout": int(os.getenv("OPENAI_OUTLINE_TIMEOUT", "300")),
                     "reasoning_enabled": os.getenv("OPENAI_OUTLINE_REASONING_ENABLED", "false").lower() == "true",
                 },
                 "content": {
