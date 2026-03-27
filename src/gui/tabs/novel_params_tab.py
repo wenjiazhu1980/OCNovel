@@ -244,12 +244,12 @@ class NovelParamsTab(QWidget):
         o_form.addRow("主批次大小", self._sp_outline_batch)
 
         self._sp_context_chapters = QSpinBox()
-        self._sp_context_chapters.setRange(3, 50)
+        self._sp_context_chapters.setRange(3, 1000)
         self._sp_context_chapters.setToolTip("生成大纲时参考的前文章节数，章节越多上下文越丰富但 token 消耗更大")
         o_form.addRow("上下文章节数", self._sp_context_chapters)
 
         self._sp_detail_chapters = QSpinBox()
-        self._sp_detail_chapters.setRange(1, 20)
+        self._sp_detail_chapters.setRange(1, 200)
         self._sp_detail_chapters.setToolTip("在上下文中详细展示的最近章节数")
         o_form.addRow("详细展示章节数", self._sp_detail_chapters)
 

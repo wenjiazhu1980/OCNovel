@@ -632,23 +632,30 @@ class OutlineGenerator:
                 for conflict in self.sync_info["剧情发展"]["进行中冲突"]:
                     context_parts.append(f"- {conflict}")
         
-        # 3. 获取前文大纲的详细信息（只显示最近5章的详细信息）
-        previous_outlines = [o for o in self.chapter_outlines[start_index:end_index] if isinstance(o, ChapterOutline)]
+        # 3. 获取前文大纲的详细信息与章节目录概要
+        # 解绑 context_chapters_count 对大纲目录的限制，获取更长的历史大纲列表
+        # 为了防止超长篇（如1000章以上）一次性加载爆 token，这里增加了一个软限制（最大 200 章，可根据模型上下文调整，也可以设为全量获取）
+        max_history_chapters = 200 
+        outline_start_index = max(0, batch_start_num - 1 - max_history_chapters)
+        
+        previous_outlines = [o for o in self.chapter_outlines[outline_start_index:end_index] if isinstance(o, ChapterOutline)]
         if previous_outlines:
-            context_parts.append(f"\n[前 {len(previous_outlines)} 章详细大纲]")
+            context_parts.append(f"\n[大纲历史回顾 (共 {len(previous_outlines)} 章)]")
+            
+            # 对于更早的章节，只显示章节号和标题
+            if len(previous_outlines) > detail_chapters_count:
+                context_parts.append("\n[更早章节概要目录]")
+                for prev_outline in previous_outlines[:-detail_chapters_count]:
+                    context_parts.append(f"第 {prev_outline.chapter_number} 章: {prev_outline.title}")
+
             # 只显示最近 N 章的详细信息
+            context_parts.append("\n[近期详细大纲]")
             for prev_outline in previous_outlines[-detail_chapters_count:]:
                 context_parts.append(f"\n第 {prev_outline.chapter_number} 章: {prev_outline.title}")
                 context_parts.append(f"关键点: {', '.join(prev_outline.key_points)}")
                 context_parts.append(f"涉及角色: {', '.join(prev_outline.characters)}")
                 context_parts.append(f"场景: {', '.join(prev_outline.settings)}")
                 context_parts.append(f"冲突: {', '.join(prev_outline.conflicts)}")
-        
-            # 对于更早的章节，只显示章节号和标题
-            if len(previous_outlines) > detail_chapters_count:
-                context_parts.append("\n[更早章节概要]")
-                for prev_outline in previous_outlines[:-detail_chapters_count]:
-                    context_parts.append(f"第 {prev_outline.chapter_number} 章: {prev_outline.title}")
         
         # 4. 添加人物关系网络
         if self.sync_info.get("人物设定", {}).get("人物关系"):
