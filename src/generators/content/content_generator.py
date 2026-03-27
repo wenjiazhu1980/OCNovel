@@ -209,6 +209,28 @@ class ContentGenerator:
                 if not raw_content:
                     raise Exception("原始内容生成失败，返回为空。")
 
+                # 1.5. 字数检测
+                target_length = self.config.generator_config.get("chapter_length", 0) if hasattr(self.config, 'generator_config') else 0
+                if target_length > 0:
+                    actual_length = len(raw_content)
+                    min_acceptable = int(target_length * 0.8)
+                    max_acceptable = int(target_length * 1.2)
+                    if actual_length < min_acceptable:
+                        logger.warning(
+                            f"[Chapter {chapter_num}] 字数偏少: 实际 {actual_length} 字，"
+                            f"目标 {target_length} 字（允许范围 {min_acceptable}~{max_acceptable}）"
+                        )
+                    elif actual_length > max_acceptable:
+                        logger.warning(
+                            f"[Chapter {chapter_num}] 字数偏多: 实际 {actual_length} 字，"
+                            f"目标 {target_length} 字（允许范围 {min_acceptable}~{max_acceptable}）"
+                        )
+                    else:
+                        logger.info(
+                            f"[Chapter {chapter_num}] 字数检测通过: 实际 {actual_length} 字，"
+                            f"目标 {target_length} 字"
+                        )
+
                 self._check_cancelled()
                 # 2. 加载同步信息
                 sync_info = self._load_sync_info()
@@ -337,6 +359,7 @@ class ContentGenerator:
 
             # 使用 prompts.py 中的方法
             humanization_config = self.config.generation_config.get("humanization", {}) if hasattr(self.config, 'generation_config') else {}
+            chapter_length = self.config.generator_config.get("chapter_length", 0) if hasattr(self.config, 'generator_config') else 0
             prompt = get_chapter_prompt(
                 outline=chapter_outline.__dict__,
                 references=references,
@@ -344,7 +367,8 @@ class ContentGenerator:
                 context_info=context,
                 story_config=story_config,  # 新增：传递故事设定
                 sync_info=sync_info,  # 新增：传递同步信息
-                humanization_config=humanization_config
+                humanization_config=humanization_config,
+                chapter_length=chapter_length
             )
             logger.debug(f"完整提示词: {prompt}")
 

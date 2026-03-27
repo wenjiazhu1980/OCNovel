@@ -170,7 +170,8 @@ def get_chapter_prompt(
     context_info: str = "",
     story_config: Optional[Dict] = None,
     sync_info: Optional[Dict] = None,
-    humanization_config: Optional[Dict] = None
+    humanization_config: Optional[Dict] = None,
+    chapter_length: int = 0
 ) -> str:
     """生成用于创建章节内容的提示词"""
     
@@ -298,7 +299,16 @@ def get_chapter_prompt(
 2. 严格使用简体中文及中文标点符号，特别是中文双引号“”。
 3. 确保段落划分合理，长短句结合，保持特定风格韵味和阅读节奏感。
 4. 避免使用与故事背景不符的词汇或网络梗，保持世界观的沉浸感。
-5. 重点突出人物对话的生动性和风格特色。
+5. 重点突出人物对话的生动性和风格特色。"""
+
+    # 动态注入字数控制指令
+    if chapter_length > 0:
+        min_len = int(chapter_length * 0.8)
+        max_len = int(chapter_length * 1.2)
+        base_prompt += f"""
+6. 章节正文总字数应控制在 {min_len} 字到 {max_len} 字之间（目标约 {chapter_length} 字），不要过短也不要过长。"""
+
+    base_prompt += """
 
 [网文创作降AI浓度核心要求]
 1. **场景呈现方式（摒弃形容修饰）**：
