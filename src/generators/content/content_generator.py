@@ -529,17 +529,21 @@ class ContentGenerator:
             
             # 调用知识库检索
             logger.info("开始调用知识库搜索方法...")
-            relevant_knowledge = self.knowledge_base.search(search_prompt)
+            relevant_knowledge = self.knowledge_base.search(search_prompt, k=15)
             
             # 检查返回结果
             logger.info(f"知识库搜索返回结果类型: {type(relevant_knowledge)}")
             logger.info(f"知识库搜索返回结果长度: {len(relevant_knowledge) if relevant_knowledge else 0}")
             
             if relevant_knowledge and isinstance(relevant_knowledge, list):
-                references["plot_references"] = relevant_knowledge[:3]  # 限制数量
-                references["character_references"] = relevant_knowledge[3:6]
-                references["setting_references"] = relevant_knowledge[6:9]
-                logger.info(f"成功分配参考信息，共 {len(relevant_knowledge)} 项")
+                # 按比例分配：plot 占 40%，character 占 30%，setting 占 30%
+                total = len(relevant_knowledge)
+                plot_end = max(1, int(total * 0.4))
+                char_end = plot_end + max(1, int(total * 0.3))
+                references["plot_references"] = relevant_knowledge[:plot_end]
+                references["character_references"] = relevant_knowledge[plot_end:char_end]
+                references["setting_references"] = relevant_knowledge[char_end:]
+                logger.info(f"成功分配参考信息，共 {total} 项（情节:{plot_end} 人物:{char_end - plot_end} 场景:{total - char_end}）")
             else:
                 logger.warning(f"知识库返回结果无效或为空: {relevant_knowledge}")
 
