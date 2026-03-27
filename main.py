@@ -361,7 +361,7 @@ def main():
                 # 创建一个临时的知识库配置，指向一个专用的仿写缓存目录
                 imitate_kb_config = config.knowledge_base_config.copy()
                 imitate_kb_config["cache_dir"] = os.path.join(config.knowledge_base_config["cache_dir"], "imitation_cache")
-                style_kb = KnowledgeBase(imitate_kb_config, embedding_model)
+                style_kb = KnowledgeBase(imitate_kb_config, embedding_model, reranker_config=reranker_config)
                 style_kb.build(style_text, force_rebuild=False)
 
                 # 4. 从风格知识库中检索与原始文本最相关的片段作为范例

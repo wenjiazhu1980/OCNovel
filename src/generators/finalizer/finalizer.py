@@ -316,8 +316,11 @@ class NovelFinalizer:
                 "cache_dir": imitation_config.get('manual_imitation', {}).get('temp_kb_cache_dir', 'data/cache/imitation_cache')
             }
             
-            # 创建临时知识库
-            temp_kb = self.knowledge_base.__class__(temp_kb_config, self.knowledge_base.embedding_model)
+            # 创建临时知识库（透传 reranker_config）
+            temp_kb = self.knowledge_base.__class__(
+                temp_kb_config, self.knowledge_base.embedding_model,
+                reranker_config=getattr(self.knowledge_base, 'reranker_config', None)
+            )
             temp_kb.build(style_text, force_rebuild=False)
             
             # 检索风格范例
