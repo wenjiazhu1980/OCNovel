@@ -59,3 +59,4 @@ Thumbs.db
 *.jpg
 *.bak.*
 .gitignore
+pytest.ini
