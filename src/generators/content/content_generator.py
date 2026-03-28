@@ -471,8 +471,19 @@ class ContentGenerator:
             )
             logger.debug(f"完整提示词: {prompt}")
 
+            # 从人性化配置中提取采样参数，传递给模型
+            gen_kwargs = {}
+            hum_temperature = humanization_config.get("temperature")
+            hum_top_p = humanization_config.get("top_p")
+            if hum_temperature is not None:
+                gen_kwargs["temperature"] = float(hum_temperature)
+            if hum_top_p is not None:
+                gen_kwargs["top_p"] = float(hum_top_p)
+            if gen_kwargs:
+                logger.info(f"第 {chapter_num} 章：应用人性化采样参数 {gen_kwargs}")
+
             # 调用模型生成内容
-            content = self.content_model.generate(prompt)
+            content = self.content_model.generate(prompt, **gen_kwargs)
             if not content or not content.strip():
                 logger.error(f"第 {chapter_num} 章：模型返回内容为空或仅包含空白字符。")
                 return None

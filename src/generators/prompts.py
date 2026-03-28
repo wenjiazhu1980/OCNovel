@@ -351,12 +351,36 @@ def get_chapter_prompt(
     # 从配置中读取对话比例目标，默认 0.4
     _hum = humanization_config or {}
     dialogue_ratio_target = float(_hum.get("dialogue_ratio", 0.4))
+    description_simplification = bool(_hum.get("description_simplification", True))
+    emotion_enhancement = bool(_hum.get("emotion_enhancement", True))
 
     # 添加人性化写作指导（已合并对话增强和简化策略）
     base_prompt += f"{chr(10)}{get_humanization_prompt(dialogue_ratio_target)}"
-    
+
     # 添加朱雀AI检测优化
     base_prompt += f"{chr(10)}{get_zhuque_optimization_prompt(dialogue_ratio_target)}"
+
+    # 描写精简化策略
+    if description_simplification:
+        base_prompt += """
+
+[描写精简化要求]
+1. **环境描写精简**：环境描写不超过2句，只写与剧情推进直接相关的细节，删除纯装饰性描写
+2. **动作描写精简**：用一个精准动词代替一串修饰语，如"他猛地拔剑"而非"他缓缓伸出右手，紧紧握住剑柄，用力将长剑从剑鞘中拔出"
+3. **心理描写精简**：用行为暗示心理，而非直接陈述内心活动。如用"他攥紧了拳头"代替"他心中充满了愤怒"
+4. **禁止堆砌辞藻**：每个句子只保留一个核心形容词，删除所有冗余修饰
+5. **场景转换精简**：用对话或动作直接切换场景，不要用大段过渡描写"""
+
+    # 情感增强策略
+    if emotion_enhancement:
+        base_prompt += """
+
+[情感表达增强要求]
+1. **情绪具象化**：用具体的生理反应和微表情表达情绪，而非抽象描述。如"嗓子发紧，眼眶发酸"而非"他很伤心"
+2. **情感冲突化**：人物同时存在两种矛盾情绪（想靠近又害怕、想说又咽回去、嘴上逞强心里发虚）
+3. **情绪节奏感**：同一场景内情绪要有起伏变化，不能一直维持同一种情绪状态
+4. **共情触发点**：每章至少设置1-2个能让读者产生代入感的情感瞬间（尴尬、心酸、热血、感动）
+5. **情感留白**：关键情感高潮处适当留白，用省略号、短句、沉默代替直白表述，给读者想象空间"""
     
     # 添加中文标点符号规范
     base_prompt += f"{chr(10)}{get_chinese_punctuation_rules()}"

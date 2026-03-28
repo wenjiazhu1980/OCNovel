@@ -203,7 +203,8 @@ class OpenAIModel(BaseModel):
         model_name: str,
         prompt: str,
         max_tokens: Optional[int],
-        temperature: float
+        temperature: float,
+        top_p: Optional[float] = None
     ) -> str:
         # 限制 max_tokens 不超过模型常见上限
         if max_tokens and max_tokens > 16384:
@@ -215,6 +216,8 @@ class OpenAIModel(BaseModel):
             "temperature": temperature,
             "stream": True,  # 使用流式传输，防止反向代理(如Nginx)产生60秒空闲连接超时
         }
+        if top_p is not None:
+            params["top_p"] = top_p
         if max_tokens:
             params["max_tokens"] = max_tokens
         if self._is_reasoning_enabled():
@@ -299,7 +302,8 @@ class OpenAIModel(BaseModel):
         prompt: str,
         max_tokens: Optional[int] = None,
         temperature: float = 0.7,
-        api_mode: Optional[str] = None
+        api_mode: Optional[str] = None,
+        top_p: Optional[float] = None
     ) -> str:
         """兼容 Chat Completions 与 Responses 两种接口"""
         mode = (api_mode or self.api_mode).strip().lower()
@@ -307,7 +311,7 @@ class OpenAIModel(BaseModel):
             mode = "auto"
 
         if mode == "chat":
-            return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature)
+            return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature, top_p=top_p)
 
         if mode == "responses":
             return self._generate_with_responses_api(client, model_name, prompt, max_tokens, temperature)
@@ -323,7 +327,7 @@ class OpenAIModel(BaseModel):
         else:
             logging.info("当前客户端不支持 Responses API，自动使用 Chat Completions")
 
-        return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature)
+        return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature, top_p=top_p)
     
     def _create_fallback_client(self):
         """创建备用客户端"""
@@ -365,7 +369,7 @@ class OpenAIModel(BaseModel):
             logging.error(f"备用模型也失败了: {str(fallback_error)}")
             raise fallback_error
     
-    def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7, top_p: Optional[float] = None) -> str:
         """使用网络管理客户端进行文本生成"""
         try:
             # 如果提示词太长，进行截断
@@ -381,13 +385,18 @@ class OpenAIModel(BaseModel):
 
             messages = [{"role": "user", "content": prompt}]
 
+            # 构建请求参数
+            request_kwargs = {
+                "model": self.model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature
+            }
+            if top_p is not None:
+                request_kwargs["top_p"] = top_p
+
             # 使用网络管理客户端
-            response_data = self.network_client.chat_completion(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.7
-            )
+            response_data = self.network_client.chat_completion(**request_kwargs)
             
             content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
             if content is None:
@@ -407,7 +416,7 @@ class OpenAIModel(BaseModel):
                         model=self.fallback_model_name,
                         messages=messages,
                         max_tokens=max_tokens,
-                        temperature=0.7
+                        temperature=temperature
                     )
                     
                     content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
@@ -475,8 +484,14 @@ class OpenAIModel(BaseModel):
                     raise  # 子线程异常直接抛出
             return future.result()
 
-    def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """生成文本（含重试，支持取消检查）"""
+    def generate(self, prompt: str, max_tokens: Optional[int] = None, **kwargs) -> str:
+        """生成文本（含重试，支持取消检查）
+
+        Args:
+            prompt: 提示词
+            max_tokens: 最大生成token数
+            **kwargs: 额外参数，如 temperature, top_p 等
+        """
         max_attempts = 5
         last_error = None
 
@@ -486,7 +501,7 @@ class OpenAIModel(BaseModel):
                 raise InterruptedError("用户取消生成")
 
             try:
-                return self._generate_once(prompt, max_tokens)
+                return self._generate_once(prompt, max_tokens, **kwargs)
             except InterruptedError:
                 raise
             except Exception as e:
@@ -503,15 +518,25 @@ class OpenAIModel(BaseModel):
 
         raise last_error
 
-    def _generate_once(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """单次生成尝试（支持取消检查）"""
-        logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}")
+    def _generate_once(self, prompt: str, max_tokens: Optional[int] = None, **kwargs) -> str:
+        """单次生成尝试（支持取消检查）
+
+        Args:
+            prompt: 提示词
+            max_tokens: 最大生成token数
+            **kwargs: 额外参数，如 temperature, top_p 等
+        """
+        # 从 kwargs 中提取采样参数，未指定则使用默认值
+        temperature = kwargs.get("temperature", 0.7)
+        top_p = kwargs.get("top_p", None)
+        logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}, temperature: {temperature}, top_p: {top_p}")
 
         # 优先使用网络管理客户端（该客户端只支持 chat/completions）
         if NETWORK_AVAILABLE and self.network_client and self.api_mode != "responses":
             try:
                 return self._cancellable_call(
-                    self._use_network_client_for_generation, prompt, max_tokens)
+                    self._use_network_client_for_generation, prompt, max_tokens,
+                    temperature=temperature, top_p=top_p)
             except InterruptedError:
                 raise
             except Exception as e:
@@ -536,7 +561,8 @@ class OpenAIModel(BaseModel):
                 self.model_name,
                 prompt,
                 max_tokens=max_tokens,
-                temperature=0.7
+                temperature=temperature,
+                top_p=top_p
             )
                 
             logging.info(f"文本生成成功，返回内容长度: {len(content)}")
@@ -556,7 +582,7 @@ class OpenAIModel(BaseModel):
                             self.fallback_model_name,
                             prompt,
                             max_tokens=max_tokens,
-                            temperature=0.7,
+                            temperature=temperature,
                             api_mode="auto"
                         )
                             

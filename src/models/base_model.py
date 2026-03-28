@@ -11,8 +11,14 @@ class BaseModel(ABC):
         self.model_name = config.get("model_name", "")
         
     @abstractmethod
-    def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """生成文本"""
+    def generate(self, prompt: str, max_tokens: Optional[int] = None, **kwargs) -> str:
+        """生成文本
+
+        Args:
+            prompt: 提示词
+            max_tokens: 最大生成token数
+            **kwargs: 额外参数，如 temperature, top_p 等，用于覆盖模型默认值
+        """
         pass
         
     @abstractmethod

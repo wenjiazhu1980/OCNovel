@@ -239,14 +239,20 @@ class GeminiModel(BaseModel):
         client: Any,
         model_name: str,
         prompt: str,
-        max_tokens: Optional[int]
+        max_tokens: Optional[int],
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> str:
-        response = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=self.temperature
-        )
+        _temp = temperature if temperature is not None else self.temperature
+        params = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": _temp
+        }
+        if top_p is not None:
+            params["top_p"] = top_p
+        response = client.chat.completions.create(**params)
         content = self._extract_chat_content(response)
         if not content:
             raise Exception("Chat Completions 返回空内容")
@@ -257,15 +263,17 @@ class GeminiModel(BaseModel):
         client: Any,
         model_name: str,
         prompt: str,
-        max_tokens: Optional[int]
+        max_tokens: Optional[int],
+        temperature: Optional[float] = None
     ) -> str:
         if not self._supports_responses_api(client):
             raise Exception("当前 openai SDK 不支持 Responses API，请升级到 openai>=1.66.0")
 
+        _temp = temperature if temperature is not None else self.temperature
         request_data = {
             "model": model_name,
             "input": prompt,
-            "temperature": self.temperature,
+            "temperature": _temp,
         }
         if max_tokens is not None:
             request_data["max_output_tokens"] = max_tokens
@@ -282,43 +290,51 @@ class GeminiModel(BaseModel):
         model_name: str,
         prompt: str,
         max_tokens: Optional[int] = None,
-        api_mode: Optional[str] = None
+        api_mode: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> str:
         mode = (api_mode or self.api_mode).strip().lower()
         if mode not in {"auto", "chat", "responses"}:
             mode = "auto"
 
         if mode == "chat":
-            return self._generate_with_chat_api(client, model_name, prompt, max_tokens)
+            return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature=temperature, top_p=top_p)
 
         if mode == "responses":
-            return self._generate_with_responses_api(client, model_name, prompt, max_tokens)
+            return self._generate_with_responses_api(client, model_name, prompt, max_tokens, temperature=temperature)
 
         if self._supports_responses_api(client):
             try:
-                return self._generate_with_responses_api(client, model_name, prompt, max_tokens)
+                return self._generate_with_responses_api(client, model_name, prompt, max_tokens, temperature=temperature)
             except Exception as responses_error:
                 logging.warning(f"Responses API 调用失败，回退 Chat Completions: {responses_error}")
         else:
             logging.info("当前客户端不支持 Responses API，自动使用 Chat Completions")
 
-        return self._generate_with_chat_api(client, model_name, prompt, max_tokens)
+        return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature=temperature, top_p=top_p)
     
-    def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None) -> str:
+    def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None, top_p: Optional[float] = None) -> str:
         """使用网络管理客户端进行文本生成（仅用于OpenAI兼容API）"""
         if self.is_gemini_official:
             raise Exception("官方Gemini模型不支持网络管理客户端")
-        
+
+        _temp = temperature if temperature is not None else self.temperature
         try:
             messages = [{"role": "user", "content": prompt}]
-            
+
+            # 构建请求参数
+            request_kwargs = {
+                "model": self.model_name,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": _temp
+            }
+            if top_p is not None:
+                request_kwargs["top_p"] = top_p
+
             # 使用网络管理客户端
-            response_data = self.network_client.chat_completion(
-                model=self.model_name,
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=self.temperature
-            )
+            response_data = self.network_client.chat_completion(**request_kwargs)
             
             content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
             if content is None:
@@ -338,7 +354,7 @@ class GeminiModel(BaseModel):
                         model=self.fallback_model_name,
                         messages=messages,
                         max_tokens=max_tokens,
-                        temperature=self.temperature
+                        temperature=_temp
                     )
                     
                     content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
@@ -357,16 +373,27 @@ class GeminiModel(BaseModel):
             logging.error(f"网络管理客户端生成出现未知错误: {str(e)}")
             raise e
 
-    def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """生成文本，支持官方Gemini和OpenAI兼容API分流"""
+    def generate(self, prompt: str, max_tokens: Optional[int] = None, **kwargs) -> str:
+        """生成文本，支持官方Gemini和OpenAI兼容API分流
+
+        Args:
+            prompt: 提示词
+            max_tokens: 最大生成token数
+            **kwargs: 额外参数，如 temperature, top_p 等，用于覆盖模型默认值
+        """
+        # 从 kwargs 中提取采样参数，未指定则使用实例默认值
+        effective_temperature = kwargs.get("temperature", self.temperature)
+        effective_top_p = kwargs.get("top_p", None)
         last_exception = None
         prompt = self._truncate_prompt(prompt)
         if self.is_gemini_official:
             # 官方Gemini模型调用
             for attempt in range(self.max_retries):
                 try:
-                    logging.info(f"Gemini模型调用 (尝试 {attempt + 1}/{self.max_retries})")
-                    generation_config = {"temperature": self.temperature}
+                    logging.info(f"Gemini模型调用 (尝试 {attempt + 1}/{self.max_retries}), temperature: {effective_temperature}, top_p: {effective_top_p}")
+                    generation_config = {"temperature": effective_temperature}
+                    if effective_top_p is not None:
+                        generation_config["top_p"] = effective_top_p
                     if max_tokens:
                         generation_config["max_output_tokens"] = max_tokens
                     response = self.model.generate_content(
@@ -447,7 +474,9 @@ class GeminiModel(BaseModel):
                         self.fallback_model_name,
                         prompt,
                         max_tokens=max_tokens,
-                        api_mode="auto"
+                        api_mode="auto",
+                        temperature=effective_temperature,
+                        top_p=effective_top_p
                     )
                     if content:
                         logging.info(f"备用模型调用成功，返回内容长度: {len(content)}")
@@ -463,7 +492,7 @@ class GeminiModel(BaseModel):
             # 优先使用网络管理客户端
             if NETWORK_AVAILABLE and self.network_client and self.api_mode != "responses":
                 try:
-                    return self._use_network_client_for_generation(prompt, max_tokens)
+                    return self._use_network_client_for_generation(prompt, max_tokens, temperature=effective_temperature, top_p=effective_top_p)
                 except Exception as e:
                     logging.warning(f"网络管理客户端失败，回退到原始客户端: {str(e)}")
             
@@ -476,7 +505,9 @@ class GeminiModel(BaseModel):
                     self.openai_client,
                     self.model_name,
                     prompt,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    temperature=effective_temperature,
+                    top_p=effective_top_p
                 )
                 if content:
                     logging.info(f"OpenAI兼容API模型调用成功，返回内容长度: {len(content)}")
