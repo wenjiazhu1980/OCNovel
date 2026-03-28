@@ -197,6 +197,54 @@ class OpenAIModel(BaseModel):
         """检查是否启用推理模式"""
         return bool(self.reasoning_enabled)
 
+    @staticmethod
+    def _is_sampling_restricted(model_name: str) -> bool:
+        """检测模型是否不支持 temperature / top_p 采样参数
+
+        以下模型系列会忽略或拒绝这些参数：
+        - o1 / o1-mini / o1-preview  (temperature/top_p 固定为 1)
+        - o3 / o3-mini / o3-pro      (不支持 temperature)
+        - o4-mini                     (仅接受 temperature=1)
+        - gpt-5 及以上               (temperature 固定为 1, top_p 已移除)
+        """
+        name = model_name.lower().strip()
+        # o 系列推理模型
+        if name.startswith(("o1", "o3", "o4")):
+            return True
+        # GPT-5 及以上 (gpt-5, gpt-5-mini, gpt-5.2, gpt-5.3-chat-latest 等)
+        if name.startswith("gpt-"):
+            version_part = name[4:]  # 去掉 "gpt-"
+            try:
+                # 提取主版本号：先按 . 分割，再按 - 分割，取第一个数字部分
+                major_str = version_part.split(".")[0].split("-")[0]
+                # 过滤掉非数字字符（如 gpt-5a 中的 'a'）
+                major_str = ''.join(c for c in major_str if c.isdigit())
+                if major_str:  # 确保有数字
+                    major = int(major_str)
+                    if major >= 5:
+                        return True
+            except (ValueError, IndexError):
+                pass
+        return False
+
+    def _sanitize_sampling_params(
+        self, model_name: str, temperature: float, top_p: Optional[float]
+    ) -> tuple:
+        """根据模型兼容性清理采样参数
+
+        Returns:
+            (effective_temperature, effective_top_p)
+            对于受限模型返回 (1, None) 并记录日志
+        """
+        if self._is_sampling_restricted(model_name):
+            if temperature != 1.0 or top_p is not None:
+                logging.info(
+                    f"[采样参数兼容] 模型 {model_name} 为推理模型，"
+                    f"忽略 temperature={temperature}, top_p={top_p}，使用默认值 temperature=1"
+                )
+            return 1.0, None
+        return temperature, top_p
+
     def _generate_with_chat_api(
         self,
         client: Any,
@@ -213,11 +261,13 @@ class OpenAIModel(BaseModel):
         params = {
             "model": model_name,
             "messages": [{"role": "user", "content": prompt}],
-            "temperature": temperature,
             "stream": True,  # 使用流式传输，防止反向代理(如Nginx)产生60秒空闲连接超时
         }
-        if top_p is not None:
-            params["top_p"] = top_p
+        # 推理模型不传 temperature / top_p，避免 API 报错
+        if not self._is_sampling_restricted(model_name):
+            params["temperature"] = temperature
+            if top_p is not None:
+                params["top_p"] = top_p
         if max_tokens:
             params["max_tokens"] = max_tokens
         if self._is_reasoning_enabled():
@@ -277,8 +327,10 @@ class OpenAIModel(BaseModel):
         request_data = {
             "model": model_name,
             "input": prompt,
-            "temperature": temperature,
         }
+        # 推理模型不传 temperature，避免 API 报错
+        if not self._is_sampling_restricted(model_name):
+            request_data["temperature"] = temperature
         if max_tokens is not None:
             if max_tokens > 16384:
                 logging.warning(f"max_output_tokens ({max_tokens}) 过大，已限制为 16384")
@@ -390,10 +442,12 @@ class OpenAIModel(BaseModel):
                 "model": self.model_name,
                 "messages": messages,
                 "max_tokens": max_tokens,
-                "temperature": temperature
             }
-            if top_p is not None:
-                request_kwargs["top_p"] = top_p
+            # 推理模型不传采样参数
+            if not self._is_sampling_restricted(self.model_name):
+                request_kwargs["temperature"] = temperature
+                if top_p is not None:
+                    request_kwargs["top_p"] = top_p
 
             # 使用网络管理客户端
             response_data = self.network_client.chat_completion(**request_kwargs)
@@ -412,12 +466,14 @@ class OpenAIModel(BaseModel):
             if self.fallback_network_client:
                 logging.warning("尝试使用备用网络客户端...")
                 try:
-                    response_data = self.fallback_network_client.chat_completion(
-                        model=self.fallback_model_name,
-                        messages=messages,
-                        max_tokens=max_tokens,
-                        temperature=temperature
-                    )
+                    fallback_kwargs = {
+                        "model": self.fallback_model_name,
+                        "messages": messages,
+                        "max_tokens": max_tokens,
+                    }
+                    if not self._is_sampling_restricted(self.fallback_model_name):
+                        fallback_kwargs["temperature"] = temperature
+                    response_data = self.fallback_network_client.chat_completion(**fallback_kwargs)
                     
                     content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
                     if content is None:
@@ -529,6 +585,8 @@ class OpenAIModel(BaseModel):
         # 从 kwargs 中提取采样参数，未指定则使用默认值
         temperature = kwargs.get("temperature", 0.7)
         top_p = kwargs.get("top_p", None)
+        # 对推理模型自动清理不支持的采样参数
+        temperature, top_p = self._sanitize_sampling_params(self.model_name, temperature, top_p)
         logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}, temperature: {temperature}, top_p: {top_p}")
 
         # 优先使用网络管理客户端（该客户端只支持 chat/completions）
