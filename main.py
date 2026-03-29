@@ -67,6 +67,8 @@ def main():
     content_parser.add_argument('--start-chapter', type=int, help='起始章节号')
     content_parser.add_argument('--target-chapter', type=int, help='指定要重新生成的章节号')
     content_parser.add_argument('--extra-prompt', type=str, help='额外提示词')
+    content_parser.add_argument('--enable-humanizer-zh', action='store_true', help='启用 Humanizer-zh 人性化增强规则')
+    content_parser.add_argument('--disable-humanizer-zh', action='store_true', help='禁用 Humanizer-zh 人性化增强规则')
     
     # 定稿处理命令
     finalize_parser = subparsers.add_parser('finalize', help='处理章节定稿')
@@ -76,6 +78,8 @@ def main():
     auto_parser = subparsers.add_parser('auto', help='自动执行完整生成流程')
     auto_parser.add_argument('--extra-prompt', type=str, help='额外提示词')
     auto_parser.add_argument('--force-outline', action='store_true', help='强制重新生成所有大纲')
+    auto_parser.add_argument('--enable-humanizer-zh', action='store_true', help='启用 Humanizer-zh 人性化增强规则')
+    auto_parser.add_argument('--disable-humanizer-zh', action='store_true', help='禁用 Humanizer-zh 人性化增强规则')
 
     # 仿写命令
     imitate_parser = subparsers.add_parser('imitate', help='根据指定的风格范文仿写文本')
@@ -218,6 +222,22 @@ def main():
             print("大纲生成成功！" if success else "大纲生成失败，请查看日志文件了解详细信息。")
             
         elif args.command == 'content':
+            # 处理 Humanizer-zh 开关
+            if args.enable_humanizer_zh:
+                if not hasattr(config, 'generation_config'):
+                    config.generation_config = {}
+                if "humanization" not in config.generation_config:
+                    config.generation_config["humanization"] = {}
+                config.generation_config["humanization"]["enable_humanizer_zh"] = True
+                logging.info("通过命令行参数启用 Humanizer-zh 人性化增强规则")
+            elif args.disable_humanizer_zh:
+                if not hasattr(config, 'generation_config'):
+                    config.generation_config = {}
+                if "humanization" not in config.generation_config:
+                    config.generation_config["humanization"] = {}
+                config.generation_config["humanization"]["enable_humanizer_zh"] = False
+                logging.info("通过命令行参数禁用 Humanizer-zh 人性化增强规则")
+
             # Pass finalizer instance to ContentGenerator
             generator = ContentGenerator(config, content_model, knowledge_base, finalizer=finalizer)
             
@@ -256,6 +276,22 @@ def main():
             print("章节定稿处理成功！" if success else "章节定稿处理失败，请查看日志文件了解详细信息。")
             
         elif args.command == 'auto':
+            # 处理 Humanizer-zh 开关
+            if args.enable_humanizer_zh:
+                if not hasattr(config, 'generation_config'):
+                    config.generation_config = {}
+                if "humanization" not in config.generation_config:
+                    config.generation_config["humanization"] = {}
+                config.generation_config["humanization"]["enable_humanizer_zh"] = True
+                logging.info("通过命令行参数启用 Humanizer-zh 人性化增强规则")
+            elif args.disable_humanizer_zh:
+                if not hasattr(config, 'generation_config'):
+                    config.generation_config = {}
+                if "humanization" not in config.generation_config:
+                    config.generation_config["humanization"] = {}
+                config.generation_config["humanization"]["enable_humanizer_zh"] = False
+                logging.info("通过命令行参数禁用 Humanizer-zh 人性化增强规则")
+
             # 重新初始化日志系统，并清理旧日志
             setup_logging(config.log_config["log_dir"], clear_logs=True)
             # 自动流程需要实例化所有生成器

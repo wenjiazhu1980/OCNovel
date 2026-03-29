@@ -149,7 +149,8 @@
         "top_p": 0.9,
         "dialogue_ratio": 0.4,
         "description_simplification": true,
-        "emotion_enhancement": true
+        "emotion_enhancement": true,
+        "enable_humanizer_zh": true
       }
     },
     "output_config": {

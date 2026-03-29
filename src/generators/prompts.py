@@ -9,6 +9,7 @@ from .humanization_prompts import (
     get_zhuque_optimization_prompt,
     generate_adaptive_humanization_prompt,
     get_rewrite_prompt_for_high_ai_content,
+    get_enhanced_humanization_prompt,
 )
 
 # 如果 ChapterOutline 只在此处用作类型提示，可以简化或使用 Dict
@@ -353,9 +354,10 @@ def get_chapter_prompt(
     dialogue_ratio_target = float(_hum.get("dialogue_ratio", 0.4))
     description_simplification = bool(_hum.get("description_simplification", True))
     emotion_enhancement = bool(_hum.get("emotion_enhancement", True))
+    enable_humanizer_zh = bool(_hum.get("enable_humanizer_zh", True))  # 默认启用 Humanizer-zh 规则
 
-    # 添加人性化写作指导（已合并对话增强和简化策略）
-    base_prompt += f"{chr(10)}{get_humanization_prompt(dialogue_ratio_target)}"
+    # 添加增强版人性化写作指导（整合 Humanizer-zh 方法论）
+    base_prompt += f"{chr(10)}{get_enhanced_humanization_prompt(dialogue_ratio_target, enable_humanizer_zh)}"
 
     # 添加朱雀AI检测优化
     base_prompt += f"{chr(10)}{get_zhuque_optimization_prompt(dialogue_ratio_target)}"

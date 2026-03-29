@@ -287,12 +287,15 @@ class NovelParamsTab(QWidget):
 
         self._cb_desc_simp = QCheckBox("描写简化")
         self._cb_emotion = QCheckBox("情感增强")
+        self._cb_humanizer_zh = QCheckBox("Humanizer-zh 增强")
+        self._cb_humanizer_zh.setToolTip("启用 Humanizer-zh 人性化增强规则，降低 AI 写作痕迹")
 
         h_form.addRow("temperature", self._dsb_temp)
         h_form.addRow("top_p", self._dsb_top_p)
         h_form.addRow("dialogue_ratio", self._dsb_dialogue)
         h_form.addRow("", self._cb_desc_simp)
         h_form.addRow("", self._cb_emotion)
+        h_form.addRow("", self._cb_humanizer_zh)
         outer.addWidget(h_grp)
 
         self._layout.addWidget(grp)
@@ -655,7 +658,14 @@ class NovelParamsTab(QWidget):
                         "content": {"provider": "openai", "model_type": "content"}
                     },
                     "validation": {"check_logic": True, "check_consistency": True, "check_duplicates": True},
-                    "humanization": {"temperature": 0.8, "top_p": 0.9, "dialogue_ratio": 0.4}
+                    "humanization": {
+                        "temperature": 0.8,
+                        "top_p": 0.9,
+                        "dialogue_ratio": 0.4,
+                        "description_simplification": True,
+                        "emotion_enhancement": True,
+                        "enable_humanizer_zh": True
+                    }
                 },
                 "knowledge_base_config": {"reference_files": [], "chunk_size": 1200, "chunk_overlap": 300, "cache_dir": "data/cache"},
                 "output_config": {"format": "txt", "encoding": "utf-8", "output_dir": "data/output"}
@@ -769,6 +779,7 @@ class NovelParamsTab(QWidget):
         self._dsb_dialogue.setValue(float(hum.get("dialogue_ratio", 0.4)))
         self._cb_desc_simp.setChecked(bool(hum.get("description_simplification", True)))
         self._cb_emotion.setChecked(bool(hum.get("emotion_enhancement", True)))
+        self._cb_humanizer_zh.setChecked(bool(hum.get("enable_humanizer_zh", True)))
 
         # --- 知识库 ---
         self._lw_refs.clear()
@@ -891,6 +902,7 @@ class NovelParamsTab(QWidget):
             "dialogue_ratio": self._dsb_dialogue.value(),
             "description_simplification": self._cb_desc_simp.isChecked(),
             "emotion_enhancement": self._cb_emotion.isChecked(),
+            "enable_humanizer_zh": self._cb_humanizer_zh.isChecked(),
         })
 
         # --- 组装 knowledge_base_config ---
