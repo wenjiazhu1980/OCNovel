@@ -36,51 +36,17 @@ class GeminiModel(BaseModel):
         self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self.max_input_length = config.get('max_input_length', 500000)
         self.api_key = config.get('api_key', None)
-        self.base_url = config.get('base_url', None)
-        self.api_mode = str(config.get("api_mode", "auto")).strip().lower()
-        if self.api_mode not in {"auto", "chat", "responses"}:
-            logging.warning(f"未知 API 模式: {self.api_mode}，已回退为 auto")
-            self.api_mode = "auto"
-        # 判断是否为官方Gemini模型（支持带models/前缀的格式）
-        gemini_official_models = [
-            "gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash",
-            "models/gemini-2.5-pro", "models/gemini-2.5-flash", "models/gemini-2.0-flash", "models/gemini-2.5-flash-lite"
-        ]
-        self.is_gemini_official = self.model_name in gemini_official_models
-        
+
+        # Gemini 仅支持官方 API，不支持自定义 base_url
+        self.is_gemini_official = True
+        logging.info(f"使用 Google 官方 Gemini API 调用模型: {self.model_name}")
+
         # 备用模型配置
         self._setup_fallback_config()
 
-        # 初始化网络管理客户端（如果可用且不是官方Gemini）
-        if NETWORK_AVAILABLE and not self.is_gemini_official and self.base_url:
-            # 创建连接池配置
-            pool_config = PoolConfig(
-                max_connections=config.get("max_connections", 100),
-                max_connections_per_host=config.get("max_connections_per_host", 10),
-                connection_timeout=config.get("connection_timeout", 30.0),
-                read_timeout=config.get("read_timeout", self.timeout),
-                idle_timeout=config.get("idle_timeout", 300.0),
-                enable_http2=config.get("enable_http2", True),
-                enable_keepalive=config.get("enable_keepalive", True)
-            )
-            
-            # 创建网络管理客户端
-            self.network_client = ModelClientFactory.create_openai_client(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                pool_config=pool_config,
-                timeout=self.timeout
-            )
-            
-            # 创建备用网络客户端
-            if self.fallback_api_key:
-                self.fallback_network_client = ModelClientFactory.create_openai_client(
-                    base_url=self.fallback_base_url,
-                    api_key=self.fallback_api_key,
-                    pool_config=pool_config,
-                    timeout=config.get("fallback_timeout", 180)
-                )
-            else:
+        # Gemini 官方 API 不使用网络管理客户端
+        self.network_client = None
+        self.fallback_network_client = None
                 self.fallback_network_client = None
             
             logging.info(f"Gemini model initialized with network management: {self.base_url}")

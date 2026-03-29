@@ -30,7 +30,7 @@ class ConnectionTesterWorker(QThread):
             self.test_result.emit(self.provider, False, f"连接失败: {e}")
 
     def _test_gemini(self):
-        """测试 Gemini API 连接"""
+        """测试 Gemini 官方 API 连接"""
         import google.generativeai as genai
 
         api_key = self.config.get("api_key", "").strip()
@@ -39,17 +39,21 @@ class ConnectionTesterWorker(QThread):
             return
 
         timeout = int(self.config.get("timeout", 30))
-        genai.configure(api_key=api_key, transport="rest")
 
-        # 尝试列出模型以验证连接
-        models = list(genai.list_models())
-        if models:
-            self.test_result.emit(
-                self.provider, True,
-                f"连接成功，可用模型 {len(models)} 个"
-            )
-        else:
-            self.test_result.emit(self.provider, True, "连接成功，但未获取到模型列表")
+        try:
+            genai.configure(api_key=api_key, transport="rest")
+
+            # 尝试列出模型以验证连接
+            models = list(genai.list_models())
+            if models:
+                self.test_result.emit(
+                    self.provider, True,
+                    f"连接成功，可用模型 {len(models)} 个"
+                )
+            else:
+                self.test_result.emit(self.provider, True, "连接成功，但未获取到模型列表")
+        except Exception as e:
+            self.test_result.emit(self.provider, False, f"连接失败: {e}")
 
     def _test_openai_compatible(self):
         """测试 OpenAI 兼容 API 连接"""

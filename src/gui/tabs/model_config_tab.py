@@ -111,10 +111,8 @@ class ModelConfigTab(QWidget):
         return btn
 
     def _build_gemini_group(self):
-        _, form = self._make_group("Gemini")
+        _, form = self._make_group("Gemini (仅支持 Google 官方 API)")
         self._add_field(form, "API Key", "GEMINI_API_KEY", echo_password=True)
-        self._add_field(form, "Base URL", "GEMINI_BASE_URL",
-                        placeholder="留空使用官方端点，或填入代理地址")
         self._add_field(form, "大纲模型 ID", "GEMINI_OUTLINE_MODEL",
                         placeholder="gemini-2.5-pro")
         self._add_field(form, "内容模型 ID", "GEMINI_CONTENT_MODEL",
@@ -147,6 +145,8 @@ class ModelConfigTab(QWidget):
         self._add_field(form, "API Key", "OPENAI_OUTLINE_API_KEY", echo_password=True)
         self._add_field(form, "Base URL", "OPENAI_OUTLINE_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
+        self._add_field(form, "API 模式", "OPENAI_OUTLINE_API_MODE",
+                        placeholder="auto (自动) / chat (Chat Completions) / responses (Responses API)")
         self._add_field(form, "模型名称", "OPENAI_OUTLINE_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_field(form, "超时 (秒)", "OPENAI_OUTLINE_TIMEOUT", placeholder="120")
@@ -161,6 +161,8 @@ class ModelConfigTab(QWidget):
         self._add_field(form, "API Key", "OPENAI_CONTENT_API_KEY", echo_password=True)
         self._add_field(form, "Base URL", "OPENAI_CONTENT_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
+        self._add_field(form, "API 模式", "OPENAI_CONTENT_API_MODE",
+                        placeholder="auto (自动) / chat (Chat Completions) / responses (Responses API)")
         self._add_field(form, "模型名称", "OPENAI_CONTENT_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_field(form, "超时 (秒)", "OPENAI_CONTENT_TIMEOUT", placeholder="180")

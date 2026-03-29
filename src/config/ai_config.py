@@ -50,10 +50,9 @@ class AIConfig:
                 }
             }
         }
-        # Gemini 配置
+        # Gemini 配置（仅支持 Google 官方 API）
         self.gemini_config = {
             "api_key": os.getenv("GEMINI_API_KEY", ""),
-            "base_url": os.getenv("GEMINI_BASE_URL", ""),  # 留空则使用官方端点
             "retry_delay": float(os.getenv("GEMINI_RETRY_DELAY", "30")),  # 默认 30 秒
             "max_retries": int(os.getenv("GEMINI_MAX_RETRIES", "5")),  # 默认 5 次
             "max_input_length": int(os.getenv("GEMINI_MAX_INPUT_LENGTH", "500000")),  # 默认 500000 字符
@@ -116,14 +115,13 @@ class AIConfig:
         logging.info(f"已检测到配置的AI提供商: {', '.join(configured_providers)}")
     
     def get_gemini_config(self, model_type: str = "content") -> Dict[str, Any]:
-        """获取 Gemini 模型配置"""
+        """获取 Gemini 模型配置（仅支持 Google 官方 API）"""
         if model_type not in self.gemini_config["models"]:
             raise ValueError(f"不支持的 Gemini 模型类型: {model_type}")
-            
+
         config = {
             "type": "gemini",
             "api_key": self.gemini_config["api_key"],
-            "base_url": self.gemini_config["base_url"],
             "model_name": self.gemini_config["models"][model_type]["name"],
             "temperature": self.gemini_config["models"][model_type]["temperature"],
             "retry_delay": self.gemini_config["retry_delay"],
@@ -131,7 +129,7 @@ class AIConfig:
             "max_input_length": self.gemini_config["max_input_length"],
             "timeout": self.gemini_config["timeout"]
         }
-        
+
         # 添加备用模型配置
         if self.gemini_config["fallback"]["enabled"]:
             config.update({
@@ -143,7 +141,7 @@ class AIConfig:
             })
         else:
             config["fallback_enabled"] = False
-            
+
         return config
 
     def get_openai_config(self, model_type: str = "embedding") -> Dict[str, Any]:
