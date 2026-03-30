@@ -4,9 +4,13 @@
 
 一个基于 Python 的 AI 小说自动生成系统，支持东方玄幻、仙侠、武侠等多种类型的小说创作。系统采用模块化设计，集成多种 AI 模型接口，提供从大纲生成到章节内容创作的全流程自动化。同时提供 PySide6 可视化界面，降低使用门槛。
 
+## 作者与项目说明
+
+OCNovel 由 @wenjiazhu 个人发起并持续维护，是一个面向长篇小说创作场景的开源项目。项目目标是帮助用户更高效地完成长文本生成、内容规划和多轮迭代，并欢迎社区提出 issue、建议和 PR 共同完善。
+
 ## 项目结构
 
-```
+```text
 OCNovel/
 ├── main.py                    # CLI 入口
 ├── gui_main.py                # GUI 入口
@@ -87,7 +91,8 @@ cp .env.example .env
 ```
 
 编辑 `.env` 填入 API 密钥：
-```bash
+
+```text
 # 至少配置一组模型
 OPENAI_EMBEDDING_API_KEY=your_key
 OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
@@ -100,12 +105,14 @@ OPENAI_CONTENT_API_BASE=https://api.siliconflow.cn/v1
 ### 3. 启动
 
 **GUI 模式（推荐）：**
+
 ```bash
 python gui_main.py
 ```
 
 **CLI 模式：**
-```bash
+
+```text
 # 自动执行完整流程（大纲 + 内容 + 定稿）
 python main.py auto
 
@@ -132,8 +139,8 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 
 启动 `python gui_main.py` 后提供三个 Tab 页：
 
-- **模型配置** — 管理 Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL、模型名称，支持一键测试连接
-- **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
+- **模型配置** — 管理 Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL（Gemini 已优化为官方 API 限制）、模型名称，支持一键测试连接
+- **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
 - **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写
 
 ### 打包为 macOS App
@@ -153,13 +160,13 @@ pyinstaller ocnovel.spec --clean
 
 ## 配置说明
 
-| 配置块 | 说明 |
-|--------|------|
-| `novel_config` | 小说基本信息、写作指南（世界观/角色/剧情/风格） |
-| `generation_config` | 重试策略、模型选择（provider）、验证开关、人性化参数 |
-| `knowledge_base_config` | 参考文件列表、分块大小/重叠、缓存目录 |
-| `output_config` | 输出格式、编码、输出目录 |
-| `imitation_config` | 仿写开关、风格源列表、质量控制参数 |
+| 配置块                  | 说明                                                                                              |
+|------------------------|---------------------------------------------------------------------------------------------------|
+| `novel_config`         | 小说基本信息、写作指南（世界观/角色/剧情/风格）                                                     |
+| `generation_config`    | 重试策略、模型选择、验证开关、人性化参数（Humanizer-zh）、采样参数（Temperature/Top_P）             |
+| `knowledge_base_config`| 参考文件列表、分块大小/重叠、缓存目录                                                               |
+| `output_config`        | 输出格式、编码、输出目录                                                                           |
+| `imitation_config`     | 仿写开关、风格源列表、质量控制参数                                                                 |
 
 ## 环境要求
 

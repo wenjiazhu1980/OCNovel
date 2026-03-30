@@ -4,6 +4,10 @@ English | [简体中文](README.md)
 
 An AI-driven automatic novel generation system based on Python, supporting the creation of various genres such as Eastern Fantasy, Xianxia, Wuxia, and more. The system adopts a modular design, integrates multiple AI model interfaces, and provides full-process automation from outline generation to chapter content creation. It also offers a PySide6 visual interface to lower the usage barrier.
 
+## Author and Project Description
+
+OCNovel was initiated and is continuously maintained by @wenjiazhu. It is an open-source project designed for long-form novel creation. The goal is to help users efficiently complete long-text generation, content planning, and multi-round iterations. We welcome issues, suggestions, and PRs from the community to improve it together.
+
 ## Project Structure
 
 ```text
@@ -135,8 +139,8 @@ python main.py imitate --style-source sample.txt --input-file original.txt --out
 
 After starting `python gui_main.py`, three Tab pages are provided:
 
-- **Model Configuration** — Manage API keys, Base URLs, and model names for Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
-- **Novel Parameters** — Edit novel settings, writing guides, generation parameters, imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
+- **Model Configuration** — Manage API keys, Base URLs (optimized for Gemini official API restrictions), and model names for Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
+- **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
 - **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs, progress bar indicating current progress, and support for breakpoint continuation.
 
 ### Package as macOS App
@@ -156,13 +160,13 @@ pyinstaller ocnovel.spec --clean
 
 ## Configuration Details
 
-| Configuration Block | Description |
-| ------------------- | ----------- |
-| `novel_config` | Basic novel information, writing guide (Worldview / Characters / Plot / Style). |
-| `generation_config` | Retry routing, model selection (provider), validation switches, humanization parameters. |
-| `knowledge_base_config` | Reference file list, chunk size/overlap, cache directory. |
-| `output_config` | Output format, encoding, output directory. |
-| `imitation_config` | Imitation script toggle, style source lists, quality control parameters. |
+| Configuration Block      | Description                                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `novel_config`           | Basic novel information, writing guide (Worldview / Characters / Plot / Style).                                               |
+| `generation_config`      | Retry strategy, model selection, validation switches, humanization parameters (Humanizer-zh), sampling parameters (Temperature/Top_P). |
+| `knowledge_base_config`  | Reference file list, chunk size/overlap, cache directory.                                                                     |
+| `output_config`          | Output format, encoding, output directory.                                                                                    |
+| `imitation_config`       | Imitation script toggle, style source lists, quality control parameters.                                                     |
 
 ## Requirements
 
