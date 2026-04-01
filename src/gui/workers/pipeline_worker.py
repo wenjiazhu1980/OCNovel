@@ -42,12 +42,14 @@ class PipelineWorker(QThread):
         env_path: str,
         force_outline: bool = False,
         extra_prompt: str = "",
+        target_chapters_list: list[int] | None = None,
     ):
         super().__init__()
         self._config_path = config_path
         self._env_path = env_path
         self._force_outline = force_outline
         self._extra_prompt = extra_prompt
+        self._target_chapters_list = target_chapters_list
         self._stop_event = threading.Event()
 
     # ------------------------------------------------------------------
@@ -133,28 +135,30 @@ class PipelineWorker(QThread):
             outline_generator._load_outline()
             current_outline_count = len(outline_generator.chapter_outlines)
 
-            if current_outline_count < end_chapter or self._force_outline:
-                if self._force_outline:
-                    outline_ok = outline_generator.generate_outline(
-                        novel_type=config.novel_config.get("type"),
-                        theme=config.novel_config.get("theme"),
-                        style=config.novel_config.get("style"),
-                        mode="replace",
-                        replace_range=(1, end_chapter),
-                        extra_prompt=self._extra_prompt,
-                    )
-                else:
-                    outline_ok = outline_generator.generate_outline(
-                        novel_type=config.novel_config.get("type"),
-                        theme=config.novel_config.get("theme"),
-                        style=config.novel_config.get("style"),
-                        mode="replace",
-                        replace_range=(current_outline_count + 1, end_chapter),
-                        extra_prompt=self._extra_prompt,
-                    )
-                if not outline_ok:
-                    raise RuntimeError("大纲生成失败，停止流程。")
-                logger.info("大纲生成成功！")
+            # 指定章节模式下跳过大纲生成（大纲必须已存在）
+            if not self._target_chapters_list:
+                if current_outline_count < end_chapter or self._force_outline:
+                    if self._force_outline:
+                        outline_ok = outline_generator.generate_outline(
+                            novel_type=config.novel_config.get("type"),
+                            theme=config.novel_config.get("theme"),
+                            style=config.novel_config.get("style"),
+                            mode="replace",
+                            replace_range=(1, end_chapter),
+                            extra_prompt=self._extra_prompt,
+                        )
+                    else:
+                        outline_ok = outline_generator.generate_outline(
+                            novel_type=config.novel_config.get("type"),
+                            theme=config.novel_config.get("theme"),
+                            style=config.novel_config.get("style"),
+                            mode="replace",
+                            replace_range=(current_outline_count + 1, end_chapter),
+                            extra_prompt=self._extra_prompt,
+                        )
+                    if not outline_ok:
+                        raise RuntimeError("大纲生成失败，停止流程。")
+                    logger.info("大纲生成成功！")
 
             # 确保 content_generator 加载最新大纲
             content_generator._load_outline()
@@ -164,30 +168,50 @@ class PipelineWorker(QThread):
                     f"小于目标章节数 ({end_chapter})"
                 )
 
-            # ---- 9. 从 summary.json 获取起始章节 ----
-            base_output_dir = config.output_config.get("output_dir", "data/output")
-            summary_file = os.path.join(base_output_dir, "summary.json")
+            # ---- 9. 从 summary.json 获取起始章节（仅连续模式使用） ----
             start_chapter = 1
-            if os.path.exists(summary_file):
-                try:
-                    with open(summary_file, "r", encoding="utf-8") as f:
-                        summary_data = json.load(f)
-                    chapter_numbers = [
-                        int(k) for k in summary_data.keys() if k.isdigit()
-                    ]
-                    if chapter_numbers:
-                        start_chapter = max(chapter_numbers) + 1
-                except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                    logger.warning(f"读取 summary.json 失败: {exc}，将从第 1 章开始。")
+            if not self._target_chapters_list:
+                base_output_dir = config.output_config.get("output_dir", "data/output")
+                summary_file = os.path.join(base_output_dir, "summary.json")
+                if os.path.exists(summary_file):
+                    try:
+                        with open(summary_file, "r", encoding="utf-8") as f:
+                            summary_data = json.load(f)
+                        chapter_numbers = [
+                            int(k) for k in summary_data.keys() if k.isdigit()
+                        ]
+                        if chapter_numbers:
+                            start_chapter = max(chapter_numbers) + 1
+                    except (json.JSONDecodeError, ValueError, TypeError) as exc:
+                        logger.warning(f"读取 summary.json 失败: {exc}，将从第 1 章开始。")
 
-            if start_chapter > end_chapter:
-                logger.info("所有章节均已完成，无需生成。")
+                if start_chapter > end_chapter:
+                    logger.info("所有章节均已完成，无需生成。")
+                    self.progress_updated.emit(end_chapter, end_chapter)
+                    self.pipeline_finished.emit(True)
+                    return
+
+            # ---- 10. 逐章生成 ----
+            # 确定要生成的章节列表
+            if self._target_chapters_list:
+                # 指定章节模式：仅生成指定章节（用于重新生成失败章节）
+                chapters_to_generate = [
+                    ch for ch in self._target_chapters_list
+                    if 1 <= ch <= end_chapter
+                ]
+                logger.info(f"指定章节模式：将生成 {len(chapters_to_generate)} 章: {chapters_to_generate}")
+            else:
+                # 连续模式：从断点续写
+                chapters_to_generate = list(range(start_chapter, end_chapter + 1))
+
+            total_to_generate = len(chapters_to_generate)
+            if total_to_generate == 0:
+                logger.info("没有需要生成的章节。")
                 self.progress_updated.emit(end_chapter, end_chapter)
                 self.pipeline_finished.emit(True)
                 return
 
-            # ---- 10. 逐章生成 ----
-            for chapter_num in range(start_chapter, end_chapter + 1):
+            for idx, chapter_num in enumerate(chapters_to_generate):
                 if self._stop_event.is_set():
                     logger.info("收到停止信号，流水线中止。")
                     self.pipeline_finished.emit(False)
@@ -216,7 +240,7 @@ class PipelineWorker(QThread):
                     logger.error(f"第 {chapter_num} 章生成异常: {exc}", exc_info=True)
                     self.chapter_failed.emit(chapter_num, str(exc))
 
-                self.progress_updated.emit(chapter_num, end_chapter)
+                self.progress_updated.emit(idx + 1, total_to_generate)
 
             logger.info("自动生成流程全部完成！")
             self.pipeline_finished.emit(True)

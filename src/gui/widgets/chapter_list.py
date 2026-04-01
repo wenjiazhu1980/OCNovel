@@ -15,13 +15,14 @@ _STATUS_MAP = {
 
 
 class ChapterListWidget(QListWidget):
-    """带状态图标的章节列表"""
+    """带状态图标的章节列表，支持多选"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFont(QFont("PingFang SC", 13))
         self.setAlternatingRowColors(True)
         self.setSpacing(2)
+        self.setSelectionMode(QListWidget.ExtendedSelection)
         self._total = 0
 
     # ------------------------------------------------------------------
@@ -42,6 +43,7 @@ class ChapterListWidget(QListWidget):
         item = self.item(idx)
         item.setText(f"  {icon}  第 {chapter_num} 章")
         item.setForeground(color)
+        item.setData(Qt.UserRole, status)
         # 正在运行的章节自动滚动可见
         if status == "running":
             self.scrollToItem(item)
@@ -57,10 +59,33 @@ class ChapterListWidget(QListWidget):
         return count
 
     # ------------------------------------------------------------------
+    def get_selected_chapter_numbers(self) -> list[int]:
+        """返回当前选中的章节编号列表（升序）"""
+        numbers = []
+        for item in self.selectedItems():
+            row = self.row(item)
+            numbers.append(row + 1)
+        numbers.sort()
+        return numbers
+
+    # ------------------------------------------------------------------
+    def get_non_completed_chapter_numbers(self) -> list[int]:
+        """返回所有未完成（pending/failed）的章节编号列表"""
+        numbers = []
+        icon_completed = _STATUS_MAP["completed"][0]
+        for i in range(self.count()):
+            text = self.item(i).text() or ""
+            if icon_completed not in text:
+                numbers.append(i + 1)
+        numbers.sort()
+        return numbers
+
+    # ------------------------------------------------------------------
     def _add_chapter_item(self, chapter_num: int, status: str):
         icon, color = _STATUS_MAP.get(status, _STATUS_MAP["pending"])
         item = QListWidgetItem(f"  {icon}  第 {chapter_num} 章")
         item.setForeground(color)
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+        item.setData(Qt.UserRole, status)
         item.setSizeHint(QSize(0, 36))
         self.addItem(item)
