@@ -132,12 +132,13 @@ class AIConfig:
 
         # 添加备用模型配置
         if self.gemini_config["fallback"]["enabled"]:
+            fallback = self.gemini_config["fallback"]
             config.update({
                 "fallback_enabled": True,
-                "fallback_api_key": self.gemini_config["fallback"]["api_key"],
-                "fallback_base_url": self.gemini_config["fallback"]["base_url"],
-                "fallback_timeout": self.gemini_config["fallback"]["timeout"],
-                "fallback_models": self.gemini_config["fallback"]["models"]
+                "fallback_api_key": fallback["api_key"],
+                "fallback_base_url": fallback["base_url"],
+                "fallback_timeout": fallback["timeout"],
+                "fallback_model": fallback["models"].get("default", "Qwen/Qwen2.5-7B-Instruct"),
             })
         else:
             config["fallback_enabled"] = False
@@ -161,7 +162,7 @@ class AIConfig:
                 "retry_delay": self.openai_config["retry_delay"],
                 "timeout": model_config.get("timeout", 60)
             }
-        return {
+        config = {
             "type": "openai",
             "api_key": model_config["api_key"],
             "base_url": model_config["base_url"],
@@ -173,6 +174,21 @@ class AIConfig:
             "timeout": model_config.get("timeout", 60),
             "reasoning_enabled": model_config.get("reasoning_enabled", False),
         }
+
+        # 添加备用模型配置（复用 gemini fallback 配置）
+        fallback = self.gemini_config.get("fallback", {})
+        if fallback.get("enabled", False):
+            config.update({
+                "fallback_enabled": True,
+                "fallback_api_key": fallback.get("api_key", ""),
+                "fallback_base_url": fallback.get("base_url", "https://api.siliconflow.cn/v1"),
+                "fallback_timeout": fallback.get("timeout", 120),
+                "fallback_model": fallback.get("models", {}).get("default", "Qwen/Qwen2.5-7B-Instruct"),
+            })
+        else:
+            config["fallback_enabled"] = False
+
+        return config
     
     def get_model_config(self, model_type: str) -> Dict[str, Any]:
         """获取指定类型的模型配置"""

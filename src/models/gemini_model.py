@@ -47,12 +47,6 @@ class GeminiModel(BaseModel):
         # Gemini 官方 API 不使用网络管理客户端
         self.network_client = None
         self.fallback_network_client = None
-                self.fallback_network_client = None
-            
-            logging.info(f"Gemini model initialized with network management: {self.base_url}")
-        else:
-            self.network_client = None
-            self.fallback_network_client = None
 
         # 初始化模型客户端
         if self.is_gemini_official:
@@ -105,17 +99,7 @@ class GeminiModel(BaseModel):
             return
         self.fallback_base_url = self.config.get("fallback_base_url", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"))
         self.fallback_api_key = self.config.get("fallback_api_key", os.getenv("FALLBACK_API_KEY", ""))
-        fallback_models = self.config.get("fallback_models", {
-            "flash": "deepseek-ai/DeepSeek-V3",
-            "pro": "Qwen/Qwen3-235B-A22B-Thinking-2507", 
-            "default": "deepseek-ai/DeepSeek-V3"
-        })
-        if "flash" in self.model_name.lower():
-            self.fallback_model_name = fallback_models.get("flash", fallback_models["default"])
-        elif "pro" in self.model_name.lower():
-            self.fallback_model_name = fallback_models.get("pro", fallback_models["default"])
-        else:
-            self.fallback_model_name = fallback_models["default"]
+        self.fallback_model_name = self.config.get("fallback_model", os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
         logging.info(f"Gemini模型备用配置: {self.fallback_model_name}")
 
     def _truncate_prompt(self, prompt: str) -> str:
@@ -415,6 +399,18 @@ class GeminiModel(BaseModel):
                     last_exception = e
                     error_msg = str(e)
                     logging.error(f"Gemini模型调用失败 (尝试 {attempt + 1}/{self.max_retries}): {error_msg}")
+
+                    # 对确定性错误（认证/授权失败）不再重试，直接跳出进入 fallback
+                    error_lower = error_msg.lower()
+                    is_permanent = any(kw in error_lower for kw in [
+                        "401", "403", "unauthorized", "forbidden",
+                        "authentication", "令牌", "invalid api key",
+                        "api_key_invalid", "permission_denied"
+                    ])
+                    if is_permanent:
+                        logging.error("检测到认证/授权错误，不再重试，尝试备用模型")
+                        break
+
                     if "500" in error_msg or "internal error" in error_msg.lower():
                         delay = self.retry_delay * (attempt + 1) * 2
                     else:

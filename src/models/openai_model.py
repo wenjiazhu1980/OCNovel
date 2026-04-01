@@ -37,16 +37,16 @@ class OpenAIModel(BaseModel):
         timeout = config.get("timeout", 120)  # 默认120秒
         base_url = config.get("base_url", "https://api.siliconflow.cn/v1")
         
-        # 备用API配置
-        self.fallback_base_url = os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")
-        self.fallback_api_key = os.getenv("FALLBACK_API_KEY", "")  # 使用独立的备用API密钥
-        # 根据当前模型类型选择备用模型
-        if "gemini-2.5-flash" in self.model_name:
-            self.fallback_model_name = "moonshotai/Kimi-K2-Instruct"  # 使用Kimi-K2作为gemini-2.5-flash的备用
-        elif "gemini-2.5-pro" in self.model_name:
-            self.fallback_model_name = "Qwen/Qwen3-235B-A22B-Thinking-2507"  # 使用Qwen作为gemini-2.5-pro的备用
+        # 备用API配置（从config dict读取，不再硬编码模型名匹配）
+        fallback_enabled = config.get("fallback_enabled", False)
+        if fallback_enabled:
+            self.fallback_base_url = config.get("fallback_base_url", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"))
+            self.fallback_api_key = config.get("fallback_api_key", os.getenv("FALLBACK_API_KEY", ""))
+            self.fallback_model_name = config.get("fallback_model", os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
         else:
-            self.fallback_model_name = "deepseek-ai/DeepSeek-V3"  # 默认备用模型
+            self.fallback_base_url = os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")
+            self.fallback_api_key = os.getenv("FALLBACK_API_KEY", "")
+            self.fallback_model_name = os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 
         self.api_mode = str(config.get("api_mode", "auto")).strip().lower()
         if self.api_mode not in {"auto", "chat", "responses"}:
@@ -393,34 +393,6 @@ class OpenAIModel(BaseModel):
             )
         return None
     
-    def _generate_with_fallback(self, prompt: str, max_tokens: Optional[int] = None) -> str:
-        """使用备用模型生成文本"""
-        logging.warning(f"切换到备用模型: {self.fallback_model_name}")
-        
-        fallback_client = OpenAI(
-            api_key=self.fallback_api_key,
-            base_url=self.fallback_base_url,
-            timeout=180,
-            max_retries=0
-        )
-        
-        try:
-            content = self._generate_with_compatible_api(
-                fallback_client,
-                self.fallback_model_name,
-                prompt,
-                max_tokens=max_tokens or 8192,
-                temperature=0.7,
-                api_mode="auto"
-            )
-                
-            logging.info(f"备用模型生成成功，返回内容长度: {len(content)}")
-            return content
-            
-        except Exception as fallback_error:
-            logging.error(f"备用模型也失败了: {str(fallback_error)}")
-            raise fallback_error
-    
     def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7, top_p: Optional[float] = None) -> str:
         """使用网络管理客户端进行文本生成"""
         try:
@@ -563,6 +535,17 @@ class OpenAIModel(BaseModel):
             except Exception as e:
                 last_error = e
                 logging.warning(f"生成失败 (尝试 {attempt}/{max_attempts}): {type(e).__name__}: {e}")
+
+                # 对确定性错误（认证/授权失败）不再重试，直接终止
+                error_str = str(e).lower()
+                is_permanent = any(kw in error_str for kw in [
+                    "401", "403", "unauthorized", "forbidden",
+                    "authentication", "令牌", "invalid api key"
+                ])
+                if is_permanent:
+                    logging.error("检测到认证/授权错误，不再重试")
+                    break
+
                 if attempt < max_attempts:
                     wait = min(4 * (2 ** (attempt - 1)), 60)
                     logging.info(f"等待 {wait} 秒后重试...")
@@ -628,10 +611,20 @@ class OpenAIModel(BaseModel):
             
         except Exception as e:
             logging.error(f"OpenAI generation error: {str(e)}")
-            
-            # 如果是连接错误且配置了备用API，尝试使用备用API
-            if ("timeout" in str(e).lower() or "connection" in str(e).lower()) and self.fallback_api_key:
-                logging.warning("检测到连接错误，尝试使用备用API...")
+
+            # 检测可通过备用模型恢复的错误（含认证失败、服务端错误等）
+            error_str = str(e).lower()
+            should_fallback = any(keyword in error_str for keyword in [
+                "timeout", "connection", "429", "rate limit",
+                "500", "502", "503", "504", "internal error",
+                "server error", "service unavailable", "bad gateway",
+                "overloaded", "capacity",
+                "401", "403", "unauthorized", "forbidden", "authentication",
+                "令牌", "token", "api key", "invalid"
+            ])
+
+            if should_fallback and self.fallback_api_key:
+                logging.warning("检测到服务端错误，尝试使用备用API...")
                 fallback_client = self._create_fallback_client()
                 if fallback_client:
                     try:
@@ -643,15 +636,12 @@ class OpenAIModel(BaseModel):
                             temperature=temperature,
                             api_mode="auto"
                         )
-                            
+
                         logging.info(f"使用备用API生成成功，返回内容长度: {len(content)}")
                         return content
                     except Exception as fallback_error:
                         logging.error(f"备用API也失败了: {str(fallback_error)}")
-            
-            if "timeout" in str(e).lower() or "connection" in str(e).lower():
-                logging.warning("检测到超时或连接错误，将重试...")
-                time.sleep(5)  # 等待5秒后重试
+
             raise Exception(f"OpenAI generation error: {str(e)}")
             
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(10))
