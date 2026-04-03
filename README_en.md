@@ -162,7 +162,7 @@ pyinstaller ocnovel_win.spec --clean
 # Output dist/OCNovel/OCNovel.exe
 ```
 
-> Note: PyInstaller does not support cross-compilation. macOS builds must be performed on macOS, and Windows builds must be performed on Windows. See [Build Guide](docs/BUILD.md) for details.
+> Note: PyInstaller does not support cross-compilation. macOS builds must be performed on macOS, and Windows builds must be performed on Windows. See [Build Guide](BUILD.md) for details.
 
 ## Core Architecture
 

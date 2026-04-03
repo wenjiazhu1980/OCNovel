@@ -162,7 +162,7 @@ pyinstaller ocnovel_win.spec --clean
 # 输出 dist/OCNovel/OCNovel.exe
 ```
 
-> 注：PyInstaller 不支持交叉编译，macOS 打包须在 macOS 上执行，Windows 打包须在 Windows 上执行。详见 [构建指南](docs/BUILD.md)。
+> 注：PyInstaller 不支持交叉编译，macOS 打包须在 macOS 上执行，Windows 打包须在 Windows 上执行。详见 [构建指南](BUILD.md)。
 
 ## 核心架构
 
