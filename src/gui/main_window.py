@@ -89,12 +89,10 @@ class MainWindow(QMainWindow):
         self.model_tab.reload()
 
     def _open_config_dir(self):
-        """在 Finder 中打开配置文件所在目录"""
-        import subprocess
+        """在系统文件管理器中打开配置文件所在目录"""
+        from src.gui.utils.platform_utils import open_directory
         config_dir = os.path.dirname(self._config_path)
-        if os.path.isdir(config_dir):
-            subprocess.Popen(["open", config_dir])
-        else:
+        if not open_directory(config_dir):
             QMessageBox.warning(self, "目录不存在", f"目录不存在: {config_dir}")
 
     def _update_title(self):

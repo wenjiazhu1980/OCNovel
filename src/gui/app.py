@@ -4,6 +4,7 @@ import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
+from src.gui.utils.fonts import FONT_UI
 
 
 def create_app(argv=None) -> QApplication:
@@ -20,8 +21,8 @@ def create_app(argv=None) -> QApplication:
     app.setOrganizationName("OCNovel")
     app.setApplicationVersion("1.0.1")
 
-    # 全局默认字体
-    font = QFont("PingFang SC", 13)
+    # 全局默认字体（跨平台自适应）
+    font = QFont(FONT_UI, 13)
     font.setStyleStrategy(QFont.PreferAntialias)
     app.setFont(font)
 

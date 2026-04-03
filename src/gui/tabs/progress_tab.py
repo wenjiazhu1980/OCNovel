@@ -338,8 +338,8 @@ class ProgressTab(QWidget):
         self._worker = None
 
     def _open_output_dir(self):
-        """在 Finder 中打开输出目录"""
-        import subprocess
+        """在系统文件管理器中打开输出目录"""
+        from src.gui.utils.platform_utils import open_directory
         cfg = load_config(self._config_path)
         output_dir = (cfg.get("output_config") or {}).get("output_dir", "")
         if not output_dir:
@@ -347,7 +347,5 @@ class ProgressTab(QWidget):
         # 相对路径基于配置文件目录
         if not os.path.isabs(output_dir):
             output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
-        if os.path.isdir(output_dir):
-            subprocess.Popen(["open", output_dir])
-        else:
+        if not open_directory(output_dir):
             QMessageBox.warning(self, "目录不存在", f"输出目录不存在:\n{output_dir}")

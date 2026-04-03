@@ -14,7 +14,8 @@ OCNovel was initiated and is continuously maintained by @wenjiazhu. It is an ope
 OCNovel/
 ├── main.py                    # CLI Entry
 ├── gui_main.py                # GUI Entry
-├── ocnovel.spec               # PyInstaller packaging configuration
+├── ocnovel.spec               # PyInstaller macOS packaging configuration
+├── ocnovel_win.spec           # PyInstaller Windows packaging configuration
 ├── config.json.example        # Configuration file template
 ├── .env.example               # Environment variables template
 ├── requirements.txt           # Python dependencies
@@ -60,7 +61,9 @@ OCNovel/
 │   │   └── utils/
 │   │       ├── config_io.py          # .env / config.json read/write
 │   │       ├── log_handler.py        # logging → Qt Signal bridging
-│   │       └── resource_path.py      # PyInstaller path compatibility
+│   │       ├── resource_path.py      # PyInstaller path compatibility
+│   │       ├── platform_utils.py     # Cross-platform utilities (open directory, etc.)
+│   │       └── fonts.py              # Cross-platform font constants
 │   │
 │   └── tools/                 # Auxiliary Tools
 │       ├── generate_config.py
@@ -143,12 +146,23 @@ After starting `python gui_main.py`, three Tab pages are provided:
 - **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
 - **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs, progress bar indicating current progress, and support for breakpoint continuation.
 
-### Package as macOS App
+### Package as Desktop App
+
+**macOS:**
 
 ```bash
 pyinstaller ocnovel.spec --clean
 # Output dist/OCNovel.app
 ```
+
+**Windows:**
+
+```bash
+pyinstaller ocnovel_win.spec --clean
+# Output dist/OCNovel/OCNovel.exe
+```
+
+> Note: PyInstaller does not support cross-compilation. macOS builds must be performed on macOS, and Windows builds must be performed on Windows. See [Build Guide](docs/BUILD.md) for details.
 
 ## Core Architecture
 
@@ -188,7 +202,14 @@ pyinstaller ocnovel.spec --clean
 
    *(Please replace `/path/to/OCNovel.app` with the actual path to your App)*, and then try to launch the application again.
 
-### 2. Notes on the SiliconFlow referral link
+### 2. How to download and run the Windows version?
+
+1. Download the latest Windows zip archive from the project releases.
+2. Extract and run `OCNovel.exe`.
+3. On first launch, the app will automatically create `%USERPROFILE%\OCNovel\` and initialize configuration files.
+4. Edit `%USERPROFILE%\OCNovel\.env` to fill in your API keys, then you're ready to go.
+
+### 3. Notes on the SiliconFlow referral link
 
 In our documentation, we may provide a SiliconFlow registration link with an invitation code (aff):
 

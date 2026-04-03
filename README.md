@@ -14,7 +14,8 @@ OCNovel 由 @wenjiazhu 个人发起并持续维护，是一个面向长篇小说
 OCNovel/
 ├── main.py                    # CLI 入口
 ├── gui_main.py                # GUI 入口
-├── ocnovel.spec               # PyInstaller 打包配置
+├── ocnovel.spec               # PyInstaller macOS 打包配置
+├── ocnovel_win.spec           # PyInstaller Windows 打包配置
 ├── config.json.example        # 配置文件模板
 ├── .env.example               # 环境变量模板
 ├── requirements.txt           # Python 依赖
@@ -60,7 +61,9 @@ OCNovel/
 │   │   └── utils/
 │   │       ├── config_io.py          # .env / config.json 读写
 │   │       ├── log_handler.py        # logging → Qt Signal 桥接
-│   │       └── resource_path.py      # PyInstaller 路径兼容
+│   │       ├── resource_path.py      # PyInstaller 路径兼容
+│   │       ├── platform_utils.py     # 跨平台工具（打开目录等）
+│   │       └── fonts.py              # 跨平台字体常量
 │   │
 │   └── tools/                 # 辅助工具
 │       ├── generate_config.py
@@ -143,12 +146,23 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 - **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
 - **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写
 
-### 打包为 macOS App
+### 打包为桌面应用
+
+**macOS：**
 
 ```bash
 pyinstaller ocnovel.spec --clean
 # 输出 dist/OCNovel.app
 ```
+
+**Windows：**
+
+```bash
+pyinstaller ocnovel_win.spec --clean
+# 输出 dist/OCNovel/OCNovel.exe
+```
+
+> 注：PyInstaller 不支持交叉编译，macOS 打包须在 macOS 上执行，Windows 打包须在 Windows 上执行。详见 [构建指南](docs/BUILD.md)。
 
 ## 核心架构
 
@@ -179,8 +193,8 @@ pyinstaller ocnovel.spec --clean
 ### 1. 如何下载和运行 Mac App？
 
 1. 下载最新发布的 Mac App 压缩包。
-2. 解压后将 `OCNovel.app` 拖入“应用程序”文件夹（或在你希望的目录下）。
-3. 如果首次打开时系统提示应用“已损坏，无法打开”或“无法验证开发者”，请在终端执行以下命令清除隔离属性：
+2. 解压后将 `OCNovel.app` 拖入”应用程序”文件夹（或在你希望的目录下）。
+3. 如果首次打开时系统提示应用”已损坏，无法打开”或”无法验证开发者”，请在终端执行以下命令清除隔离属性：
 
    ```bash
    sudo xattr -rd com.apple.quarantine /path/to/OCNovel.app
@@ -188,7 +202,14 @@ pyinstaller ocnovel.spec --clean
 
    *(请将 `/path/to/OCNovel.app` 替换为你实际存放 App 的路径)*，然后再次尝试打开该应用。
 
-### 2. 关于硅基流动注册邀请链接的说明
+### 2. 如何下载和运行 Windows 版？
+
+1. 下载最新发布的 Windows 压缩包。
+2. 解压后运行 `OCNovel.exe`。
+3. 首次启动时，应用会在用户主目录自动创建 `%USERPROFILE%\OCNovel\` 并初始化配置文件。
+4. 编辑 `%USERPROFILE%\OCNovel\.env` 填入 API 密钥后即可使用。
+
+### 3. 关于硅基流动注册邀请链接的说明
 
 我们在文档中可能会提供带有邀请码（aff）的硅基流动（SiliconFlow）注册连接：
 

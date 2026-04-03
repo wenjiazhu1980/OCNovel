@@ -23,7 +23,8 @@ class LogViewer(QPlainTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
-        self.setFont(QFont("Menlo", 11))
+        from src.gui.utils.fonts import FONT_MONO
+        self.setFont(QFont(FONT_MONO, 11))
         self.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.setStyleSheet(
             "QPlainTextEdit {"

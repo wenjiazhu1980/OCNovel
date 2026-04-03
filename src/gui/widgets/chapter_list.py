@@ -19,7 +19,8 @@ class ChapterListWidget(QListWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setFont(QFont("PingFang SC", 13))
+        from src.gui.utils.fonts import FONT_UI
+        self.setFont(QFont(FONT_UI, 13))
         self.setAlternatingRowColors(True)
         self.setSpacing(2)
         self.setSelectionMode(QListWidget.ExtendedSelection)
