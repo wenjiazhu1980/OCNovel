@@ -72,3 +72,64 @@ python main.py imitate --style-source ... --input-file ... --output-file ...
 - Commit message使用中文，格式: `type(scope): 描述`
 - Types: `feat`, `fix`, `docs`, `chore`, `refactor`
 - Branch: `dev`为开发分支，`main`为主分支
+
+## CI/CD - GitHub Actions 自动打包发布
+
+### 工作流配置
+
+位置：`.github/workflows/build-release.yml`
+
+**触发条件**：推送 `v*` 格式的 tag（如 `v1.0.4`）
+
+**构建矩阵**：
+- **macOS**: `macos-14` (Apple Silicon) → `OCNovel-macOS-arm64.zip`
+- **Windows**: `windows-latest` (x64) → `OCNovel-Windows-x64.zip`
+
+**关键设计**：
+- CI 安装依赖时跳过 `FlagEmbedding`（会拉取 torch，体积巨大且 PyInstaller spec 已排除）
+- 两平台并行构建，全部成功后自动创建 GitHub Release
+- 使用 `softprops/action-gh-release@v2` 自动生成 Release Notes
+
+### 发布流程
+
+```bash
+# 1. 确保所有变更已提交到 main 分支
+git add .
+git commit -m "feat: 新功能描述"
+git push origin main
+
+# 2. 创建并推送 tag（触发 CI）
+git tag v1.0.x
+git push origin v1.0.x
+```
+
+### 重要注意事项
+
+⚠️ **工作流文件必须先存在于 main 分支**
+
+如果工作流文件和 tag 在同一次 `git push` 中推送，GitHub Actions 无法识别工作流，不会触发构建。
+
+**解决方案**：
+1. 先推送包含工作流文件的 commit 到 main
+2. 等待 GitHub 识别工作流（通常几秒钟）
+3. 再单独推送 tag
+
+或者，如果已经同时推送：
+```bash
+# 删除远程 tag
+git push origin :refs/tags/v1.0.x
+
+# 本地重建 tag
+git tag -d v1.0.x
+git tag v1.0.x
+
+# 单独推送 tag（此时工作流已在 main 上）
+git push origin v1.0.x
+```
+
+### 构建产物
+
+- **macOS**: `dist/OCNovel.app` → 压缩为 `.zip`
+- **Windows**: `dist/OCNovel/OCNovel.exe` + 依赖 → 压缩为 `.zip`
+
+发布后自动附加到 GitHub Release 页面，用户可直接下载。

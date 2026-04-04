@@ -11,6 +11,7 @@ from PySide6.QtCore import Qt, Signal
 from src.gui.widgets.log_viewer import LogViewer
 from src.gui.widgets.chapter_list import ChapterListWidget
 from src.gui.workers.pipeline_worker import PipelineWorker
+from src.gui.workers.marketing_worker import MarketingWorker
 from src.gui.utils.log_handler import SignalLogHandler
 from src.gui.utils.config_io import load_config
 
@@ -26,6 +27,7 @@ class ProgressTab(QWidget):
         self._config_path = config_path
         self._env_path = env_path
         self._worker: PipelineWorker | None = None
+        self._marketing_worker: MarketingWorker | None = None
 
         self._init_ui()
         self._connect_ui()
@@ -81,6 +83,12 @@ class ProgressTab(QWidget):
         self.btn_regen.setToolTip("在章节列表中选中要重新生成的章节，然后点击此按钮")
         top_bar.addWidget(self.btn_regen)
 
+        self.btn_marketing = QPushButton("📢  生成营销内容")
+        self.btn_marketing.setFixedWidth(150)
+        self.btn_marketing.setToolTip("根据已完成的章节生成营销文案、标题和封面提示词")
+        self.btn_marketing.setProperty("cssClass", "info")
+        top_bar.addWidget(self.btn_marketing)
+
         root.addLayout(top_bar)
 
         # ---- 中部：章节列表 + 日志 ----
@@ -116,6 +124,7 @@ class ProgressTab(QWidget):
         self.btn_stop.clicked.connect(self._on_stop)
         self.btn_refresh.clicked.connect(self.load_chapters)
         self.btn_regen.clicked.connect(self._on_regen)
+        self.btn_marketing.clicked.connect(self._on_generate_marketing)
         self.chapter_list.itemSelectionChanged.connect(self._on_selection_changed)
 
     # ------------------------------------------------------------------
@@ -144,7 +153,6 @@ class ProgressTab(QWidget):
         if not os.path.isabs(output_dir):
             output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
         summary_file = os.path.join(output_dir, "summary.json")
-        completed_count = 0
         if os.path.exists(summary_file):
             try:
                 with open(summary_file, "r", encoding="utf-8") as f:
@@ -154,10 +162,11 @@ class ProgressTab(QWidget):
                         ch = int(key)
                         if 1 <= ch <= target_chapters:
                             self.chapter_list.set_chapter_status(ch, "completed")
-                            completed_count += 1
             except Exception as e:
                 logging.warning(f"读取 summary.json 失败: {e}")
 
+        # 从章节列表获取实际完成数量
+        completed_count = self.chapter_list.get_completed_count()
         self.progress_bar.setMaximum(target_chapters)
         self.progress_bar.setValue(completed_count)
 
@@ -296,6 +305,70 @@ class ProgressTab(QWidget):
 
         self._start_pipeline(target_chapters_list=selected)
 
+    def _on_generate_marketing(self):
+        """生成营销内容"""
+        # 检查是否有流水线正在运行
+        if self._worker is not None:
+            QMessageBox.warning(
+                self, "提示",
+                "流水线正在运行中，请等待完成后再生成营销内容。"
+            )
+            return
+
+        # 检查是否有营销内容生成正在运行
+        if self._marketing_worker is not None:
+            QMessageBox.warning(
+                self, "提示",
+                "营销内容生成正在进行中，请稍候..."
+            )
+            return
+
+        # 检查是否有已完成的章节
+        cfg = load_config(self._config_path)
+        output_dir = cfg.get("output_config", {}).get("output_dir", "data/output")
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
+        summary_file = os.path.join(output_dir, "summary.json")
+
+        if not os.path.exists(summary_file):
+            QMessageBox.warning(
+                self, "提示",
+                "未找到章节摘要文件，请先生成至少一章内容。"
+            )
+            return
+
+        # 确认生成
+        reply = QMessageBox.question(
+            self, "确认生成营销内容",
+            "将根据已完成的章节生成营销文案、标题和封面提示词。\n\n"
+            "这可能需要几分钟时间，确定要继续吗？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # 创建 Worker
+        marketing_output_dir = os.path.join(
+            os.path.dirname(self._config_path), "data", "marketing"
+        )
+        self._marketing_worker = MarketingWorker(
+            config_path=self._config_path,
+            env_path=self._env_path,
+            output_dir=marketing_output_dir,
+        )
+
+        # 连接信号
+        self._marketing_worker.generation_finished.connect(self._on_marketing_finished)
+        self._marketing_worker.log_message.connect(self.log_viewer.append_log)
+
+        # 禁用按钮
+        self.btn_marketing.setEnabled(False)
+        self.btn_marketing.setText("⏳  生成中...")
+
+        self.log_viewer.append_log("开始生成营销内容...", "INFO")
+        self._marketing_worker.start()
+
     # ------------------------------------------------------------------
     # Worker 信号处理
     # ------------------------------------------------------------------
@@ -336,6 +409,27 @@ class ProgressTab(QWidget):
 
         # 清理 Worker 引用
         self._worker = None
+
+    def _on_marketing_finished(self, success: bool, message: str):
+        """营销内容生成完成"""
+        self.btn_marketing.setEnabled(True)
+        self.btn_marketing.setText("📢  生成营销内容")
+
+        if success:
+            QMessageBox.information(
+                self, "生成成功",
+                message
+            )
+            self.log_viewer.append_log("营销内容生成成功！", "INFO")
+        else:
+            QMessageBox.critical(
+                self, "生成失败",
+                f"营销内容生成失败：\n{message}"
+            )
+            self.log_viewer.append_log(f"营销内容生成失败: {message}", "ERROR")
+
+        # 清理 Worker 引用
+        self._marketing_worker = None
 
     def _open_output_dir(self):
         """在系统文件管理器中打开输出目录"""

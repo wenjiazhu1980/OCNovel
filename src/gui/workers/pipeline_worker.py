@@ -242,6 +242,19 @@ class PipelineWorker(QThread):
 
                 self.progress_updated.emit(idx + 1, total_to_generate)
 
+            # ---- 11. 全部章节完成后自动合并 ----
+            if not self._target_chapters_list:
+                # 仅在连续模式（非指定章节重生成模式）下执行合并
+                try:
+                    logger.info("开始合并所有章节...")
+                    merged_path = content_generator.merge_all_chapters()
+                    if merged_path:
+                        logger.info(f"已合并所有章节到: {merged_path}")
+                    else:
+                        logger.warning("章节合并未成功，请检查日志")
+                except Exception as exc:
+                    logger.error(f"章节合并失败: {exc}", exc_info=True)
+
             logger.info("自动生成流程全部完成！")
             self.pipeline_finished.emit(True)
 
