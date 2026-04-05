@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 from src.config.config import Config
 from src.models.gemini_model import GeminiModel
 from src.models.openai_model import OpenAIModel
+from src.models.claude_model import ClaudeModel
 from src.generators.title_generator import TitleGenerator
 
 def setup_logging():
@@ -40,6 +41,8 @@ def create_model(model_config):
         return GeminiModel(model_config)
     elif model_config["type"] == "openai":
         return OpenAIModel(model_config)
+    elif model_config["type"] == "claude":
+        return ClaudeModel(model_config)
     else:
         raise ValueError(f"不支持的模型类型: {model_config['type']}")
 

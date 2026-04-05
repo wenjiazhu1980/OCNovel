@@ -23,7 +23,7 @@ OCNovel/
 │
 ├── src/
 │   ├── config/                # Configuration Management
-│   │   ├── ai_config.py       # AI model configuration (Gemini/OpenAI)
+│   │   ├── ai_config.py       # AI model configuration (Claude/Gemini/OpenAI)
 │   │   └── config.py          # General configuration management
 │   │
 │   ├── generators/            # Content Generators
@@ -37,6 +37,7 @@ OCNovel/
 │   │
 │   ├── models/                # AI Model Interfaces
 │   │   ├── base_model.py      # Base model abstract class
+│   │   ├── claude_model.py    # Anthropic Claude implementation
 │   │   ├── gemini_model.py    # Google Gemini implementation
 │   │   └── openai_model.py    # OpenAI compatible implementation
 │   │
@@ -96,13 +97,27 @@ cp .env.example .env
 Edit `.env` and fill in the API keys:
 
 ```bash
-# Configure at least one set of models
+# Option 1: Use Claude models (Recommended for high-quality creation)
+CLAUDE_API_KEY=your_claude_key
+CLAUDE_OUTLINE_MODEL=claude-3-5-sonnet-20241022
+CLAUDE_CONTENT_MODEL=claude-3-5-sonnet-20241022
+
+# Embedding model (Required, Claude doesn't support embeddings)
+OPENAI_EMBEDDING_API_KEY=your_key
+OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
+
+# Option 2: Use OpenAI compatible models (Recommended for development/testing)
 OPENAI_EMBEDDING_API_KEY=your_key
 OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
 OPENAI_OUTLINE_API_KEY=your_key
 OPENAI_OUTLINE_API_BASE=https://api.siliconflow.cn/v1
 OPENAI_CONTENT_API_KEY=your_key
 OPENAI_CONTENT_API_BASE=https://api.siliconflow.cn/v1
+
+# Option 3: Use Gemini models
+GEMINI_API_KEY=your_gemini_key
+GEMINI_OUTLINE_MODEL=gemini-2.5-pro
+GEMINI_CONTENT_MODEL=gemini-2.5-flash
 ```
 
 ### 3. Start
@@ -142,7 +157,7 @@ python main.py imitate --style-source sample.txt --input-file original.txt --out
 
 After starting `python gui_main.py`, three Tab pages are provided:
 
-- **Model Configuration** — Manage API keys, Base URLs (optimized for Gemini official API restrictions), and model names for Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
+- **Model Configuration** — Manage API keys, Base URLs, and model names for Claude / Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
 - **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
 - **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs, progress bar indicating current progress, and support for breakpoint continuation.
 
@@ -166,11 +181,32 @@ pyinstaller ocnovel_win.spec --clean
 
 ## Core Architecture
 
-- **Model Abstraction** — `BaseModel` ABC → `OpenAIModel` / `GeminiModel`
+- **Model Abstraction** — `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`
 - **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values).
 - **Generation Pipeline** — outline → content → finalize, connected via the `auto` command.
 - **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking.
 - **Retry/Fallback** — tenacity retries + automatic backup model switching.
+
+## Supported AI Models
+
+### Claude (Anthropic)
+
+- **Advantages**: Powerful reasoning capabilities, 200K tokens long context, suitable for complex creation
+- **Recommended Model**: `claude-3-5-sonnet-20241022`
+- **Note**: Does not support embedding functionality, must be used with OpenAI-compatible embedding models
+- **Documentation**: [Claude Integration Guide](docs/claude_integration.md)
+
+### Gemini (Google)
+
+- **Advantages**: Stable official API, supports long context
+- **Recommended Models**: `gemini-2.5-pro` (outline) / `gemini-2.5-flash` (content)
+- **Note**: Only supports Google official API
+
+### OpenAI Compatible
+
+- **Advantages**: Rich ecosystem, supports various third-party APIs (e.g., SiliconFlow)
+- **Recommended Model**: `Qwen/Qwen2.5-7B-Instruct` (open-source, free)
+- **Use Cases**: Development/testing, cost-sensitive scenarios
 
 ## Configuration Details
 
@@ -186,7 +222,8 @@ pyinstaller ocnovel_win.spec --clean
 
 - Python 3.9+
 - macOS / Linux / Windows
-- At least one set of AI model API keys configured (OpenAI compatible / Gemini)
+- At least one set of AI model API keys configured (Claude / Gemini / OpenAI compatible)
+- If using Claude, additional embedding model configuration required (OpenAI compatible)
 
 ## FAQ
 

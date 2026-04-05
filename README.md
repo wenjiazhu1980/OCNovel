@@ -23,7 +23,7 @@ OCNovel/
 │
 ├── src/
 │   ├── config/                # 配置管理
-│   │   ├── ai_config.py       # AI 模型配置（Gemini/OpenAI）
+│   │   ├── ai_config.py       # AI 模型配置（Claude/Gemini/OpenAI）
 │   │   └── config.py          # 通用配置管理
 │   │
 │   ├── generators/            # 内容生成器
@@ -37,6 +37,7 @@ OCNovel/
 │   │
 │   ├── models/                # AI 模型接口
 │   │   ├── base_model.py      # 基础模型抽象类
+│   │   ├── claude_model.py    # Anthropic Claude 实现
 │   │   ├── gemini_model.py    # Google Gemini 实现
 │   │   └── openai_model.py    # OpenAI 兼容实现
 │   │
@@ -103,13 +104,27 @@ cp .env.example .env
 编辑 `.env` 填入 API 密钥：
 
 ```text
-# 至少配置一组模型
+# 方式一：使用 Claude 模型（推荐用于高质量创作）
+CLAUDE_API_KEY=your_claude_key
+CLAUDE_OUTLINE_MODEL=claude-3-5-sonnet-20241022
+CLAUDE_CONTENT_MODEL=claude-3-5-sonnet-20241022
+
+# 嵌入模型（必需，Claude 不支持嵌入）
+OPENAI_EMBEDDING_API_KEY=your_key
+OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
+
+# 方式二：使用 OpenAI 兼容模型（推荐用于开发测试）
 OPENAI_EMBEDDING_API_KEY=your_key
 OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
 OPENAI_OUTLINE_API_KEY=your_key
 OPENAI_OUTLINE_API_BASE=https://api.siliconflow.cn/v1
 OPENAI_CONTENT_API_KEY=your_key
 OPENAI_CONTENT_API_BASE=https://api.siliconflow.cn/v1
+
+# 方式三：使用 Gemini 模型
+GEMINI_API_KEY=your_gemini_key
+GEMINI_OUTLINE_MODEL=gemini-2.5-pro
+GEMINI_CONTENT_MODEL=gemini-2.5-flash
 ```
 
 ### 3. 启动
@@ -149,7 +164,7 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 
 启动 `python gui_main.py` 后提供三个 Tab 页：
 
-- **模型配置** — 管理 Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL（Gemini 已优化为官方 API 限制）、模型名称，支持一键测试连接
+- **模型配置** — 管理 Claude / Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL、模型名称，支持一键测试连接
 - **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
 - **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写
 
@@ -184,11 +199,32 @@ pyinstaller ocnovel_win.spec --clean
 
 ## 核心架构
 
-- **模型抽象** — `BaseModel` ABC → `OpenAIModel` / `GeminiModel`
+- **模型抽象** — `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`
 - **配置分层** — `config.json`（小说参数）+ `.env`（API 密钥）+ `AIConfig`（模型默认值）
 - **生成流水线** — outline → content → finalize，通过 `auto` 命令串联
 - **知识库** — 文本分块 → 嵌入向量 → FAISS 检索 → Reranker API 精排
 - **重试/备用** — tenacity 重试 + 备用模型自动切换
+
+## 支持的 AI 模型
+
+### Claude (Anthropic)
+
+- **优势**: 强大的推理能力，200K tokens 长上下文，适合复杂创作
+- **推荐模型**: `claude-3-5-sonnet-20241022`
+- **注意**: 不支持嵌入功能，需配合 OpenAI 兼容的嵌入模型使用
+- **详细文档**: [Claude 集成指南](docs/claude_integration.md)
+
+### Gemini (Google)
+
+- **优势**: 官方 API 稳定，支持长上下文
+- **推荐模型**: `gemini-2.5-pro` (大纲) / `gemini-2.5-flash` (内容)
+- **注意**: 仅支持 Google 官方 API
+
+### OpenAI 兼容
+
+- **优势**: 生态丰富，支持多种第三方 API（如硅基流动）
+- **推荐模型**: `Qwen/Qwen2.5-7B-Instruct` (开源免费)
+- **适用场景**: 开发测试、成本敏感场景
 
 ## 配置说明
 
@@ -204,7 +240,8 @@ pyinstaller ocnovel_win.spec --clean
 
 - Python 3.9+
 - macOS / Linux / Windows
-- 至少配置一组 AI 模型 API 密钥（OpenAI 兼容 / Gemini）
+- 至少配置一组 AI 模型 API 密钥（Claude / Gemini / OpenAI 兼容）
+- 如使用 Claude，需额外配置嵌入模型（OpenAI 兼容）
 
 ## 常见问题 (FAQ)
 

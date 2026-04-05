@@ -109,6 +109,9 @@ class NovelFinalizer:
                 elif imitation_model_config["type"] == "openai":
                     from src.models.openai_model import OpenAIModel
                     imitation_model = OpenAIModel(imitation_model_config)
+                elif imitation_model_config["type"] == "claude":
+                    from src.models.claude_model import ClaudeModel
+                    imitation_model = ClaudeModel(imitation_model_config)
                 else:
                     logger.error(f"不支持的模型类型: {imitation_model_config['type']}")
                     imitation_model = self.content_model

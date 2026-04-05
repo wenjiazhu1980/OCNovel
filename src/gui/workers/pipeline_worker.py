@@ -21,6 +21,9 @@ def create_model(model_config: dict):
     elif model_type in ("openai",):
         from src.models.openai_model import OpenAIModel
         return OpenAIModel(model_config)
+    elif model_type == "claude":
+        from src.models.claude_model import ClaudeModel
+        return ClaudeModel(model_config)
     else:
         raise ValueError(QCoreApplication.translate("PipelineWorker", "不支持的模型类型: {0}").format(model_type))
 

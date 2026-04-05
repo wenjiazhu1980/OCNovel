@@ -18,6 +18,9 @@ class OutlineModel(BaseModel):
         elif config["type"] == "openai":
             from .openai_model import OpenAIModel
             self.model = OpenAIModel(config)
+        elif config["type"] == "claude":
+            from .claude_model import ClaudeModel
+            self.model = ClaudeModel(config)
         else:
             raise ValueError(f"不支持的模型类型: {config['type']}")
 
@@ -47,6 +50,9 @@ class ContentModel(BaseModel):
         elif config["type"] == "openai":
             from .openai_model import OpenAIModel
             self.model = OpenAIModel(config)
+        elif config["type"] == "claude":
+            from .claude_model import ClaudeModel
+            self.model = ClaudeModel(config)
         else:
             raise ValueError(f"不支持的模型类型: {config['type']}")
 
@@ -76,6 +82,9 @@ class EmbeddingModel(BaseModel):
         elif config["type"] == "openai":
             from .openai_model import OpenAIModel
             self.model = OpenAIModel(config)
+        elif config["type"] == "claude":
+            from .claude_model import ClaudeModel
+            self.model = ClaudeModel(config)
         else:
             raise ValueError(f"不支持的模型类型: {config['type']}")
 

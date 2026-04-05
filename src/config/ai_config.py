@@ -50,6 +50,30 @@ class AIConfig:
                 }
             }
         }
+        # Claude 配置（Anthropic 官方 API）
+        self.claude_config = {
+            "api_key": os.getenv("CLAUDE_API_KEY", ""),
+            "retry_delay": float(os.getenv("CLAUDE_RETRY_DELAY", "10")),  # 默认 10 秒
+            "timeout": int(os.getenv("CLAUDE_TIMEOUT", "120")),  # 默认 120 秒
+            # 备用模型配置
+            "fallback": {
+                "enabled": os.getenv("CLAUDE_FALLBACK_ENABLED", "True") == "True",
+                "api_key": os.getenv("FALLBACK_API_KEY", ""),
+                "base_url": os.getenv("CLAUDE_FALLBACK_BASE_URL", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")),
+                "timeout": int(os.getenv("CLAUDE_FALLBACK_TIMEOUT", "120")),
+                "model": os.getenv("CLAUDE_FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+            },
+            "models": {
+                "outline": {
+                    "name": os.getenv("CLAUDE_OUTLINE_MODEL", "claude-3-5-sonnet-20241022"),
+                    "temperature": 1.0
+                },
+                "content": {
+                    "name": os.getenv("CLAUDE_CONTENT_MODEL", "claude-3-5-sonnet-20241022"),
+                    "temperature": 0.7
+                }
+            }
+        }
         # Gemini 配置（仅支持 Google 官方 API）
         self.gemini_config = {
             "api_key": os.getenv("GEMINI_API_KEY", ""),
@@ -89,6 +113,10 @@ class AIConfig:
         # 记录各 provider 的配置状态，但不强制所有 provider 都必须配置
         configured_providers = []
 
+        # 检查 Claude 配置
+        if self.claude_config["api_key"]:
+            configured_providers.append("claude")
+
         # 检查 Gemini 配置
         if self.gemini_config["api_key"]:
             configured_providers.append("gemini")
@@ -107,6 +135,7 @@ class AIConfig:
         if not configured_providers:
             raise ValueError(
                 "未检测到任何已配置的AI模型提供商。请至少设置以下之一：\n"
+                "  - CLAUDE_API_KEY（Claude模型）\n"
                 "  - GEMINI_API_KEY（Gemini模型）\n"
                 "  - OPENAI_EMBEDDING_API_KEY（OpenAI兼容模型）"
             )
@@ -114,6 +143,35 @@ class AIConfig:
         import logging
         logging.info(f"Detected configured AI providers: {', '.join(configured_providers)}")
     
+    def get_claude_config(self, model_type: str = "content") -> Dict[str, Any]:
+        """获取 Claude 模型配置（Anthropic 官方 API）"""
+        if model_type not in self.claude_config["models"]:
+            raise ValueError(f"不支持的 Claude 模型类型: {model_type}")
+
+        config = {
+            "type": "claude",
+            "api_key": self.claude_config["api_key"],
+            "model_name": self.claude_config["models"][model_type]["name"],
+            "temperature": self.claude_config["models"][model_type]["temperature"],
+            "retry_delay": self.claude_config["retry_delay"],
+            "timeout": self.claude_config["timeout"]
+        }
+
+        # 添加备用模型配置
+        if self.claude_config["fallback"]["enabled"]:
+            fallback = self.claude_config["fallback"]
+            config.update({
+                "fallback_enabled": True,
+                "fallback_api_key": fallback["api_key"],
+                "fallback_base_url": fallback["base_url"],
+                "fallback_timeout": fallback["timeout"],
+                "fallback_model": fallback["model"],
+            })
+        else:
+            config["fallback_enabled"] = False
+
+        return config
+
     def get_gemini_config(self, model_type: str = "content") -> Dict[str, Any]:
         """获取 Gemini 模型配置（仅支持 Google 官方 API）"""
         if model_type not in self.gemini_config["models"]:
@@ -192,7 +250,9 @@ class AIConfig:
     
     def get_model_config(self, model_type: str) -> Dict[str, Any]:
         """获取指定类型的模型配置"""
-        if model_type.startswith("gemini"):
+        if model_type.startswith("claude"):
+            return self.get_claude_config(model_type.split("_")[1])
+        elif model_type.startswith("gemini"):
             return self.get_gemini_config(model_type.split("_")[1])
         elif model_type.startswith("openai"):
             return self.get_openai_config(model_type.split("_")[1])
