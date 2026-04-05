@@ -89,12 +89,16 @@ class Config:
             outline_sel = model_selection.get("outline", {"provider": "openai", "model_type": "outline"})
             if outline_sel["provider"] == "openai":
                 self.model_config["outline_model"] = self.ai_config.get_openai_config(outline_sel["model_type"])
+            elif outline_sel["provider"] == "claude":
+                self.model_config["outline_model"] = self.ai_config.get_claude_config(outline_sel["model_type"])
             else:
                 self.model_config["outline_model"] = self.ai_config.get_gemini_config(outline_sel["model_type"])
             # content_model
             content_sel = model_selection.get("content", {"provider": "openai", "model_type": "content"})
             if content_sel["provider"] == "openai":
                 self.model_config["content_model"] = self.ai_config.get_openai_config(content_sel["model_type"])
+            elif content_sel["provider"] == "claude":
+                self.model_config["content_model"] = self.ai_config.get_claude_config(content_sel["model_type"])
             else:
                 self.model_config["content_model"] = self.ai_config.get_gemini_config(content_sel["model_type"])
             # embedding_model 只支持openai

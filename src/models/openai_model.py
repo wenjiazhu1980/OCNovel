@@ -42,11 +42,13 @@ class OpenAIModel(BaseModel):
         if fallback_enabled:
             self.fallback_base_url = config.get("fallback_base_url", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"))
             self.fallback_api_key = config.get("fallback_api_key", os.getenv("FALLBACK_API_KEY", ""))
-            self.fallback_model_name = config.get("fallback_model", os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
+            self.fallback_model_name = config.get("fallback_model", os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"))
+            self.fallback_api_mode = config.get("fallback_api_mode", os.getenv("FALLBACK_API_MODE", "auto")).lower()
         else:
             self.fallback_base_url = os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")
             self.fallback_api_key = os.getenv("FALLBACK_API_KEY", "")
-            self.fallback_model_name = os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+            self.fallback_model_name = os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct")
+            self.fallback_api_mode = os.getenv("FALLBACK_API_MODE", "auto").lower()
 
         self.api_mode = str(config.get("api_mode", "auto")).strip().lower()
         if self.api_mode not in {"auto", "chat", "responses"}:
@@ -634,7 +636,7 @@ class OpenAIModel(BaseModel):
                             prompt,
                             max_tokens=max_tokens,
                             temperature=temperature,
-                            api_mode="auto"
+                            api_mode=self.fallback_api_mode
                         )
 
                         logging.info(f"使用备用API生成成功，返回内容长度: {len(content)}")

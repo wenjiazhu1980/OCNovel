@@ -23,6 +23,8 @@ class ConnectionTesterWorker(QThread):
         try:
             if self.provider == "gemini":
                 self._test_gemini()
+            elif self.provider == "claude":
+                self._test_claude()
             else:
                 # OpenAI 兼容接口（openai_*, fallback）
                 self._test_openai_compatible()
@@ -52,6 +54,41 @@ class ConnectionTesterWorker(QThread):
                 )
             else:
                 self.test_result.emit(self.provider, True, "连接成功，但未获取到模型列表")
+        except Exception as e:
+            self.test_result.emit(self.provider, False, f"连接失败: {e}")
+
+    def _test_claude(self):
+        """测试 Claude (Anthropic) API 连接"""
+        from anthropic import Anthropic
+
+        api_key = self.config.get("api_key", "").strip()
+        if not api_key:
+            self.test_result.emit(self.provider, False, "API Key 为空")
+            return
+
+        timeout = int(self.config.get("timeout", 30))
+
+        try:
+            client = Anthropic(
+                api_key=api_key,
+                timeout=timeout,
+                max_retries=0
+            )
+
+            # 发送简单的测试请求
+            response = client.messages.create(
+                model="claude-3-5-sonnet-20241022",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Hi"}]
+            )
+
+            if response.content:
+                self.test_result.emit(
+                    self.provider, True,
+                    "连接成功，API 响应正常"
+                )
+            else:
+                self.test_result.emit(self.provider, True, "连接成功，但响应为空")
         except Exception as e:
             self.test_result.emit(self.provider, False, f"连接失败: {e}")
 

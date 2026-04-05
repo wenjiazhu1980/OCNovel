@@ -26,7 +26,7 @@ class ClaudeModel(BaseModel):
         if fallback_enabled:
             self.fallback_api_key = config.get("fallback_api_key", os.getenv("FALLBACK_API_KEY", ""))
             self.fallback_base_url = config.get("fallback_base_url", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"))
-            self.fallback_model_name = config.get("fallback_model", os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
+            self.fallback_model_name = config.get("fallback_model", os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"))
             self.fallback_timeout = config.get("fallback_timeout", 180)
         else:
             self.fallback_api_key = ""

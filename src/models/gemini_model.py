@@ -99,7 +99,7 @@ class GeminiModel(BaseModel):
             return
         self.fallback_base_url = self.config.get("fallback_base_url", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"))
         self.fallback_api_key = self.config.get("fallback_api_key", os.getenv("FALLBACK_API_KEY", ""))
-        self.fallback_model_name = self.config.get("fallback_model", os.getenv("FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct"))
+        self.fallback_model_name = self.config.get("fallback_model", os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"))
         logging.info(f"Gemini模型备用配置: {self.fallback_model_name}")
 
     def _truncate_prompt(self, prompt: str) -> str:

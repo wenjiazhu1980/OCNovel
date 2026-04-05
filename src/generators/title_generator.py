@@ -92,24 +92,101 @@ class TitleGenerator:
             logging.error(f"生成标题时出错: {str(e)}")
             return {platform: f"未能生成{platform}标题" for platform in platforms}
             
-    def generate_summary(self, novel_type: str, theme: str, titles: Dict[str, str], 
+    def _compress_summaries(self, summaries: List[str], max_length: int = 50000) -> str:
+        """
+        智能压缩章节摘要，避免提示词过长
+
+        Args:
+            summaries: 章节摘要列表
+            max_length: 最大总长度（字符数）
+
+        Returns:
+            str: 压缩后的摘要文本
+        """
+        if not summaries:
+            return ""
+
+        # 先拼接，计算实际长度（包括换行符）
+        full_text = "\n".join(summaries)
+        total_length = len(full_text)
+
+        # 如果总长度在限制内，直接返回
+        if total_length <= max_length:
+            return full_text
+
+        # 策略1：智能采样 - 选择开头、中间、结尾的关键章节
+        num_summaries = len(summaries)
+
+        # 计算每个区域应该保留多少章节
+        # 开头30%、中间40%、结尾30%
+        head_count = max(int(num_summaries * 0.3), 1)
+        tail_count = max(int(num_summaries * 0.3), 1)
+        middle_count = num_summaries - head_count - tail_count
+
+        # 如果中间部分太多，进行二次采样
+        if middle_count > 20:
+            # 从中间部分均匀采样20个章节
+            middle_indices = [head_count + int(i * middle_count / 20) for i in range(20)]
+            middle_summaries = [summaries[i] for i in middle_indices]
+        else:
+            middle_summaries = summaries[head_count:head_count + middle_count]
+
+        # 组合采样结果
+        sampled_summaries = (
+            summaries[:head_count] +
+            middle_summaries +
+            summaries[-tail_count:]
+        )
+
+        # 策略2：如果采样后仍然过长，对每条摘要进行截断
+        sampled_text = "\n".join(sampled_summaries)
+        if len(sampled_text) > max_length:
+            # 计算每条摘要的最大长度（考虑换行符）
+            num_newlines = len(sampled_summaries) - 1
+            available_length = max_length - num_newlines
+            max_per_summary = available_length // len(sampled_summaries)
+
+            # 确保每条摘要至少保留50个字符
+            max_per_summary = max(max_per_summary, 50)
+
+            sampled_summaries = [
+                s[:max_per_summary] + "..." if len(s) > max_per_summary else s
+                for s in sampled_summaries
+            ]
+            sampled_text = "\n".join(sampled_summaries)
+
+            # 如果还是超长，进行最终截断
+            if len(sampled_text) > max_length:
+                sampled_text = sampled_text[:max_length - 3] + "..."
+
+        # 记录压缩信息
+        logging.info(
+            f"摘要压缩: 原始 {num_summaries} 条/{total_length} 字 → "
+            f"压缩后 {len(sampled_summaries)} 条/{len(sampled_text)} 字 "
+            f"(保留率: {len(sampled_text)/total_length*100:.1f}%)"
+        )
+
+        return sampled_text
+
+    def generate_summary(self, novel_type: str, theme: str, titles: Dict[str, str],
                           summaries: List[str] = None) -> str:
         """
         生成200字以内的故事梗概
-        
+
         Args:
             novel_type: 小说类型
             theme: 小说主题
             titles: 生成的标题
             summaries: 已有的章节摘要列表
-            
+
         Returns:
             str: 生成的故事梗概
         """
-        # 预处理摘要部分，避免在f-string表达式中使用反斜杠
+        # 智能压缩摘要，避免提示词过长
         summary_section = ""
         if summaries:
-            summary_section = "【已有章节摘要】\n" + "\n".join(summaries)
+            compressed_summaries = self._compress_summaries(summaries, max_length=50000)
+            summary_section = "【已有章节摘要】\n" + compressed_summaries
         
         prompt = f"""
         请为一部小说创作一段200字以内的故事梗概，这段梗概将用于小说的宣传推广。

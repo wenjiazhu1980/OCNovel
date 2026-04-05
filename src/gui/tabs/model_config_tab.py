@@ -11,7 +11,7 @@ from ..utils.config_io import load_env, save_env, load_config, save_config
 from ..workers.connection_tester import ConnectionTesterWorker
 
 # 提供商选项（已移除火山引擎，统一使用大纲/内容模型配置）
-PROVIDERS = ["gemini", "openai"]
+PROVIDERS = ["gemini", "openai", "claude"]
 
 
 class ModelConfigTab(QWidget):
@@ -54,6 +54,7 @@ class ModelConfigTab(QWidget):
         self._layout.addWidget(tip)
 
         self._build_gemini_group()
+        self._build_claude_group()
         self._build_openai_embedding_group()
         self._build_reranker_group()
         self._build_outline_model_group()
@@ -122,6 +123,17 @@ class ModelConfigTab(QWidget):
         self._add_field(form, self.tr("重试延迟 (秒)"), "GEMINI_RETRY_DELAY", placeholder="90")
         self._add_test_button(form, "gemini")
 
+    def _build_claude_group(self):
+        _, form = self._make_group(self.tr("Claude (Anthropic 官方 API)"))
+        self._add_field(form, self.tr("API Key"), "CLAUDE_API_KEY", echo_password=True)
+        self._add_field(form, self.tr("大纲模型 ID"), "CLAUDE_OUTLINE_MODEL",
+                        placeholder="claude-3-5-sonnet-20241022")
+        self._add_field(form, self.tr("内容模型 ID"), "CLAUDE_CONTENT_MODEL",
+                        placeholder="claude-3-5-sonnet-20241022")
+        self._add_field(form, self.tr("超时 (秒)"), "CLAUDE_TIMEOUT", placeholder="120")
+        self._add_field(form, self.tr("重试延迟 (秒)"), "CLAUDE_RETRY_DELAY", placeholder="10")
+        self._add_test_button(form, "claude")
+
     def _build_openai_embedding_group(self):
         _, form = self._make_group(self.tr("OpenAI Embedding"))
         self._add_field(form, self.tr("API Key"), "OPENAI_EMBEDDING_API_KEY", echo_password=True)
@@ -179,6 +191,8 @@ class ModelConfigTab(QWidget):
                         placeholder="https://api.siliconflow.cn/v1")
         self._add_field(form, self.tr("模型 ID"), "FALLBACK_MODEL_ID",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
+        self._add_field(form, self.tr("API 模式"), "FALLBACK_API_MODE",
+                        placeholder="auto")
         self._add_test_button(form, "fallback")
 
     def _build_model_selection_group(self):
@@ -279,6 +293,11 @@ class ModelConfigTab(QWidget):
             return {
                 "api_key": _val("GEMINI_API_KEY"),
                 "timeout": _val("GEMINI_TIMEOUT") or "30",
+            }
+        if provider == "claude":
+            return {
+                "api_key": _val("CLAUDE_API_KEY"),
+                "timeout": _val("CLAUDE_TIMEOUT") or "30",
             }
         if provider == "openai_embedding":
             return {

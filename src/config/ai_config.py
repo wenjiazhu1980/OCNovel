@@ -4,14 +4,33 @@ from dotenv import load_dotenv
 
 class AIConfig:
     """AI模型配置管理类"""
-    
+
     def __init__(self):
         # 环境变量应由 Config 类统一加载，这里仅作兜底
         load_dotenv(override=False)
 
+        # 安全的类型转换辅助函数
+        def _safe_float(value: str, default: float) -> float:
+            """安全地将字符串转换为 float，空字符串返回默认值"""
+            if not value or not value.strip():
+                return default
+            try:
+                return float(value)
+            except (ValueError, TypeError):
+                return default
+
+        def _safe_int(value: str, default: int) -> int:
+            """安全地将字符串转换为 int，空字符串返回默认值"""
+            if not value or not value.strip():
+                return default
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return default
+
         # OpenAI 配置（提前定义）
         self.openai_config = {
-            "retry_delay": float(os.getenv("OPENAI_RETRY_DELAY", "10")),  # 默认 10 秒
+            "retry_delay": _safe_float(os.getenv("OPENAI_RETRY_DELAY", "10"), 10.0),  # 默认 10 秒
             "models": {
                 "embedding": {
                     "name": os.getenv("OPENAI_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"),
@@ -20,7 +39,7 @@ class AIConfig:
                     "api_key": os.getenv("OPENAI_EMBEDDING_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_EMBEDDING_API_BASE", "https://api.siliconflow.cn/v1"),
                     "api_mode": os.getenv("OPENAI_EMBEDDING_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
-                    "timeout": int(os.getenv("OPENAI_EMBEDDING_TIMEOUT", "60"))
+                    "timeout": _safe_int(os.getenv("OPENAI_EMBEDDING_TIMEOUT", "60"), 60)
                 },
                 "outline": {
                     "name": os.getenv("OPENAI_OUTLINE_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
@@ -28,7 +47,7 @@ class AIConfig:
                     "api_key": os.getenv("OPENAI_OUTLINE_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_OUTLINE_API_BASE", "https://api.siliconflow.cn/v1"),
                     "api_mode": os.getenv("OPENAI_OUTLINE_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
-                    "timeout": int(os.getenv("OPENAI_OUTLINE_TIMEOUT", "300")),
+                    "timeout": _safe_int(os.getenv("OPENAI_OUTLINE_TIMEOUT", "300"), 300),
                     "reasoning_enabled": os.getenv("OPENAI_OUTLINE_REASONING_ENABLED", "false").lower() == "true",
                 },
                 "content": {
@@ -37,7 +56,7 @@ class AIConfig:
                     "api_key": os.getenv("OPENAI_CONTENT_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_CONTENT_API_BASE", "https://api.siliconflow.cn/v1"),
                     "api_mode": os.getenv("OPENAI_CONTENT_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
-                    "timeout": int(os.getenv("OPENAI_CONTENT_TIMEOUT", "180")),
+                    "timeout": _safe_int(os.getenv("OPENAI_CONTENT_TIMEOUT", "180"), 180),
                     "reasoning_enabled": os.getenv("OPENAI_CONTENT_REASONING_ENABLED", "false").lower() == "true",
                 },
                 "reranker": {
@@ -46,22 +65,22 @@ class AIConfig:
                     "base_url": os.getenv("OPENAI_EMBEDDING_API_BASE", "https://api.siliconflow.cn/v1"),
                     "api_mode": os.getenv("OPENAI_RERANKER_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
                     "use_fp16": os.getenv("OPENAI_RERANKER_USE_FP16", "True") == "True",
-                    "timeout": int(os.getenv("OPENAI_EMBEDDING_TIMEOUT", "60"))
+                    "timeout": _safe_int(os.getenv("OPENAI_EMBEDDING_TIMEOUT", "60"), 60)
                 }
             }
         }
         # Claude 配置（Anthropic 官方 API）
         self.claude_config = {
             "api_key": os.getenv("CLAUDE_API_KEY", ""),
-            "retry_delay": float(os.getenv("CLAUDE_RETRY_DELAY", "10")),  # 默认 10 秒
-            "timeout": int(os.getenv("CLAUDE_TIMEOUT", "120")),  # 默认 120 秒
+            "retry_delay": _safe_float(os.getenv("CLAUDE_RETRY_DELAY", "10"), 10.0),  # 默认 10 秒
+            "timeout": _safe_int(os.getenv("CLAUDE_TIMEOUT", "120"), 120),  # 默认 120 秒
             # 备用模型配置
             "fallback": {
                 "enabled": os.getenv("CLAUDE_FALLBACK_ENABLED", "True") == "True",
                 "api_key": os.getenv("FALLBACK_API_KEY", ""),
                 "base_url": os.getenv("CLAUDE_FALLBACK_BASE_URL", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")),
-                "timeout": int(os.getenv("CLAUDE_FALLBACK_TIMEOUT", "120")),
-                "model": os.getenv("CLAUDE_FALLBACK_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+                "timeout": _safe_int(os.getenv("CLAUDE_FALLBACK_TIMEOUT", "120"), 120),
+                "model": os.getenv("CLAUDE_FALLBACK_MODEL", os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"))
             },
             "models": {
                 "outline": {
@@ -77,16 +96,16 @@ class AIConfig:
         # Gemini 配置（仅支持 Google 官方 API）
         self.gemini_config = {
             "api_key": os.getenv("GEMINI_API_KEY", ""),
-            "retry_delay": float(os.getenv("GEMINI_RETRY_DELAY", "30")),  # 默认 30 秒
-            "max_retries": int(os.getenv("GEMINI_MAX_RETRIES", "5")),  # 默认 5 次
-            "max_input_length": int(os.getenv("GEMINI_MAX_INPUT_LENGTH", "500000")),  # 默认 500000 字符
-            "timeout": int(os.getenv("GEMINI_TIMEOUT", "60")),  # 默认 60 秒
+            "retry_delay": _safe_float(os.getenv("GEMINI_RETRY_DELAY", "30"), 30.0),  # 默认 30 秒
+            "max_retries": _safe_int(os.getenv("GEMINI_MAX_RETRIES", "5"), 5),  # 默认 5 次
+            "max_input_length": _safe_int(os.getenv("GEMINI_MAX_INPUT_LENGTH", "500000"), 500000),  # 默认 500000 字符
+            "timeout": _safe_int(os.getenv("GEMINI_TIMEOUT", "60"), 60),  # 默认 60 秒
             # 备用模型配置
             "fallback": {
                 "enabled": os.getenv("GEMINI_FALLBACK_ENABLED", "True") == "True",  # 默认启用备用模型
                 "api_key": os.getenv("FALLBACK_API_KEY", ""),  # 使用独立的备用API密钥
                 "base_url": os.getenv("GEMINI_FALLBACK_BASE_URL", os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")),
-                "timeout": int(os.getenv("GEMINI_FALLBACK_TIMEOUT", "120")),  # 备用API使用更长的超时时间
+                "timeout": _safe_int(os.getenv("GEMINI_FALLBACK_TIMEOUT", "120"), 120),  # 备用API使用更长的超时时间
                 "models": {
                     # 备用默认也切换到免费开源模型，避免高成本模型兜底
                     "flash": "Qwen/Qwen2.5-7B-Instruct",
@@ -233,15 +252,22 @@ class AIConfig:
             "reasoning_enabled": model_config.get("reasoning_enabled", False),
         }
 
-        # 添加备用模型配置（复用 gemini fallback 配置）
-        fallback = self.gemini_config.get("fallback", {})
-        if fallback.get("enabled", False):
+        # 添加备用模型配置（使用独立的 FALLBACK_* 环境变量）
+        fallback_enabled = os.getenv("GEMINI_FALLBACK_ENABLED", "True") == "True"
+        if fallback_enabled and os.getenv("FALLBACK_API_KEY"):
+            fallback_timeout_str = os.getenv("GEMINI_FALLBACK_TIMEOUT", "120")
+            try:
+                fallback_timeout = int(fallback_timeout_str) if fallback_timeout_str.strip() else 120
+            except (ValueError, AttributeError):
+                fallback_timeout = 120
+
             config.update({
                 "fallback_enabled": True,
-                "fallback_api_key": fallback.get("api_key", ""),
-                "fallback_base_url": fallback.get("base_url", "https://api.siliconflow.cn/v1"),
-                "fallback_timeout": fallback.get("timeout", 120),
-                "fallback_model": fallback.get("models", {}).get("default", "Qwen/Qwen2.5-7B-Instruct"),
+                "fallback_api_key": os.getenv("FALLBACK_API_KEY", ""),
+                "fallback_base_url": os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"),
+                "fallback_timeout": fallback_timeout,
+                "fallback_model": os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"),
+                "fallback_api_mode": os.getenv("FALLBACK_API_MODE", "auto").lower(),
             })
         else:
             config["fallback_enabled"] = False
