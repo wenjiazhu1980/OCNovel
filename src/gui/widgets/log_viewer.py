@@ -40,6 +40,10 @@ class LogViewer(QPlainTextEdit):
     # ------------------------------------------------------------------
     def append_log(self, message: str, level: str = "INFO"):
         """追加一条日志，根据级别着色；超过上限时移除最早的行"""
+        # 检查是否在底部（允许 10 像素误差）
+        v_scrollbar = self.verticalScrollBar()
+        was_at_bottom = v_scrollbar.value() >= v_scrollbar.maximum() - 10
+
         fmt = QTextCharFormat()
         fmt.setForeground(_LEVEL_COLORS.get(level.upper(), _LEVEL_COLORS["INFO"]))
 
@@ -63,9 +67,15 @@ class LogViewer(QPlainTextEdit):
             )
             trim_cursor.removeSelectedText()
 
-        # 自动滚动到底部
-        self.setTextCursor(cursor)
-        self.ensureCursorVisible()
+        # 仅当之前在底部时才自动滚动（保持水平滚动位置）
+        if was_at_bottom:
+            h_scrollbar = self.horizontalScrollBar()
+            h_pos = h_scrollbar.value()  # 保存当前水平滚动位置
+
+            self.setTextCursor(cursor)
+            self.ensureCursorVisible()
+
+            h_scrollbar.setValue(h_pos)  # 恢复水平滚动位置
 
     # ------------------------------------------------------------------
     def clear_logs(self):
