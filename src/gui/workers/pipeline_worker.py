@@ -1,10 +1,10 @@
-"""后台流水线 Worker：在 QThread 中执行 auto 生成流程"""
+"""后台流水线 Worker:在 QThread 中执行 auto 生成流程"""
 import os
 import sys
 import json
 import logging
 import threading
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QCoreApplication
 
 from src.gui.utils.log_handler import SignalLogHandler
 
@@ -22,7 +22,7 @@ def create_model(model_config: dict):
         from src.models.openai_model import OpenAIModel
         return OpenAIModel(model_config)
     else:
-        raise ValueError(f"不支持的模型类型: {model_type}")
+        raise ValueError(QCoreApplication.translate("PipelineWorker", "不支持的模型类型: {0}").format(model_type))
 
 
 class PipelineWorker(QThread):
@@ -124,11 +124,11 @@ class PipelineWorker(QThread):
             # ---- 7. 获取目标章节数 ----
             end_chapter = config.novel_config.get("target_chapters")
             if not end_chapter or not isinstance(end_chapter, int) or end_chapter <= 0:
-                raise RuntimeError("配置文件中未找到有效的目标章节数设置 (target_chapters)")
+                raise RuntimeError(QCoreApplication.translate("PipelineWorker", "配置文件中未找到有效的目标章节数设置 (target_chapters)"))
 
             # ---- 8. 检查 / 生成大纲 ----
             if self._stop_event.is_set():
-                logger.info("收到停止信号，流水线中止。")
+                logger.info(QCoreApplication.translate("PipelineWorker", "收到停止信号,流水线中止。"))
                 self.pipeline_finished.emit(False)
                 return
 
@@ -157,15 +157,16 @@ class PipelineWorker(QThread):
                             extra_prompt=self._extra_prompt,
                         )
                     if not outline_ok:
-                        raise RuntimeError("大纲生成失败，停止流程。")
-                    logger.info("大纲生成成功！")
+                        raise RuntimeError(QCoreApplication.translate("PipelineWorker", "大纲生成失败,停止流程。"))
+                    logger.info(QCoreApplication.translate("PipelineWorker", "大纲生成成功!"))
 
             # 确保 content_generator 加载最新大纲
             content_generator._load_outline()
             if len(content_generator.chapter_outlines) < end_chapter:
                 raise RuntimeError(
-                    f"大纲章节数 ({len(content_generator.chapter_outlines)}) "
-                    f"小于目标章节数 ({end_chapter})"
+                    QCoreApplication.translate("PipelineWorker", "大纲章节数 ({0}) 小于目标章节数 ({1})").format(
+                        len(content_generator.chapter_outlines), end_chapter
+                    )
                 )
 
             # ---- 9. 从 summary.json 获取起始章节（仅连续模式使用） ----
@@ -183,10 +184,10 @@ class PipelineWorker(QThread):
                         if chapter_numbers:
                             start_chapter = max(chapter_numbers) + 1
                     except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                        logger.warning(f"读取 summary.json 失败: {exc}，将从第 1 章开始。")
+                        logger.warning(QCoreApplication.translate("PipelineWorker", "读取 summary.json 失败: {0},将从第 1 章开始。").format(exc))
 
                 if start_chapter > end_chapter:
-                    logger.info("所有章节均已完成，无需生成。")
+                    logger.info(QCoreApplication.translate("PipelineWorker", "所有章节均已完成,无需生成。"))
                     self.progress_updated.emit(end_chapter, end_chapter)
                     self.pipeline_finished.emit(True)
                     return
@@ -199,21 +200,21 @@ class PipelineWorker(QThread):
                     ch for ch in self._target_chapters_list
                     if 1 <= ch <= end_chapter
                 ]
-                logger.info(f"指定章节模式：将生成 {len(chapters_to_generate)} 章: {chapters_to_generate}")
+                logger.info(QCoreApplication.translate("PipelineWorker", "指定章节模式:将生成 {0} 章: {1}").format(len(chapters_to_generate), chapters_to_generate))
             else:
-                # 连续模式：从断点续写
+                # 连续模式:从断点续写
                 chapters_to_generate = list(range(start_chapter, end_chapter + 1))
 
             total_to_generate = len(chapters_to_generate)
             if total_to_generate == 0:
-                logger.info("没有需要生成的章节。")
+                logger.info(QCoreApplication.translate("PipelineWorker", "没有需要生成的章节。"))
                 self.progress_updated.emit(end_chapter, end_chapter)
                 self.pipeline_finished.emit(True)
                 return
 
             for idx, chapter_num in enumerate(chapters_to_generate):
                 if self._stop_event.is_set():
-                    logger.info("收到停止信号，流水线中止。")
+                    logger.info(QCoreApplication.translate("PipelineWorker", "收到停止信号,流水线中止。"))
                     self.pipeline_finished.emit(False)
                     return
 
@@ -231,36 +232,36 @@ class PipelineWorker(QThread):
                         )
                         self.chapter_completed.emit(chapter_num, title)
                     else:
-                        self.chapter_failed.emit(chapter_num, "生成返回失败")
+                        self.chapter_failed.emit(chapter_num, QCoreApplication.translate("PipelineWorker", "生成返回失败"))
                 except InterruptedError:
-                    logger.info(f"第 {chapter_num} 章生成被用户取消。")
+                    logger.info(QCoreApplication.translate("PipelineWorker", "第 {0} 章生成被用户取消。").format(chapter_num))
                     self.pipeline_finished.emit(False)
                     return
                 except Exception as exc:
-                    logger.error(f"第 {chapter_num} 章生成异常: {exc}", exc_info=True)
+                    logger.error(QCoreApplication.translate("PipelineWorker", "第 {0} 章生成异常: {1}").format(chapter_num, exc), exc_info=True)
                     self.chapter_failed.emit(chapter_num, str(exc))
 
                 self.progress_updated.emit(idx + 1, total_to_generate)
 
             # ---- 11. 全部章节完成后自动合并 ----
             if not self._target_chapters_list:
-                # 仅在连续模式（非指定章节重生成模式）下执行合并
+                # 仅在连续模式(非指定章节重生成模式)下执行合并
                 try:
-                    logger.info("开始合并所有章节...")
+                    logger.info(QCoreApplication.translate("PipelineWorker", "开始合并所有章节..."))
                     merged_path = content_generator.merge_all_chapters()
                     if merged_path:
-                        logger.info(f"已合并所有章节到: {merged_path}")
+                        logger.info(QCoreApplication.translate("PipelineWorker", "已合并所有章节到: {0}").format(merged_path))
                     else:
-                        logger.warning("章节合并未成功，请检查日志")
+                        logger.warning(QCoreApplication.translate("PipelineWorker", "章节合并未成功,请检查日志"))
                 except Exception as exc:
-                    logger.error(f"章节合并失败: {exc}", exc_info=True)
+                    logger.error(QCoreApplication.translate("PipelineWorker", "章节合并失败: {0}").format(exc), exc_info=True)
 
-            logger.info("自动生成流程全部完成！")
+            logger.info(QCoreApplication.translate("PipelineWorker", "自动生成流程全部完成!"))
             self.pipeline_finished.emit(True)
 
         except Exception as exc:
             logging.getLogger("PipelineWorker").error(
-                f"流水线异常终止: {exc}", exc_info=True
+                QCoreApplication.translate("PipelineWorker", "流水线异常终止: {0}").format(exc), exc_info=True
             )
             self.pipeline_finished.emit(False)
         finally:

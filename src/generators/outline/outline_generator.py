@@ -61,13 +61,13 @@ class OutlineGenerator:
                         except TypeError as e:
                             logging.warning(f"加载大纲时，第 {idx+1} 个章节数据字段不匹配或类型错误: {e} - 数据: {chapter_data} - 已跳过")
                         except Exception as e:
-                            logging.warning(f"加载大纲时，第 {idx+1} 个章节数据出现未知错误: {e} - 数据: {chapter_data} - 已跳过")
+                            logging.warning(f"Error loading outline chapter {idx+1}: {e} - Data: {chapter_data} - Skipped")
                     else:
-                        logging.warning(f"加载大纲时，发现非字典类型的章节数据: {chapter_data} - 已跳过")
+                        logging.warning(f"Non-dict chapter data found while loading outline: {chapter_data} - Skipped")
                 self.chapter_outlines = valid_chapters
-                logging.info(f"从文件加载了 {len(self.chapter_outlines)} 章有效大纲")
+                logging.info(f"Loaded {len(self.chapter_outlines)} valid chapter outlines from file")
             else:
-                logging.error("大纲文件格式无法识别，应为列表或包含 'chapters' 键的字典。")
+                logging.error("Unrecognized outline file format, should be a list or dict with 'chapters' key.")
                 self.chapter_outlines = []
         else:
             logging.info("未找到大纲文件或文件为空。")

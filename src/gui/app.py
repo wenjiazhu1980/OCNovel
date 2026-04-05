@@ -1,10 +1,11 @@
-"""QApplication 工厂：高 DPI、全局异常处理、浅色主题样式"""
+"""QApplication 工厂：高 DPI、全局异常处理、浅色主题样式、国际化"""
 import sys
 import traceback
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from src.gui.utils.fonts import FONT_UI
+from src.gui.i18n.translator import initialize_translation
 
 
 def create_app(argv=None) -> QApplication:
@@ -34,6 +35,10 @@ def create_app(argv=None) -> QApplication:
 
     sys.excepthook = _exception_hook
     app.setStyleSheet(_STYLESHEET)
+
+    # 初始化国际化翻译
+    initialize_translation(app)
+
     return app
 
 

@@ -47,6 +47,12 @@ OCNovel/
 │   │   ├── app.py             # QApplication 工厂 + 全局样式
 │   │   ├── main_window.py     # 主窗口（3 Tab）
 │   │   ├── theme.py           # 主题色常量
+│   │   ├── i18n/              # 国际化翻译文件
+│   │   │   ├── translator.py  # 翻译管理器
+│   │   │   ├── zh_CN.ts       # 中文翻译源文件
+│   │   │   ├── en_US.ts       # 英文翻译源文件
+│   │   │   ├── zh_CN.qm       # 中文编译翻译文件
+│   │   │   └── en_US.qm       # 英文编译翻译文件
 │   │   ├── tabs/
 │   │   │   ├── model_config_tab.py   # 模型配置
 │   │   │   ├── novel_params_tab.py   # 小说参数
@@ -54,6 +60,7 @@ OCNovel/
 │   │   ├── workers/
 │   │   │   ├── pipeline_worker.py    # 后台生成流水线
 │   │   │   ├── connection_tester.py  # 模型连接测试
+│   │   │   ├── marketing_worker.py   # 营销内容生成
 │   │   │   └── writing_guide_worker.py # AI 生成写作指南
 │   │   ├── widgets/
 │   │   │   ├── log_viewer.py         # 实时日志查看器
@@ -145,6 +152,17 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 - **模型配置** — 管理 Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL（Gemini 已优化为官方 API 限制）、模型名称，支持一键测试连接
 - **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
 - **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写
+
+### 国际化支持
+
+GUI 界面支持**中文**和**英文**两种语言：
+
+- **自动检测**: 中文系统默认显示中文界面，非中文系统默认显示英文界面
+- **手动切换**: 通过菜单栏「语言 / Language」可随时切换界面语言
+- **持久化**: 语言偏好自动保存，重启应用后保持选择的语言
+- **覆盖范围**: 所有按钮、标签、菜单、消息框、工具提示均已翻译（242个文本，91.7%已翻译）
+
+> 注：核心生成模块的技术日志保持英文，以便调试和问题排查。
 
 ### 打包为桌面应用
 

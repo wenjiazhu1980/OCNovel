@@ -109,9 +109,9 @@ class ContentGenerator:
                     self.current_chapter = max(chapter_numbers) if chapter_numbers else 0
             else:
                 self.current_chapter = 0
-            logger.info(f"从 summary.json 加载进度，下一个待处理章节索引: {self.current_chapter}")
+            logger.info(f"Loaded progress from summary.json, next chapter index to process: {self.current_chapter}")
         except Exception as e:
-            logger.error(f"加载进度时出错: {str(e)}")
+            logger.error(f"Error loading progress: {str(e)}")
             self.current_chapter = 0
 
     def _save_progress(self):

@@ -85,12 +85,12 @@ class NovelParamsTab(QWidget):
         # 底部按钮栏
         btn_bar = QHBoxLayout()
         btn_bar.setContentsMargins(16, 10, 16, 12)
-        self._btn_new = QPushButton("新建配置")
+        self._btn_new = QPushButton(self.tr("新建配置"))
         self._btn_new.clicked.connect(self._new_config)
         btn_bar.addWidget(self._btn_new)
         btn_bar.addStretch()
-        self._btn_load = QPushButton("加载配置")
-        self._btn_save = QPushButton("保存配置")
+        self._btn_load = QPushButton(self.tr("加载配置"))
+        self._btn_save = QPushButton(self.tr("保存配置"))
         self._btn_save.setProperty("cssClass", "primary")
         self._btn_load.clicked.connect(self._load_from_file)
         self._btn_save.clicked.connect(self._save_to_file)
@@ -102,7 +102,7 @@ class NovelParamsTab(QWidget):
     # Section 1: 基本信息
     # ------------------------------------------------------------------
     def _build_basic_info(self):
-        grp = QGroupBox("基本信息")
+        grp = QGroupBox(self.tr("基本信息"))
         form = _expanding_form(grp)
 
         self._le_title = QLineEdit()
@@ -117,12 +117,12 @@ class NovelParamsTab(QWidget):
         self._sp_chapter_len.setRange(500, 50000)
         self._sp_chapter_len.setSingleStep(500)
 
-        form.addRow("标题", self._le_title)
-        form.addRow("类型", self._le_type)
-        form.addRow("主题", self._le_theme)
-        form.addRow("风格", self._le_style)
-        form.addRow("目标章节数", self._sp_chapters)
-        form.addRow("章节字数", self._sp_chapter_len)
+        form.addRow(self.tr("标题"), self._le_title)
+        form.addRow(self.tr("类型"), self._le_type)
+        form.addRow(self.tr("主题"), self._le_theme)
+        form.addRow(self.tr("风格"), self._le_style)
+        form.addRow(self.tr("目标章节数"), self._sp_chapters)
+        form.addRow(self.tr("章节字数"), self._sp_chapter_len)
 
         self._layout.addWidget(grp)
 
@@ -130,93 +130,93 @@ class NovelParamsTab(QWidget):
     # Section 2: 写作指南（可折叠）
     # ------------------------------------------------------------------
     def _build_writing_guide(self):
-        grp = QGroupBox("写作指南（展开编辑）")
+        grp = QGroupBox(self.tr("写作指南（展开编辑）"))
         grp.setCheckable(True)
         grp.setChecked(False)
         outer = QVBoxLayout(grp)
 
-        # 自动生成区域：故事创意输入 + 生成按钮
+        # 自动生成区域:故事创意输入 + 生成按钮
         gen_bar = QHBoxLayout()
         self._le_story_idea = QLineEdit()
-        self._le_story_idea.setPlaceholderText("输入简短故事创意，如：废柴少年意外获得上古传承，踏上逆天修仙之路")
-        self._btn_gen_guide = QPushButton("自动生成写作指南")
+        self._le_story_idea.setPlaceholderText(self.tr("输入简短故事创意,如:废柴少年意外获得上古传承,踏上逆天修仙之路"))
+        self._btn_gen_guide = QPushButton(self.tr("自动生成写作指南"))
         self._btn_gen_guide.setProperty("cssClass", "primary")
-        self._btn_gen_guide.setToolTip("根据故事创意和基本信息调用大纲模型自动生成")
+        self._btn_gen_guide.setToolTip(self.tr("根据故事创意和基本信息调用大纲模型自动生成"))
         self._btn_gen_guide.clicked.connect(self._on_generate_guide)
         gen_bar.addWidget(self._le_story_idea, stretch=1)
         gen_bar.addWidget(self._btn_gen_guide)
         outer.addLayout(gen_bar)
 
         # --- 世界观 ---
-        wb_grp = QGroupBox("世界观"); wb_grp.setProperty("cssClass", "inner")
+        wb_grp = QGroupBox(self.tr("世界观")); wb_grp.setProperty("cssClass", "inner")
         wb_form = _expanding_form(wb_grp)
         self._te_magic = _make_text_edit(4)
         self._te_social = _make_text_edit(4)
         self._te_bg = _make_text_edit(4)
-        wb_form.addRow("修炼体系", self._te_magic)
-        wb_form.addRow("社会体系", self._te_social)
-        wb_form.addRow("背景", self._te_bg)
+        wb_form.addRow(self.tr("修炼体系"), self._te_magic)
+        wb_form.addRow(self.tr("社会体系"), self._te_social)
+        wb_form.addRow(self.tr("背景"), self._te_bg)
         outer.addWidget(wb_grp)
 
         # --- 主角设定 ---
-        prot_grp = QGroupBox("主角设定"); prot_grp.setProperty("cssClass", "inner")
+        prot_grp = QGroupBox(self.tr("主角设定")); prot_grp.setProperty("cssClass", "inner")
         prot_form = _expanding_form(prot_grp)
         self._te_prot_bg = _make_text_edit(3)
         self._te_prot_personality = _make_text_edit(3)
         self._te_prot_growth = _make_text_edit(3)
-        prot_form.addRow("背景", self._te_prot_bg)
-        prot_form.addRow("初始性格", self._te_prot_personality)
-        prot_form.addRow("成长路线", self._te_prot_growth)
+        prot_form.addRow(self.tr("背景"), self._te_prot_bg)
+        prot_form.addRow(self.tr("初始性格"), self._te_prot_personality)
+        prot_form.addRow(self.tr("成长路线"), self._te_prot_growth)
         outer.addWidget(prot_grp)
 
-        # --- 配角 & 反派（JSON 原文编辑）---
-        roles_grp = QGroupBox("配角与反派（JSON）"); roles_grp.setProperty("cssClass", "inner")
+        # --- 配角 & 反派(JSON 原文编辑)---
+        roles_grp = QGroupBox(self.tr("配角与反派(JSON)")); roles_grp.setProperty("cssClass", "inner")
         roles_form = _expanding_form(roles_grp)
         self._te_supporting = _make_text_edit(4)
         self._te_supporting.setPlaceholderText('[{"role_type":"...","personality":"...","relationship":"..."}]')
         self._te_antagonists = _make_text_edit(4)
         self._te_antagonists.setPlaceholderText('[{"role_type":"...","personality":"...","conflict_point":"..."}]')
-        roles_form.addRow("配角 (supporting_roles)", self._te_supporting)
-        roles_form.addRow("反派 (antagonists)", self._te_antagonists)
+        roles_form.addRow(self.tr("配角 (supporting_roles)"), self._te_supporting)
+        roles_form.addRow(self.tr("反派 (antagonists)"), self._te_antagonists)
         outer.addWidget(roles_grp)
 
         # --- 剧情结构 ---
-        plot_grp = QGroupBox("剧情结构"); plot_grp.setProperty("cssClass", "inner")
+        plot_grp = QGroupBox(self.tr("剧情结构")); plot_grp.setProperty("cssClass", "inner")
         plot_form = _expanding_form(plot_grp)
         # 第一幕
         self._te_setup = _make_text_edit(3)
         self._te_inciting = _make_text_edit(3)
         self._te_fp1 = _make_text_edit(3)
-        plot_form.addRow("第一幕 - setup", self._te_setup)
-        plot_form.addRow("第一幕 - inciting_incident", self._te_inciting)
-        plot_form.addRow("第一幕 - first_plot_point", self._te_fp1)
+        plot_form.addRow(self.tr("第一幕 - setup"), self._te_setup)
+        plot_form.addRow(self.tr("第一幕 - inciting_incident"), self._te_inciting)
+        plot_form.addRow(self.tr("第一幕 - first_plot_point"), self._te_fp1)
         # 第二幕
         self._te_rising = _make_text_edit(3)
         self._te_midpoint = _make_text_edit(3)
         self._te_complications = _make_text_edit(3)
         self._te_darkest = _make_text_edit(3)
         self._te_sp2 = _make_text_edit(3)
-        plot_form.addRow("第二幕 - rising_action", self._te_rising)
-        plot_form.addRow("第二幕 - midpoint", self._te_midpoint)
-        plot_form.addRow("第二幕 - complications", self._te_complications)
-        plot_form.addRow("第二幕 - darkest_moment", self._te_darkest)
-        plot_form.addRow("第二幕 - second_plot_point", self._te_sp2)
+        plot_form.addRow(self.tr("第二幕 - rising_action"), self._te_rising)
+        plot_form.addRow(self.tr("第二幕 - midpoint"), self._te_midpoint)
+        plot_form.addRow(self.tr("第二幕 - complications"), self._te_complications)
+        plot_form.addRow(self.tr("第二幕 - darkest_moment"), self._te_darkest)
+        plot_form.addRow(self.tr("第二幕 - second_plot_point"), self._te_sp2)
         # 第三幕
         self._te_climax = _make_text_edit(3)
         self._te_resolution = _make_text_edit(3)
         self._te_denouement = _make_text_edit(3)
-        plot_form.addRow("第三幕 - climax", self._te_climax)
-        plot_form.addRow("第三幕 - resolution", self._te_resolution)
-        plot_form.addRow("第三幕 - denouement", self._te_denouement)
+        plot_form.addRow(self.tr("第三幕 - climax"), self._te_climax)
+        plot_form.addRow(self.tr("第三幕 - resolution"), self._te_resolution)
+        plot_form.addRow(self.tr("第三幕 - denouement"), self._te_denouement)
         outer.addWidget(plot_grp)
 
         # --- 风格指南 ---
-        style_grp = QGroupBox("风格指南"); style_grp.setProperty("cssClass", "inner")
+        style_grp = QGroupBox(self.tr("风格指南")); style_grp.setProperty("cssClass", "inner")
         style_form = _expanding_form(style_grp)
         self._te_tone = _make_text_edit(3)
         self._te_pacing = _make_text_edit(3)
-        style_form.addRow("tone（基调）", self._te_tone)
-        style_form.addRow("pacing（节奏）", self._te_pacing)
+        style_form.addRow(self.tr("tone(基调)"), self._te_tone)
+        style_form.addRow(self.tr("pacing(节奏)"), self._te_pacing)
         outer.addWidget(style_grp)
 
         self._layout.addWidget(grp)
@@ -225,49 +225,49 @@ class NovelParamsTab(QWidget):
     # Section 3: 生成配置
     # ------------------------------------------------------------------
     def _build_generation_config(self):
-        grp = QGroupBox("生成配置")
+        grp = QGroupBox(self.tr("生成配置"))
         outer = QVBoxLayout(grp)
 
         # 大纲生成参数
-        o_grp = QGroupBox("大纲生成")
+        o_grp = QGroupBox(self.tr("大纲生成"))
         o_form = _expanding_form(o_grp)
 
         self._sp_batch_size = QSpinBox()
         self._sp_batch_size.setRange(1, 50)
-        self._sp_batch_size.setToolTip("每次 API 调用生成的章节数")
-        o_form.addRow("每批生成章节数", self._sp_batch_size)
+        self._sp_batch_size.setToolTip(self.tr("每次 API 调用生成的章节数"))
+        o_form.addRow(self.tr("每批生成章节数"), self._sp_batch_size)
 
         self._sp_outline_batch = QSpinBox()
         self._sp_outline_batch.setRange(10, 500)
         self._sp_outline_batch.setSingleStep(10)
-        self._sp_outline_batch.setToolTip("主批次大小，超长大纲（400+章）建议设为 200")
-        o_form.addRow("主批次大小", self._sp_outline_batch)
+        self._sp_outline_batch.setToolTip(self.tr("主批次大小,超长大纲(400+章)建议设为 200"))
+        o_form.addRow(self.tr("主批次大小"), self._sp_outline_batch)
 
         self._sp_context_chapters = QSpinBox()
         self._sp_context_chapters.setRange(3, 1000)
-        self._sp_context_chapters.setToolTip("生成大纲时参考的前文章节数，章节越多上下文越丰富但 token 消耗更大")
-        o_form.addRow("上下文章节数", self._sp_context_chapters)
+        self._sp_context_chapters.setToolTip(self.tr("生成大纲时参考的前文章节数,章节越多上下文越丰富但 token 消耗更大"))
+        o_form.addRow(self.tr("上下文章节数"), self._sp_context_chapters)
 
         self._sp_detail_chapters = QSpinBox()
         self._sp_detail_chapters.setRange(1, 200)
-        self._sp_detail_chapters.setToolTip("在上下文中详细展示的最近章节数")
-        o_form.addRow("详细展示章节数", self._sp_detail_chapters)
+        self._sp_detail_chapters.setToolTip(self.tr("在上下文中详细展示的最近章节数"))
+        o_form.addRow(self.tr("详细展示章节数"), self._sp_detail_chapters)
 
         outer.addWidget(o_grp)
 
         # 验证开关
-        v_grp = QGroupBox("验证")
+        v_grp = QGroupBox(self.tr("验证"))
         v_lay = QHBoxLayout(v_grp)
-        self._cb_logic = QCheckBox("逻辑检查")
-        self._cb_consistency = QCheckBox("一致性检查")
-        self._cb_duplicates = QCheckBox("重复检查")
+        self._cb_logic = QCheckBox(self.tr("逻辑检查"))
+        self._cb_consistency = QCheckBox(self.tr("一致性检查"))
+        self._cb_duplicates = QCheckBox(self.tr("重复检查"))
         v_lay.addWidget(self._cb_logic)
         v_lay.addWidget(self._cb_consistency)
         v_lay.addWidget(self._cb_duplicates)
         outer.addWidget(v_grp)
 
         # 人性化参数
-        h_grp = QGroupBox("人性化参数")
+        h_grp = QGroupBox(self.tr("人性化参数"))
         h_form = _expanding_form(h_grp)
 
         self._dsb_temp = QDoubleSpinBox()
@@ -285,10 +285,10 @@ class NovelParamsTab(QWidget):
         self._dsb_dialogue.setSingleStep(0.05)
         self._dsb_dialogue.setDecimals(2)
 
-        self._cb_desc_simp = QCheckBox("描写简化")
-        self._cb_emotion = QCheckBox("情感增强")
-        self._cb_humanizer_zh = QCheckBox("Humanizer-zh 增强")
-        self._cb_humanizer_zh.setToolTip("启用 Humanizer-zh 人性化增强规则，降低 AI 写作痕迹")
+        self._cb_desc_simp = QCheckBox(self.tr("描写简化"))
+        self._cb_emotion = QCheckBox(self.tr("情感增强"))
+        self._cb_humanizer_zh = QCheckBox(self.tr("Humanizer-zh 增强"))
+        self._cb_humanizer_zh.setToolTip(self.tr("启用 Humanizer-zh 人性化增强规则,降低 AI 写作痕迹"))
 
         h_form.addRow("temperature", self._dsb_temp)
         h_form.addRow("top_p", self._dsb_top_p)
@@ -304,15 +304,15 @@ class NovelParamsTab(QWidget):
     # Section 4: 知识库配置
     # ------------------------------------------------------------------
     def _build_kb_config(self):
-        grp = QGroupBox("知识库配置")
+        grp = QGroupBox(self.tr("知识库配置"))
         form = _expanding_form(grp)
 
         # 参考文件列表
         self._lw_refs = QListWidget()
         self._lw_refs.setMaximumHeight(100)
         btn_row = QHBoxLayout()
-        btn_add = QPushButton("添加文件")
-        btn_del = QPushButton("删除选中")
+        btn_add = QPushButton(self.tr("添加文件"))
+        btn_del = QPushButton(self.tr("删除选中"))
         btn_add.clicked.connect(self._add_ref_file)
         btn_del.clicked.connect(self._del_ref_file)
         btn_row.addWidget(btn_add)
@@ -324,7 +324,7 @@ class NovelParamsTab(QWidget):
         ref_box.addLayout(btn_row)
         ref_wrapper = QWidget()
         ref_wrapper.setLayout(ref_box)
-        form.addRow("参考文件", ref_wrapper)
+        form.addRow(self.tr("参考文件"), ref_wrapper)
 
         self._sp_chunk = QSpinBox()
         self._sp_chunk.setRange(100, 10000)
@@ -332,8 +332,8 @@ class NovelParamsTab(QWidget):
         self._sp_overlap = QSpinBox()
         self._sp_overlap.setRange(0, 5000)
         self._sp_overlap.setSingleStep(50)
-        form.addRow("分块大小", self._sp_chunk)
-        form.addRow("分块重叠", self._sp_overlap)
+        form.addRow(self.tr("分块大小"), self._sp_chunk)
+        form.addRow(self.tr("分块重叠"), self._sp_overlap)
 
         self._layout.addWidget(grp)
 
@@ -341,41 +341,41 @@ class NovelParamsTab(QWidget):
     # Section 5: 仿写配置（可折叠）
     # ------------------------------------------------------------------
     def _build_imitation_config(self):
-        grp = QGroupBox("仿写配置（展开编辑）")
+        grp = QGroupBox(self.tr("仿写配置(展开编辑)"))
         grp.setCheckable(True)
         grp.setChecked(False)
         outer = QVBoxLayout(grp)
 
         # --- 自动仿写 ---
-        auto_grp = QGroupBox("自动仿写")
+        auto_grp = QGroupBox(self.tr("自动仿写"))
         auto_form = _expanding_form(auto_grp)
 
-        self._cb_imit_enabled = QCheckBox("启用仿写功能")
+        self._cb_imit_enabled = QCheckBox(self.tr("启用仿写功能"))
         auto_form.addRow("", self._cb_imit_enabled)
 
-        self._cb_auto_imit = QCheckBox("自动仿写（生成后自动执行）")
+        self._cb_auto_imit = QCheckBox(self.tr("自动仿写(生成后自动执行)"))
         auto_form.addRow("", self._cb_auto_imit)
 
-        self._cb_trigger_all = QCheckBox("对所有章节触发")
+        self._cb_trigger_all = QCheckBox(self.tr("对所有章节触发"))
         auto_form.addRow("", self._cb_trigger_all)
 
         self._le_default_style = QComboBox()
-        auto_form.addRow("默认风格", self._le_default_style)
+        auto_form.addRow(self.tr("默认风格"), self._le_default_style)
 
         self._le_output_suffix = QLineEdit()
         self._le_output_suffix.setPlaceholderText("_imitated")
-        auto_form.addRow("输出后缀", self._le_output_suffix)
+        auto_form.addRow(self.tr("输出后缀"), self._le_output_suffix)
 
-        self._cb_backup_original = QCheckBox("备份原文")
+        self._cb_backup_original = QCheckBox(self.tr("备份原文"))
         auto_form.addRow("", self._cb_backup_original)
 
         outer.addWidget(auto_grp)
 
-        # --- 风格源列表（可视化编辑）---
-        style_grp = QGroupBox("风格源列表")
+        # --- 风格源列表(可视化编辑)---
+        style_grp = QGroupBox(self.tr("风格源列表"))
         style_outer = QVBoxLayout(style_grp)
 
-        # 上半部分：列表 + 按钮
+        # 上半部分:列表 + 按钮
         list_row = QHBoxLayout()
         self._lw_styles = QListWidget()
         self._lw_styles.setMaximumHeight(120)
@@ -383,10 +383,10 @@ class NovelParamsTab(QWidget):
         list_row.addWidget(self._lw_styles, stretch=1)
 
         btn_col = QVBoxLayout()
-        btn_add_style = QPushButton("添加")
-        btn_del_style = QPushButton("删除")
-        btn_add_style.setFixedWidth(60)
-        btn_del_style.setFixedWidth(60)
+        btn_add_style = QPushButton(self.tr("添加"))
+        btn_del_style = QPushButton(self.tr("删除"))
+        btn_add_style.setMinimumWidth(60)  # 改为最小宽度,允许自动扩展
+        btn_del_style.setMinimumWidth(60)  # 改为最小宽度,允许自动扩展
         btn_add_style.clicked.connect(self._add_style_source)
         btn_del_style.clicked.connect(self._del_style_source)
         btn_col.addWidget(btn_add_style)
@@ -395,79 +395,79 @@ class NovelParamsTab(QWidget):
         list_row.addLayout(btn_col)
         style_outer.addLayout(list_row)
 
-        # 下半部分：选中风格的详细编辑
-        detail_grp = QGroupBox("风格详情")
+        # 下半部分:选中风格的详细编辑
+        detail_grp = QGroupBox(self.tr("风格详情"))
         detail_form = _expanding_form(detail_grp)
         self._le_ss_name = QLineEdit()
-        self._le_ss_name.setPlaceholderText("风格名称")
+        self._le_ss_name.setPlaceholderText(self.tr("风格名称"))
         self._le_ss_name.textChanged.connect(self._on_style_detail_changed)
-        detail_form.addRow("名称", self._le_ss_name)
+        detail_form.addRow(self.tr("名称"), self._le_ss_name)
 
         fp_row = QHBoxLayout()
         self._le_ss_path = QLineEdit()
         self._le_ss_path.setPlaceholderText("data/style_sources/xxx.txt")
         self._le_ss_path.textChanged.connect(self._on_style_detail_changed)
-        btn_browse_ss = QPushButton("浏览")
+        btn_browse_ss = QPushButton(self.tr("浏览"))
         btn_browse_ss.clicked.connect(self._browse_style_file)
         fp_row.addWidget(self._le_ss_path)
         fp_row.addWidget(btn_browse_ss)
         fp_wrapper = QWidget()
         fp_wrapper.setLayout(fp_row)
-        detail_form.addRow("参考文件", fp_wrapper)
+        detail_form.addRow(self.tr("参考文件"), fp_wrapper)
 
         self._le_ss_desc = QLineEdit()
-        self._le_ss_desc.setPlaceholderText("风格描述")
+        self._le_ss_desc.setPlaceholderText(self.tr("风格描述"))
         self._le_ss_desc.textChanged.connect(self._on_style_detail_changed)
-        detail_form.addRow("描述", self._le_ss_desc)
+        detail_form.addRow(self.tr("描述"), self._le_ss_desc)
 
         self._le_ss_prompt = QLineEdit()
-        self._le_ss_prompt.setPlaceholderText("额外仿写提示词")
+        self._le_ss_prompt.setPlaceholderText(self.tr("额外仿写提示词"))
         self._le_ss_prompt.textChanged.connect(self._on_style_detail_changed)
-        detail_form.addRow("额外提示词", self._le_ss_prompt)
+        detail_form.addRow(self.tr("额外提示词"), self._le_ss_prompt)
 
         style_outer.addWidget(detail_grp)
         outer.addWidget(style_grp)
 
-        # 内部数据：风格源列表
+        # 内部数据:风格源列表
         self._style_sources_data: list[dict] = []
         self._style_updating = False  # 防止循环触发
 
         # --- 手动仿写 ---
-        manual_grp = QGroupBox("手动仿写")
+        manual_grp = QGroupBox(self.tr("手动仿写"))
         manual_form = _expanding_form(manual_grp)
 
-        self._cb_manual_imit = QCheckBox("启用手动仿写")
+        self._cb_manual_imit = QCheckBox(self.tr("启用手动仿写"))
         manual_form.addRow("", self._cb_manual_imit)
 
         row = QHBoxLayout()
         self._le_imit_output_dir = QLineEdit()
         self._le_imit_output_dir.setPlaceholderText("data/imitation_output")
-        btn_browse = QPushButton("浏览")
+        btn_browse = QPushButton(self.tr("浏览"))
         btn_browse.clicked.connect(self._browse_imit_output_dir)
         row.addWidget(self._le_imit_output_dir)
         row.addWidget(btn_browse)
         wrapper = QWidget()
         wrapper.setLayout(row)
-        manual_form.addRow("输出目录", wrapper)
+        manual_form.addRow(self.tr("输出目录"), wrapper)
 
         outer.addWidget(manual_grp)
 
         # --- 质量控制 ---
-        qc_grp = QGroupBox("质量控制")
+        qc_grp = QGroupBox(self.tr("质量控制"))
         qc_form = _expanding_form(qc_grp)
 
         self._dsb_min_similarity = QDoubleSpinBox()
         self._dsb_min_similarity.setRange(0.0, 1.0)
         self._dsb_min_similarity.setSingleStep(0.05)
         self._dsb_min_similarity.setDecimals(2)
-        qc_form.addRow("最低风格相似度", self._dsb_min_similarity)
+        qc_form.addRow(self.tr("最低风格相似度"), self._dsb_min_similarity)
 
         self._sp_imit_retries = QSpinBox()
         self._sp_imit_retries.setRange(1, 10)
-        qc_form.addRow("最大重试次数", self._sp_imit_retries)
+        qc_form.addRow(self.tr("最大重试次数"), self._sp_imit_retries)
 
-        self._cb_content_check = QCheckBox("内容保留检查")
-        self._cb_style_check = QCheckBox("风格一致性检查")
+        self._cb_content_check = QCheckBox(self.tr("内容保留检查"))
+        self._cb_style_check = QCheckBox(self.tr("风格一致性检查"))
         qc_form.addRow("", self._cb_content_check)
         qc_form.addRow("", self._cb_style_check)
 
@@ -475,7 +475,7 @@ class NovelParamsTab(QWidget):
         self._layout.addWidget(grp)
 
     def _browse_imit_output_dir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择仿写输出目录")
+        d = QFileDialog.getExistingDirectory(self, self.tr("选择仿写输出目录"))
         if d:
             self._le_imit_output_dir.setText(d)
 
@@ -497,13 +497,13 @@ class NovelParamsTab(QWidget):
         """刷新 QListWidget 显示"""
         self._lw_styles.clear()
         for item in self._style_sources_data:
-            self._lw_styles.addItem(item.get("name", "(未命名)"))
+            self._lw_styles.addItem(item.get("name", self.tr("(未命名)")))
         self._sync_style_combo()
 
     def _add_style_source(self):
         """添加一个新的空风格源"""
         new_item = {
-            "name": f"新风格{len(self._style_sources_data) + 1}",
+            "name": self.tr("新风格{0}").format(len(self._style_sources_data) + 1),
             "file_path": "",
             "description": "",
             "extra_prompt": "",
@@ -557,11 +557,11 @@ class NovelParamsTab(QWidget):
             # 同步列表显示名称
             item = self._lw_styles.item(row)
             if item:
-                item.setText(self._le_ss_name.text() or "(未命名)")
+                item.setText(self._le_ss_name.text() or self.tr("(未命名)"))
             self._sync_style_combo()
 
     def _browse_style_file(self):
-        path, _ = QFileDialog.getOpenFileName(self, "选择风格参考文件", "", "文本文件 (*.txt);;所有文件 (*)")
+        path, _ = QFileDialog.getOpenFileName(self, self.tr("选择风格参考文件"), "", self.tr("文本文件 (*.txt);;所有文件 (*)"))
         if path:
             self._le_ss_path.setText(path)
 
@@ -569,18 +569,18 @@ class NovelParamsTab(QWidget):
     # Section 6: 输出配置
     # ------------------------------------------------------------------
     def _build_output_config(self):
-        grp = QGroupBox("输出配置")
+        grp = QGroupBox(self.tr("输出配置"))
         form = _expanding_form(grp)
 
         row = QHBoxLayout()
         self._le_output_dir = QLineEdit()
-        btn_browse = QPushButton("浏览")
+        btn_browse = QPushButton(self.tr("浏览"))
         btn_browse.clicked.connect(self._browse_output_dir)
         row.addWidget(self._le_output_dir)
         row.addWidget(btn_browse)
         dir_wrapper = QWidget()
         dir_wrapper.setLayout(row)
-        form.addRow("输出目录", dir_wrapper)
+        form.addRow(self.tr("输出目录"), dir_wrapper)
 
         self._layout.addWidget(grp)
 
@@ -588,7 +588,7 @@ class NovelParamsTab(QWidget):
     # 文件对话框回调
     # ======================================================================
     def _add_ref_file(self):
-        paths, _ = QFileDialog.getOpenFileNames(self, "选择参考文件")
+        paths, _ = QFileDialog.getOpenFileNames(self, self.tr("选择参考文件"))
         for p in paths:
             if not self._lw_refs.findItems(p, Qt.MatchExactly):
                 self._lw_refs.addItem(p)
@@ -598,7 +598,7 @@ class NovelParamsTab(QWidget):
             self._lw_refs.takeItem(self._lw_refs.row(item))
 
     def _browse_output_dir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择输出目录")
+        d = QFileDialog.getExistingDirectory(self, self.tr("选择输出目录"))
         if d:
             self._le_output_dir.setText(d)
 
@@ -606,7 +606,7 @@ class NovelParamsTab(QWidget):
     # 新建配置（备份现有 + 从模板创建空白）
     # ======================================================================
     def _new_config(self):
-        """备份当前 config.json，然后从 config.json.example 创建空白配置"""
+        """备份当前 config.json,然后从 config.json.example 创建空白配置"""
         import shutil
         from datetime import datetime
 
@@ -615,10 +615,10 @@ class NovelParamsTab(QWidget):
 
         # 确认操作
         reply = QMessageBox.question(
-            self, "新建配置",
-            "将备份当前配置文件并创建空白配置。\n"
+            self, self.tr("新建配置"),
+            self.tr("将备份当前配置文件并创建空白配置。\n"
             "当前配置会保存为 config.json.bak.{时间戳}\n\n"
-            "确定继续？",
+            "确定继续?"),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -632,7 +632,7 @@ class NovelParamsTab(QWidget):
             try:
                 shutil.copy2(config_path, backup_path)
             except Exception as e:
-                QMessageBox.warning(self, "备份失败", f"无法备份配置文件: {e}")
+                QMessageBox.warning(self, self.tr("备份失败"), self.tr("无法备份配置文件: {0}").format(e))
                 return
 
         # 从模板创建空白配置
@@ -640,7 +640,7 @@ class NovelParamsTab(QWidget):
             try:
                 shutil.copy2(example_path, config_path)
             except Exception as e:
-                QMessageBox.warning(self, "创建失败", f"无法创建空白配置: {e}")
+                QMessageBox.warning(self, self.tr("创建失败"), self.tr("无法创建空白配置: {0}").format(e))
                 return
         else:
             # 模板不存在时创建最小配置
@@ -674,7 +674,7 @@ class NovelParamsTab(QWidget):
 
         # 重新加载界面
         self._load_from_file()
-        QMessageBox.information(self, "新建完成", "已备份旧配置并创建空白配置，请填写新的小说参数。")
+        QMessageBox.information(self, self.tr("新建完成"), self.tr("已备份旧配置并创建空白配置,请填写新的小说参数。"))
 
     # ======================================================================
     # 路径切换 + 重新加载
@@ -692,8 +692,8 @@ class NovelParamsTab(QWidget):
         """从 config.json 读取并填充所有字段"""
         if not os.path.exists(self._config_path):
             if not silent:
-                QMessageBox.warning(self, "文件不存在",
-                                    f"配置文件不存在:\n{self._config_path}\n\n请通过菜单「文件 → 打开配置文件」选择正确路径，\n或点击「新建配置」创建。")
+                QMessageBox.warning(self, self.tr("文件不存在"),
+                                    self.tr("配置文件不存在:\n{0}\n\n请通过菜单「文件 → 打开配置文件」选择正确路径,\n或点击「新建配置」创建。").format(self._config_path))
             return
         cfg = load_config(self._config_path)
         nc = cfg.get("novel_config", {})
@@ -822,20 +822,20 @@ class NovelParamsTab(QWidget):
     # 保存配置
     # ======================================================================
     def _save_to_file(self):
-        """收集所有字段值，合并回 config.json 并写入"""
-        # 先加载原始配置，保留本 Tab 不管理的字段
+        """收集所有字段值,合并回 config.json 并写入"""
+        # 先加载原始配置,保留本 Tab 不管理的字段
         cfg = load_config(self._config_path)
 
         # --- 解析配角/反派 JSON ---
         try:
             supporting = json.loads(self._te_supporting.toPlainText() or "[]")
         except json.JSONDecodeError:
-            QMessageBox.warning(self, "JSON 格式错误", "配角 JSON 格式不正确，请检查后重试。")
+            QMessageBox.warning(self, self.tr("JSON 格式错误"), self.tr("配角 JSON 格式不正确,请检查后重试。"))
             return
         try:
             antagonists = json.loads(self._te_antagonists.toPlainText() or "[]")
         except json.JSONDecodeError:
-            QMessageBox.warning(self, "JSON 格式错误", "反派 JSON 格式不正确，请检查后重试。")
+            QMessageBox.warning(self, self.tr("JSON 格式错误"), self.tr("反派 JSON 格式不正确,请检查后重试。"))
             return
 
         # --- 组装 novel_config ---
@@ -938,7 +938,7 @@ class NovelParamsTab(QWidget):
 
         # 写入文件
         save_config(self._config_path, cfg)
-        QMessageBox.information(self, "保存成功", "配置已保存到 config.json")
+        QMessageBox.information(self, self.tr("保存成功"), self.tr("配置已保存到 config.json"))
 
     # ======================================================================
     # 自动生成写作指南
@@ -952,20 +952,20 @@ class NovelParamsTab(QWidget):
         style = self._le_style.text().strip()
 
         if not story_idea:
-            QMessageBox.warning(self, "缺少信息", "请先输入简短的故事创意。")
+            QMessageBox.warning(self, self.tr("缺少信息"), self.tr("请先输入简短的故事创意。"))
             self._le_story_idea.setFocus()
             return
 
         self._btn_gen_guide.setEnabled(False)
-        self._btn_gen_guide.setText("正在生成…")
+        self._btn_gen_guide.setText(self.tr("正在生成…"))
 
         self._guide_worker = WritingGuideWorker(
             env_path=self._env_path,
             story_idea=story_idea,
-            title=title or "未命名",
-            novel_type=novel_type or "通用",
-            theme=theme or "通用",
-            style=style or "通用",
+            title=title or self.tr("未命名"),
+            novel_type=novel_type or self.tr("通用"),
+            theme=theme or self.tr("通用"),
+            style=style or self.tr("通用"),
             parent=self,
         )
         self._guide_worker.finished_result.connect(self._on_guide_result)
@@ -974,10 +974,10 @@ class NovelParamsTab(QWidget):
     def _on_guide_result(self, success: bool, result):
         """处理写作指南生成结果"""
         self._btn_gen_guide.setEnabled(True)
-        self._btn_gen_guide.setText("自动生成写作指南")
+        self._btn_gen_guide.setText(self.tr("自动生成写作指南"))
 
         if not success:
-            QMessageBox.warning(self, "生成失败", str(result))
+            QMessageBox.warning(self, self.tr("生成失败"), str(result))
             return
 
         # 填充写作指南字段
@@ -1026,7 +1026,7 @@ class NovelParamsTab(QWidget):
         self._te_tone.setPlainText(str(sg.get("tone", "")))
         self._te_pacing.setPlainText(str(sg.get("pacing", "")))
 
-        QMessageBox.information(self, "生成完成", "写作指南已自动填充，请检查并按需调整后保存。")
+        QMessageBox.information(self, self.tr("生成完成"), self.tr("写作指南已自动填充,请检查并按需调整后保存。"))
 
     # ======================================================================
     # 编辑锁定（保留滚动）

@@ -112,7 +112,7 @@ class AIConfig:
             )
 
         import logging
-        logging.info(f"已检测到配置的AI提供商: {', '.join(configured_providers)}")
+        logging.info(f"Detected configured AI providers: {', '.join(configured_providers)}")
     
     def get_gemini_config(self, model_type: str = "content") -> Dict[str, Any]:
         """获取 Gemini 模型配置（仅支持 Google 官方 API）"""

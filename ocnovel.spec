@@ -17,6 +17,7 @@ a = Analysis(
         ('config.json.example', '.'),
         ('.env.example', '.'),
         ('assets', 'assets'),
+        ('src/gui/i18n/*.qm', 'src/gui/i18n'),
     ],
     hiddenimports=[
         'PySide6.QtCore',

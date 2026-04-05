@@ -1,7 +1,7 @@
-"""章节列表组件：显示各章节生成状态"""
+"""章节列表组件:显示各章节生成状态"""
 from PySide6.QtWidgets import QListWidget, QListWidgetItem
 from PySide6.QtGui import QColor, QFont
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QCoreApplication
 
 from ..theme import Theme
 
@@ -15,7 +15,7 @@ _STATUS_MAP = {
 
 
 class ChapterListWidget(QListWidget):
-    """带状态图标的章节列表，支持多选"""
+    """带状态图标的章节列表,支持多选"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -42,7 +42,7 @@ class ChapterListWidget(QListWidget):
             return
         icon, color = _STATUS_MAP.get(status, _STATUS_MAP["pending"])
         item = self.item(idx)
-        item.setText(f"  {icon}  第 {chapter_num} 章")
+        item.setText(QCoreApplication.translate("ChapterListWidget", "  {0}  第 {1} 章").format(icon, chapter_num))
         item.setForeground(color)
         item.setData(Qt.UserRole, status)
         # 正在运行的章节自动滚动可见
@@ -61,7 +61,7 @@ class ChapterListWidget(QListWidget):
 
     # ------------------------------------------------------------------
     def get_selected_chapter_numbers(self) -> list[int]:
-        """返回当前选中的章节编号列表（升序）"""
+        """返回当前选中的章节编号列表(升序)"""
         numbers = []
         for item in self.selectedItems():
             row = self.row(item)
@@ -71,7 +71,7 @@ class ChapterListWidget(QListWidget):
 
     # ------------------------------------------------------------------
     def get_non_completed_chapter_numbers(self) -> list[int]:
-        """返回所有未完成（pending/failed）的章节编号列表"""
+        """返回所有未完成(pending/failed)的章节编号列表"""
         numbers = []
         icon_completed = _STATUS_MAP["completed"][0]
         for i in range(self.count()):
@@ -84,7 +84,7 @@ class ChapterListWidget(QListWidget):
     # ------------------------------------------------------------------
     def _add_chapter_item(self, chapter_num: int, status: str):
         icon, color = _STATUS_MAP.get(status, _STATUS_MAP["pending"])
-        item = QListWidgetItem(f"  {icon}  第 {chapter_num} 章")
+        item = QListWidgetItem(QCoreApplication.translate("ChapterListWidget", "  {0}  第 {1} 章").format(icon, chapter_num))
         item.setForeground(color)
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         item.setData(Qt.UserRole, status)

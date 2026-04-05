@@ -48,48 +48,56 @@ class ProgressTab(QWidget):
         root.setSpacing(12)
 
         # ---- 顶部控制栏 ----
-        top_bar = QHBoxLayout()
+        # 第一行:启动/停止/强制重生成大纲/额外提示词
+        top_bar_1 = QHBoxLayout()
 
-        self.btn_start = QPushButton("▶  启动")
-        self.btn_start.setFixedWidth(110)
+        self.btn_start = QPushButton(self.tr("▶  启动"))
+        self.btn_start.setMinimumWidth(110)  # 改为最小宽度,允许自动扩展
         self.btn_start.setProperty("cssClass", "success")
 
-        self.btn_stop = QPushButton("■  停止")
-        self.btn_stop.setFixedWidth(110)
+        self.btn_stop = QPushButton(self.tr("■  停止"))
+        self.btn_stop.setMinimumWidth(110)  # 改为最小宽度,允许自动扩展
         self.btn_stop.setEnabled(False)
         self.btn_stop.setProperty("cssClass", "danger")
 
-        self.chk_force_outline = QCheckBox("强制重生成大纲")
+        self.chk_force_outline = QCheckBox(self.tr("强制重生成大纲"))
         self.edit_extra_prompt = QLineEdit()
-        self.edit_extra_prompt.setPlaceholderText("额外提示词（可选）")
+        self.edit_extra_prompt.setPlaceholderText(self.tr("额外提示词（可选）"))
 
-        top_bar.addWidget(self.btn_start)
-        top_bar.addWidget(self.btn_stop)
-        top_bar.addWidget(self.chk_force_outline)
-        top_bar.addWidget(self.edit_extra_prompt, stretch=1)
+        top_bar_1.addWidget(self.btn_start)
+        top_bar_1.addWidget(self.btn_stop)
+        top_bar_1.addWidget(self.chk_force_outline)
+        top_bar_1.addWidget(self.edit_extra_prompt, stretch=1)
 
-        self.btn_open_output = QPushButton("打开输出目录")
+        root.addLayout(top_bar_1)
+
+        # 第二行:打开输出目录/刷新章节/重新生成选中章节/生成营销内容
+        top_bar_2 = QHBoxLayout()
+
+        self.btn_open_output = QPushButton(self.tr("打开输出目录"))
         self.btn_open_output.clicked.connect(self._open_output_dir)
-        top_bar.addWidget(self.btn_open_output)
+        top_bar_2.addWidget(self.btn_open_output)
 
-        self.btn_refresh = QPushButton("↻  刷新章节")
-        self.btn_refresh.setFixedWidth(120)
-        self.btn_refresh.setToolTip("从磁盘重新加载章节状态")
-        top_bar.addWidget(self.btn_refresh)
+        self.btn_refresh = QPushButton(self.tr("↻  刷新章节"))
+        self.btn_refresh.setMinimumWidth(120)  # 改为最小宽度,允许自动扩展
+        self.btn_refresh.setToolTip(self.tr("从磁盘重新加载章节状态"))
+        top_bar_2.addWidget(self.btn_refresh)
 
-        self.btn_regen = QPushButton("🔄  重新生成选中章节")
-        self.btn_regen.setFixedWidth(180)
+        self.btn_regen = QPushButton(self.tr("🔄  重新生成选中章节"))
+        self.btn_regen.setMinimumWidth(180)  # 改为最小宽度,允许自动扩展
         self.btn_regen.setEnabled(False)
-        self.btn_regen.setToolTip("在章节列表中选中要重新生成的章节，然后点击此按钮")
-        top_bar.addWidget(self.btn_regen)
+        self.btn_regen.setToolTip(self.tr("在章节列表中选中要重新生成的章节，然后点击此按钮"))
+        top_bar_2.addWidget(self.btn_regen)
 
-        self.btn_marketing = QPushButton("📢  生成营销内容")
-        self.btn_marketing.setFixedWidth(150)
-        self.btn_marketing.setToolTip("根据已完成的章节生成营销文案、标题和封面提示词")
+        self.btn_marketing = QPushButton(self.tr("📢  生成营销内容"))
+        self.btn_marketing.setMinimumWidth(150)  # 改为最小宽度,允许自动扩展
+        self.btn_marketing.setToolTip(self.tr("根据已完成的章节生成营销文案、标题和封面提示词"))
         self.btn_marketing.setProperty("cssClass", "info")
-        top_bar.addWidget(self.btn_marketing)
+        top_bar_2.addWidget(self.btn_marketing)
 
-        root.addLayout(top_bar)
+        top_bar_2.addStretch()  # 添加弹性空间,让按钮靠左对齐
+
+        root.addLayout(top_bar_2)
 
         # ---- 中部：章节列表 + 日志 ----
         splitter = QSplitter(Qt.Horizontal)
@@ -110,7 +118,7 @@ class ProgressTab(QWidget):
         # ---- 底部进度条 ----
         self.progress_bar = QProgressBar()
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("%v / %m 章  (%p%)")
+        self.progress_bar.setFormat(self.tr("%v / %m 章  (%p%)"))
         self.progress_bar.setValue(0)
         self.progress_bar.setFixedHeight(26)
         root.addWidget(self.progress_bar)
@@ -194,8 +202,8 @@ class ProgressTab(QWidget):
         target_chapters = (cfg.get("novel_config") or {}).get("target_chapters", 0)
         if target_chapters <= 0:
             QMessageBox.warning(
-                self, "配置错误",
-                "请先在「小说参数」中设置有效的目标章节数 (target_chapters)。",
+                self, self.tr("配置错误"),
+                self.tr("请先在「小说参数」中设置有效的目标章节数 (target_chapters)。"),
             )
             return
 
@@ -225,7 +233,7 @@ class ProgressTab(QWidget):
                                 completed_count += 1
                 if completed_count > 0 and not target_chapters_list:
                     self.log_viewer.append_log(
-                        f"检测到 {completed_count} 章已完成，将从断点续写。", "INFO"
+                        self.tr("检测到 {0} 章已完成，将从断点续写。").format(completed_count), "INFO"
                     )
             except Exception as e:
                 logging.warning(f"读取 summary.json 失败: {e}")
@@ -233,7 +241,7 @@ class ProgressTab(QWidget):
         if target_chapters_list:
             chapter_str = ", ".join(str(ch) for ch in target_chapters_list)
             self.log_viewer.append_log(
-                f"重新生成模式：将生成第 {chapter_str} 章", "INFO"
+                self.tr("重新生成模式：将生成第 {0} 章").format(chapter_str), "INFO"
             )
             self.progress_bar.setMaximum(len(target_chapters_list))
             self.progress_bar.setValue(0)
@@ -272,7 +280,7 @@ class ProgressTab(QWidget):
         if self._worker is not None:
             self._worker.stop()
         self.btn_stop.setEnabled(False)
-        self.log_viewer.append_log("已发送停止信号，等待当前章节完成后停止…", "WARNING")
+        self.log_viewer.append_log(self.tr("已发送停止信号，等待当前章节完成后停止…"), "WARNING")
 
     def _on_selection_changed(self):
         """章节列表选择变化时，更新重新生成按钮状态"""
@@ -281,22 +289,21 @@ class ProgressTab(QWidget):
         is_running = self._worker is not None
         self.btn_regen.setEnabled(len(selected) > 0 and not is_running)
         if selected:
-            self.btn_regen.setText(f"🔄  重新生成 {len(selected)} 章")
+            self.btn_regen.setText(self.tr("🔄  重新生成 {0} 章").format(len(selected)))
         else:
-            self.btn_regen.setText("🔄  重新生成选中章节")
+            self.btn_regen.setText(self.tr("🔄  重新生成选中章节"))
 
     def _on_regen(self):
         """重新生成选中的章节"""
         selected = self.chapter_list.get_selected_chapter_numbers()
         if not selected:
-            QMessageBox.information(self, "提示", "请先在章节列表中选中要重新生成的章节。")
+            QMessageBox.information(self, self.tr("提示"), self.tr("请先在章节列表中选中要重新生成的章节。"))
             return
 
         chapter_str = ", ".join(str(ch) for ch in selected)
         reply = QMessageBox.question(
-            self, "确认重新生成",
-            f"确定要重新生成以下 {len(selected)} 章吗？\n第 {chapter_str} 章\n\n"
-            "已有的章节内容将被覆盖。",
+            self, self.tr("确认重新生成"),
+            self.tr("确定要重新生成以下 {0} 章吗？\n第 {1} 章\n\n已有的章节内容将被覆盖。").format(len(selected), chapter_str),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
@@ -310,16 +317,16 @@ class ProgressTab(QWidget):
         # 检查是否有流水线正在运行
         if self._worker is not None:
             QMessageBox.warning(
-                self, "提示",
-                "流水线正在运行中，请等待完成后再生成营销内容。"
+                self, self.tr("提示"),
+                self.tr("流水线正在运行中，请等待完成后再生成营销内容。")
             )
             return
 
         # 检查是否有营销内容生成正在运行
         if self._marketing_worker is not None:
             QMessageBox.warning(
-                self, "提示",
-                "营销内容生成正在进行中，请稍候..."
+                self, self.tr("提示"),
+                self.tr("营销内容生成正在进行中，请稍候...")
             )
             return
 
@@ -332,16 +339,15 @@ class ProgressTab(QWidget):
 
         if not os.path.exists(summary_file):
             QMessageBox.warning(
-                self, "提示",
-                "未找到章节摘要文件，请先生成至少一章内容。"
+                self, self.tr("提示"),
+                self.tr("未找到章节摘要文件，请先生成至少一章内容。")
             )
             return
 
         # 确认生成
         reply = QMessageBox.question(
-            self, "确认生成营销内容",
-            "将根据已完成的章节生成营销文案、标题和封面提示词。\n\n"
-            "这可能需要几分钟时间，确定要继续吗？",
+            self, self.tr("确认生成营销内容"),
+            self.tr("将根据已完成的章节生成营销文案、标题和封面提示词。\n\n这可能需要几分钟时间，确定要继续吗？"),
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.Yes,
         )
@@ -364,9 +370,9 @@ class ProgressTab(QWidget):
 
         # 禁用按钮
         self.btn_marketing.setEnabled(False)
-        self.btn_marketing.setText("⏳  生成中...")
+        self.btn_marketing.setText(self.tr("⏳  生成中..."))
 
-        self.log_viewer.append_log("开始生成营销内容...", "INFO")
+        self.log_viewer.append_log(self.tr("开始生成营销内容..."), "INFO")
         self._marketing_worker.start()
 
     # ------------------------------------------------------------------
@@ -382,7 +388,7 @@ class ProgressTab(QWidget):
     def _on_chapter_failed(self, chapter_num: int, error_msg: str):
         self.chapter_list.set_chapter_status(chapter_num, "failed")
         self.log_viewer.append_log(
-            f"第 {chapter_num} 章失败: {error_msg}", "ERROR"
+            self.tr("第 {0} 章失败: {1}").format(chapter_num, error_msg), "ERROR"
         )
 
     def _on_progress_updated(self, current: int, total: int):
@@ -400,11 +406,11 @@ class ProgressTab(QWidget):
         completed = self.chapter_list.get_completed_count()
         if success:
             self.log_viewer.append_log(
-                f"流水线完成，共生成 {completed} 章。", "INFO"
+                self.tr("流水线完成，共生成 {0} 章。").format(completed), "INFO"
             )
         else:
             self.log_viewer.append_log(
-                f"流水线未完整完成，已生成 {completed} 章。", "WARNING"
+                self.tr("流水线未完整完成，已生成 {0} 章。").format(completed), "WARNING"
             )
 
         # 清理 Worker 引用
@@ -413,20 +419,20 @@ class ProgressTab(QWidget):
     def _on_marketing_finished(self, success: bool, message: str):
         """营销内容生成完成"""
         self.btn_marketing.setEnabled(True)
-        self.btn_marketing.setText("📢  生成营销内容")
+        self.btn_marketing.setText(self.tr("📢  生成营销内容"))
 
         if success:
             QMessageBox.information(
-                self, "生成成功",
+                self, self.tr("生成成功"),
                 message
             )
-            self.log_viewer.append_log("营销内容生成成功！", "INFO")
+            self.log_viewer.append_log(self.tr("营销内容生成成功！"), "INFO")
         else:
             QMessageBox.critical(
-                self, "生成失败",
-                f"营销内容生成失败：\n{message}"
+                self, self.tr("生成失败"),
+                self.tr("营销内容生成失败：\n{0}").format(message)
             )
-            self.log_viewer.append_log(f"营销内容生成失败: {message}", "ERROR")
+            self.log_viewer.append_log(self.tr("营销内容生成失败: {0}").format(message), "ERROR")
 
         # 清理 Worker 引用
         self._marketing_worker = None
@@ -442,4 +448,4 @@ class ProgressTab(QWidget):
         if not os.path.isabs(output_dir):
             output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
         if not open_directory(output_dir):
-            QMessageBox.warning(self, "目录不存在", f"输出目录不存在:\n{output_dir}")
+            QMessageBox.warning(self, self.tr("目录不存在"), self.tr("输出目录不存在:\n{0}").format(output_dir))

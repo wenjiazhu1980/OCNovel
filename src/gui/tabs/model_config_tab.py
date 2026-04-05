@@ -45,9 +45,9 @@ class ModelConfigTab(QWidget):
 
         # 硅基流动注册提示
         tip = QLabel(
-            '免费获取 API Key：'
+            self.tr('免费获取 API Key：'
             '<a href="https://cloud.siliconflow.cn/i/VFtAog0M">注册硅基流动账号</a>'
-            '（注册即送额度，支持 Qwen / DeepSeek 等开源模型）'
+            '（注册即送额度，支持 Qwen / DeepSeek 等开源模型）')
         )
         tip.setOpenExternalLinks(True)
         tip.setWordWrap(True)
@@ -69,8 +69,8 @@ class ModelConfigTab(QWidget):
         btn_bar = QHBoxLayout()
         btn_bar.setContentsMargins(16, 10, 16, 12)
         btn_bar.addStretch()
-        btn_load = QPushButton("加载配置")
-        btn_save = QPushButton("保存配置")
+        btn_load = QPushButton(self.tr("加载配置"))
+        btn_save = QPushButton(self.tr("保存配置"))
         btn_save.setProperty("cssClass", "primary")
         btn_load.clicked.connect(self._load)
         btn_save.clicked.connect(self._save)
@@ -103,97 +103,97 @@ class ModelConfigTab(QWidget):
 
     def _add_test_button(self, form: QFormLayout, provider_key: str):
         """在表单末尾添加测试连接按钮"""
-        btn = QPushButton("测试连接")
-        btn.setFixedWidth(120)
+        btn = QPushButton(self.tr("测试连接"))
+        btn.setMinimumWidth(120)  # 设置最小宽度而非固定宽度,允许按钮根据文本自动扩展
         btn.setProperty("cssClass", "primary")
         btn.clicked.connect(partial(self._on_test, provider_key))
         form.addRow("", btn)
         return btn
 
     def _build_gemini_group(self):
-        _, form = self._make_group("Gemini (仅支持 Google 官方 API)")
-        self._add_field(form, "API Key", "GEMINI_API_KEY", echo_password=True)
-        self._add_field(form, "大纲模型 ID", "GEMINI_OUTLINE_MODEL",
+        _, form = self._make_group(self.tr("Gemini (仅支持 Google 官方 API)"))
+        self._add_field(form, self.tr("API Key"), "GEMINI_API_KEY", echo_password=True)
+        self._add_field(form, self.tr("大纲模型 ID"), "GEMINI_OUTLINE_MODEL",
                         placeholder="gemini-2.5-pro")
-        self._add_field(form, "内容模型 ID", "GEMINI_CONTENT_MODEL",
+        self._add_field(form, self.tr("内容模型 ID"), "GEMINI_CONTENT_MODEL",
                         placeholder="gemini-2.5-flash")
-        self._add_field(form, "超时 (秒)", "GEMINI_TIMEOUT", placeholder="300")
-        self._add_field(form, "最大重试", "GEMINI_MAX_RETRIES", placeholder="3")
-        self._add_field(form, "重试延迟 (秒)", "GEMINI_RETRY_DELAY", placeholder="90")
+        self._add_field(form, self.tr("超时 (秒)"), "GEMINI_TIMEOUT", placeholder="300")
+        self._add_field(form, self.tr("最大重试"), "GEMINI_MAX_RETRIES", placeholder="3")
+        self._add_field(form, self.tr("重试延迟 (秒)"), "GEMINI_RETRY_DELAY", placeholder="90")
         self._add_test_button(form, "gemini")
 
     def _build_openai_embedding_group(self):
-        _, form = self._make_group("OpenAI Embedding")
-        self._add_field(form, "API Key", "OPENAI_EMBEDDING_API_KEY", echo_password=True)
-        self._add_field(form, "Base URL", "OPENAI_EMBEDDING_API_BASE",
+        _, form = self._make_group(self.tr("OpenAI Embedding"))
+        self._add_field(form, self.tr("API Key"), "OPENAI_EMBEDDING_API_KEY", echo_password=True)
+        self._add_field(form, self.tr("Base URL"), "OPENAI_EMBEDDING_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
-        self._add_field(form, "模型名称", "OPENAI_EMBEDDING_MODEL")
-        self._add_field(form, "超时 (秒)", "OPENAI_EMBEDDING_TIMEOUT", placeholder="60")
+        self._add_field(form, self.tr("模型名称"), "OPENAI_EMBEDDING_MODEL")
+        self._add_field(form, self.tr("超时 (秒)"), "OPENAI_EMBEDDING_TIMEOUT", placeholder="60")
         self._add_test_button(form, "openai_embedding")
 
     def _build_reranker_group(self):
-        _, form = self._make_group("Reranker（复用 Embedding 的 API Key / Base URL）")
-        self._add_field(form, "模型名称", "OPENAI_RERANKER_MODEL",
+        _, form = self._make_group(self.tr("Reranker（复用 Embedding 的 API Key / Base URL）"))
+        self._add_field(form, self.tr("模型名称"), "OPENAI_RERANKER_MODEL",
                         placeholder="Qwen/Qwen3-Reranker-0.6B")
-        cb = QCheckBox("启用 FP16")
+        cb = QCheckBox(self.tr("启用 FP16"))
         cb.setChecked(True)
-        form.addRow("精度", cb)
+        form.addRow(self.tr("精度"), cb)
         self._fields["OPENAI_RERANKER_USE_FP16"] = cb
 
     def _build_outline_model_group(self):
-        _, form = self._make_group("大纲模型")
-        self._add_field(form, "API Key", "OPENAI_OUTLINE_API_KEY", echo_password=True)
-        self._add_field(form, "Base URL", "OPENAI_OUTLINE_API_BASE",
+        _, form = self._make_group(self.tr("大纲模型"))
+        self._add_field(form, self.tr("API Key"), "OPENAI_OUTLINE_API_KEY", echo_password=True)
+        self._add_field(form, self.tr("Base URL"), "OPENAI_OUTLINE_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
-        self._add_field(form, "API 模式", "OPENAI_OUTLINE_API_MODE",
+        self._add_field(form, self.tr("API 模式"), "OPENAI_OUTLINE_API_MODE",
                         placeholder="auto (自动) / chat (Chat Completions) / responses (Responses API)")
-        self._add_field(form, "模型名称", "OPENAI_OUTLINE_MODEL",
+        self._add_field(form, self.tr("模型名称"), "OPENAI_OUTLINE_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
-        self._add_field(form, "超时 (秒)", "OPENAI_OUTLINE_TIMEOUT", placeholder="120")
+        self._add_field(form, self.tr("超时 (秒)"), "OPENAI_OUTLINE_TIMEOUT", placeholder="120")
         # 推理（Reasoning）设置
-        cb = QCheckBox("启用推理（Thinking/Reasoning）")
+        cb = QCheckBox(self.tr("启用推理（Thinking/Reasoning）"))
         form.addRow("", cb)
         self._fields["OPENAI_OUTLINE_REASONING_ENABLED"] = cb
         self._add_test_button(form, "openai_outline")
 
     def _build_content_model_group(self):
-        _, form = self._make_group("内容模型")
-        self._add_field(form, "API Key", "OPENAI_CONTENT_API_KEY", echo_password=True)
-        self._add_field(form, "Base URL", "OPENAI_CONTENT_API_BASE",
+        _, form = self._make_group(self.tr("内容模型"))
+        self._add_field(form, self.tr("API Key"), "OPENAI_CONTENT_API_KEY", echo_password=True)
+        self._add_field(form, self.tr("Base URL"), "OPENAI_CONTENT_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
-        self._add_field(form, "API 模式", "OPENAI_CONTENT_API_MODE",
+        self._add_field(form, self.tr("API 模式"), "OPENAI_CONTENT_API_MODE",
                         placeholder="auto (自动) / chat (Chat Completions) / responses (Responses API)")
-        self._add_field(form, "模型名称", "OPENAI_CONTENT_MODEL",
+        self._add_field(form, self.tr("模型名称"), "OPENAI_CONTENT_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
-        self._add_field(form, "超时 (秒)", "OPENAI_CONTENT_TIMEOUT", placeholder="180")
+        self._add_field(form, self.tr("超时 (秒)"), "OPENAI_CONTENT_TIMEOUT", placeholder="180")
         # 推理（Reasoning）设置
-        cb = QCheckBox("启用推理（Thinking/Reasoning）")
+        cb = QCheckBox(self.tr("启用推理（Thinking/Reasoning）"))
         form.addRow("", cb)
         self._fields["OPENAI_CONTENT_REASONING_ENABLED"] = cb
         self._add_test_button(form, "openai_content")
 
     def _build_fallback_group(self):
-        _, form = self._make_group("备用模型 (Fallback)")
-        self._add_field(form, "API Key", "FALLBACK_API_KEY", echo_password=True)
-        self._add_field(form, "Base URL", "FALLBACK_API_BASE",
+        _, form = self._make_group(self.tr("备用模型 (Fallback)"))
+        self._add_field(form, self.tr("API Key"), "FALLBACK_API_KEY", echo_password=True)
+        self._add_field(form, self.tr("Base URL"), "FALLBACK_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
-        self._add_field(form, "模型 ID", "FALLBACK_MODEL_ID",
+        self._add_field(form, self.tr("模型 ID"), "FALLBACK_MODEL_ID",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_test_button(form, "fallback")
 
     def _build_model_selection_group(self):
-        group = QGroupBox("模型选择")
+        group = QGroupBox(self.tr("模型选择"))
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         group.setLayout(form)
 
         self._outline_provider = QComboBox()
         self._outline_provider.addItems(PROVIDERS)
-        form.addRow("大纲生成提供商", self._outline_provider)
+        form.addRow(self.tr("大纲生成提供商"), self._outline_provider)
 
         self._content_provider = QComboBox()
         self._content_provider.addItems(PROVIDERS)
-        form.addRow("内容生成提供商", self._content_provider)
+        form.addRow(self.tr("内容生成提供商"), self._content_provider)
 
         self._layout.addWidget(group)
 
@@ -214,8 +214,8 @@ class ModelConfigTab(QWidget):
         """从 .env 和 config.json 加载配置到界面"""
         if not os.path.exists(self._env_path):
             if not silent:
-                QMessageBox.warning(self, "文件不存在",
-                                    f".env 文件不存在:\n{self._env_path}\n\n请通过菜单「文件 → 打开 .env 文件」选择正确路径。")
+                QMessageBox.warning(self, self.tr("文件不存在"),
+                                    self.tr(".env 文件不存在:\n{0}\n\n请通过菜单「文件 → 打开 .env 文件」选择正确路径。").format(self._env_path))
             return
         env = load_env(self._env_path)
 
@@ -263,7 +263,7 @@ class ModelConfigTab(QWidget):
         }
         save_config(self._config_path, cfg)
 
-        QMessageBox.information(self, "保存成功", "模型配置已保存。")
+        QMessageBox.information(self, self.tr("保存成功"), self.tr("模型配置已保存。"))
 
     # ── 连接测试 ─────────────────────────────────────────
 
@@ -318,9 +318,9 @@ class ModelConfigTab(QWidget):
     def _on_test_result(self, provider: str, success: bool, message: str):
         """处理测试结果"""
         if success:
-            QMessageBox.information(self, f"{provider} 测试", message)
+            QMessageBox.information(self, self.tr("{0} 测试").format(provider), message)
         else:
-            QMessageBox.warning(self, f"{provider} 测试", message)
+            QMessageBox.warning(self, self.tr("{0} 测试").format(provider), message)
 
     # ── 编辑锁定（保留滚动） ────────────────────────────
 

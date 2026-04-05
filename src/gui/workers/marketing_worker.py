@@ -1,8 +1,8 @@
-"""后台营销内容生成 Worker：在 QThread 中执行营销内容生成"""
+"""后台营销内容生成 Worker:在 QThread 中执行营销内容生成"""
 import os
 import json
 import logging
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QCoreApplication
 
 from src.gui.utils.log_handler import SignalLogHandler
 
@@ -17,7 +17,7 @@ def create_model(model_config: dict):
         from src.models.openai_model import OpenAIModel
         return OpenAIModel(model_config)
     else:
-        raise ValueError(f"不支持的模型类型: {model_type}")
+        raise ValueError(QCoreApplication.translate("MarketingWorker", "不支持的模型类型: {0}").format(model_type))
 
 
 class MarketingWorker(QThread):
@@ -61,11 +61,11 @@ class MarketingWorker(QThread):
             root_logger = logging.getLogger()
             root_logger.addHandler(handler)
 
-            logger.info("开始生成营销内容...")
+            logger.info(QCoreApplication.translate("MarketingWorker", "开始生成营销内容..."))
 
             # ---- 4. 创建内容生成模型 ----
             content_model = create_model(config.get_model_config("content_model"))
-            logger.info("AI模型初始化完成")
+            logger.info(QCoreApplication.translate("MarketingWorker", "AI模型初始化完成"))
 
             # ---- 5. 创建标题生成器 ----
             from src.generators.title_generator import TitleGenerator
@@ -83,9 +83,9 @@ class MarketingWorker(QThread):
                     with open(summary_file, "r", encoding="utf-8") as f:
                         summaries = json.load(f)
                         chapter_summaries = list(summaries.values())
-                    logger.info(f"已加载 {len(chapter_summaries)} 条章节摘要")
+                    logger.info(QCoreApplication.translate("MarketingWorker", "已加载 {0} 条章节摘要").format(len(chapter_summaries)))
                 except Exception as e:
-                    logger.warning(f"加载摘要文件时出错: {e}")
+                    logger.warning(QCoreApplication.translate("MarketingWorker", "加载摘要文件时出错: {0}").format(e))
 
             # ---- 7. 准备小说配置 ----
             novel_config = {
@@ -98,19 +98,19 @@ class MarketingWorker(QThread):
             # ---- 8. 一键生成所有营销内容 ----
             result = generator.one_click_generate(novel_config, chapter_summaries)
 
-            logger.info("营销内容生成完成！")
-            logger.info(f"结果已保存到：{result['saved_file']}")
+            logger.info(QCoreApplication.translate("MarketingWorker", "营销内容生成完成!"))
+            logger.info(QCoreApplication.translate("MarketingWorker", "结果已保存到:{0}").format(result['saved_file']))
 
             # 构建结果消息
-            result_msg = f"营销内容已保存到：\n{result['saved_file']}\n\n"
-            result_msg += "【标题方案】\n"
+            result_msg = QCoreApplication.translate("MarketingWorker", "营销内容已保存到:\n{0}\n\n").format(result['saved_file'])
+            result_msg += QCoreApplication.translate("MarketingWorker", "【标题方案】\n")
             for platform, title in result["titles"].items():
                 result_msg += f"{platform}: {title}\n"
 
             self.generation_finished.emit(True, result_msg)
 
         except Exception as exc:
-            error_msg = f"生成营销内容时出错: {exc}"
+            error_msg = QCoreApplication.translate("MarketingWorker", "生成营销内容时出错: {0}").format(exc)
             logger.error(error_msg, exc_info=True)
             self.generation_finished.emit(False, error_msg)
         finally:
