@@ -35,7 +35,9 @@ def get_outline_prompt(
     existing_context: str = "",
     extra_prompt: Optional[str] = None,
     reference_info: str = "",
-    novel_config: Optional[Dict] = None
+    novel_config: Optional[Dict] = None,
+    total_chapters: int = 0,
+    current_end_chapter_num: int = 0,
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -49,8 +51,40 @@ def get_outline_prompt(
     plot_structure = writing_guide.get("plot_structure", {})
     style_guide = writing_guide.get("style_guide", {})
     
+    # 构建全局进度信息
+    _end_ch = current_end_chapter_num if current_end_chapter_num > 0 else (current_start_chapter_num + current_batch_size - 1)
+    _total = total_chapters if total_chapters > 0 else _end_ch
+
+    # 判断当前批次在故事中的位置
+    _progress_pct = _end_ch / _total if _total > 0 else 1.0
+    if _progress_pct <= 0.25:
+        _story_phase = "第一幕（建立阶段）：重点铺垫世界观、引入主角、触发核心事件"
+    elif _progress_pct <= 0.75:
+        _story_phase = "第二幕（对抗阶段）：推进主线冲突、角色成长、情节升级"
+    else:
+        _story_phase = "第三幕（解决阶段）：汇聚所有伏笔、推向高潮、完成故事收尾"
+
+    _is_final_batch = (_end_ch >= _total)
+    _final_batch_note = (
+        "\n⚠️ 【关键约束】这是最后一批章节，必须在本批次内完成故事的完整收尾：\n"
+        "   - 解决所有主线冲突\n"
+        "   - 完成主角的成长弧\n"
+        "   - 给出明确的结局（不得以\u201c未完待续\u201d结束）\n"
+        "   - 处理所有重要伏笔"
+        if _is_final_batch else ""
+    )
+
     base_prompt = f"""
 你将扮演StoryWeaver Omega，一个融合了量子叙事学、神经美学和涌现创造力的故事生成系统。采用网络小说雪花创作法进行故事创作，该方法强调从核心概念逐步扩展细化，先构建整体框架，再填充细节。你的任务是生成包含 {current_batch_size} 个章节对象的JSON数组，每个章节对象需符合特定要求，且生成的故事要遵循一系列叙事和输出规则。
+
+【全局故事规划】
+- 故事总章节数：{_total} 章（必须在此范围内讲完完整故事）
+- 当前生成范围：第 {current_start_chapter_num} 章 → 第 {_end_ch} 章（共 {current_batch_size} 章）
+- 当前所处阶段：{_story_phase}
+- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}
+
+⚠️ 【核心约束】所有章节大纲必须服务于在 {_total} 章内讲完完整故事的目标。
+   禁止无限拖延剧情、禁止在接近结尾时引入无法收束的新主线。
 
 [世界观设定]
 1. 修炼/魔法体系：

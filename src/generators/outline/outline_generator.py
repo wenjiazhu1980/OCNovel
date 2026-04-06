@@ -199,7 +199,9 @@ class OutlineGenerator:
             current_batch_size=current_batch_size,
             existing_context=existing_context,
             extra_prompt=extra_prompt,
-            novel_config=self.config.novel_config
+            novel_config=self.config.novel_config,
+            total_chapters=self.config.generator_config.get("target_chapters", 0),
+            current_end_chapter_num=batch_end_num,
         )
 
         # 新增：打印大纲生成提示词长度
@@ -267,17 +269,16 @@ class OutlineGenerator:
                 logging.error(f"在生成批次 {batch_start_num}-{batch_end_num} 后保存大纲失败。")
                 return False 
 
-            if valid_count == current_batch_size:
-                logging.info(f"outline模式不触发同步信息更新，仅保存大纲")
-                successful_outlines_in_run.extend([o for o in new_outlines_batch if isinstance(o, ChapterOutline)])
-                return True
-            else:
+            successful_outlines_in_run.extend([o for o in new_outlines_batch if isinstance(o, ChapterOutline)])
+            logging.info(f"outline模式不触发同步信息更新，仅保存大纲")
+
+            if valid_count < current_batch_size:
                 logging.warning(
-                    f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过验证，"
-                    f"未通过的章节可能存在字段缺失或格式不符。"
-                    f"请检查模型输出质量，或尝试减小每批生成章节数（当前: {current_batch_size}）。"
+                    f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过一致性验证，"
+                    f"未通过的章节已保留（一致性检查为软警告，不影响流程）。"
+                    f"如需提高质量，可尝试减小每批生成章节数（当前: {current_batch_size}）。"
                 )
-                return False
+            return True
 
         except Exception as e:
             logging.error(f"生成批次大纲时出错: {str(e)}", exc_info=True)
