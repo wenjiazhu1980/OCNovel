@@ -4,130 +4,229 @@
 <context>
     <name>ChapterListWidget</name>
     <message>
+        <location filename="../widgets/chapter_list.py" line="45"/>
+        <location filename="../widgets/chapter_list.py" line="87"/>
         <source>  {0}  第 {1} 章</source>
-        <translation type="vanished">  {0}  Chapter {1}</translation>
+        <translation>  {0}  Chapter {1}</translation>
     </message>
 </context>
 <context>
     <name>MainWindow</name>
     <message>
+        <location filename="../main_window.py" line="22"/>
         <source>OCNovel - AI小说生成系统</source>
-        <translation type="vanished">OCNovel - AI Novel Generation System</translation>
+        <translation>OCNovel - AI Novel Generation System</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="136"/>
         <source>OCNovel - {0}  [{1}]</source>
-        <translation type="vanished">OCNovel - {0}  [{1}]</translation>
+        <translation>OCNovel - {0}  [{1}]</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="40"/>
         <source>文件</source>
-        <translation type="vanished">File</translation>
+        <translation>File</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="42"/>
         <source>打开配置文件…</source>
-        <translation type="vanished">Open Config File...</translation>
+        <translation>Open Config File...</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="47"/>
         <source>打开 .env 文件…</source>
-        <translation type="vanished">Open .env File...</translation>
+        <translation>Open .env File...</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="53"/>
         <source>打开配置目录</source>
-        <translation type="vanished">Open Config Directory</translation>
+        <translation>Open Config Directory</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="58"/>
         <source>语言</source>
-        <translation type="vanished">Language</translation>
+        <translation>Language</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="129"/>
         <source>语言已更改</source>
-        <translation type="vanished">Language Changed</translation>
+        <translation>Language Changed</translation>
     </message>
     <message>
         <source>语言设置已保存。\n请重启应用以应用新的语言设置。</source>
         <translation type="vanished">Language setting saved.\nPlease restart the application to apply the new language.</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="73"/>
         <source>选择配置文件</source>
-        <translation type="vanished">Select Config File</translation>
+        <translation>Select Config File</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="75"/>
         <source>JSON 文件 (*.json);;所有文件 (*)</source>
-        <translation type="vanished">JSON Files (*.json);;All Files (*)</translation>
+        <translation>JSON Files (*.json);;All Files (*)</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="88"/>
         <source>选择 .env 文件</source>
-        <translation type="vanished">Select .env File</translation>
+        <translation>Select .env File</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="89"/>
         <source>Env 文件 (*.env)</source>
-        <translation type="vanished">Env Files (*.env)</translation>
+        <translation>Env Files (*.env)</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="89"/>
         <source>所有文件 (*)</source>
-        <translation type="vanished">All Files (*)</translation>
+        <translation>All Files (*)</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="111"/>
         <source>目录不存在</source>
-        <translation type="vanished">Directory Not Found</translation>
+        <translation>Directory Not Found</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="111"/>
         <source>目录不存在: {0}</source>
-        <translation type="vanished">Directory not found: {0}</translation>
+        <translation>Directory not found: {0}</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="131"/>
+        <source>语言设置已保存。
+请重启应用以应用新的语言设置。</source>
+        <translation>Language settings saved.
+Please restart the application to apply the new language settings.</translation>
+    </message>
+    <message>
+        <location filename="../main_window.py" line="155"/>
         <source>  模型配置  </source>
-        <translation type="vanished">  Model Config  </translation>
+        <translation>  Model Config  </translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="159"/>
         <source>  小说参数  </source>
-        <translation type="vanished">  Novel Parameters  </translation>
+        <translation>  Novel Parameters  </translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="163"/>
         <source>  创作进度  </source>
-        <translation type="vanished">  Progress  </translation>
+        <translation>  Progress  </translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="169"/>
+        <location filename="../main_window.py" line="180"/>
         <source>就绪</source>
-        <translation type="vanished">Ready</translation>
+        <translation>Ready</translation>
     </message>
     <message>
+        <location filename="../main_window.py" line="180"/>
         <source>生成中…</source>
-        <translation type="vanished">Generating...</translation>
+        <translation>Generating...</translation>
     </message>
 </context>
 <context>
     <name>MarketingWorker</name>
     <message>
+        <location filename="../workers/marketing_worker.py" line="23"/>
         <source>不支持的模型类型: {0}</source>
-        <translation type="vanished">Unsupported model type: {0}</translation>
+        <translation>Unsupported model type: {0}</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="67"/>
         <source>开始生成营销内容...</source>
-        <translation type="vanished">Starting marketing content generation...</translation>
+        <translation>Starting marketing content generation...</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="71"/>
         <source>AI模型初始化完成</source>
-        <translation type="vanished">AI model initialization complete</translation>
+        <translation>AI model initialization complete</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="89"/>
         <source>已加载 {0} 条章节摘要</source>
-        <translation type="vanished">Loaded {0} chapter summaries</translation>
+        <translation>Loaded {0} chapter summaries</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="91"/>
         <source>加载摘要文件时出错: {0}</source>
-        <translation type="vanished">Error loading summary file: {0}</translation>
+        <translation>Error loading summary file: {0}</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="104"/>
         <source>营销内容生成完成!</source>
-        <translation type="vanished">Marketing content generation complete!</translation>
+        <translation>Marketing content generation complete!</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="105"/>
         <source>结果已保存到:{0}</source>
-        <translation type="vanished">Results saved to: {0}</translation>
+        <translation>Results saved to: {0}</translation>
     </message>
     <message>
+        <location filename="../workers/marketing_worker.py" line="108"/>
+        <source>营销内容已保存到:
+{0}
+
+</source>
+        <translation>Marketing content saved to:
+{0}
+
+</translation>
+    </message>
+    <message>
+        <location filename="../workers/marketing_worker.py" line="110"/>
+        <source>【标题方案】
+</source>
+        <translation>【Title Options】
+</translation>
+    </message>
+    <message>
+        <location filename="../workers/marketing_worker.py" line="116"/>
         <source>生成营销内容时出错: {0}</source>
-        <translation type="vanished">Error generating marketing content: {0}</translation>
+        <translation>Error generating marketing content: {0}</translation>
+    </message>
+</context>
+<context>
+    <name>MergeWorker</name>
+    <message>
+        <location filename="../workers/merge_worker.py" line="23"/>
+        <source>不支持的模型类型: {0}</source>
+        <translation>Unsupported model type: {0}</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="90"/>
+        <source>收到停止信号,合并中止。</source>
+        <translation>Stop signal received, merge aborted.</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="91"/>
+        <source>用户取消</source>
+        <translation>User cancelled</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="94"/>
+        <source>开始合并所有章节...</source>
+        <translation>Starting to merge all chapters...</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="98"/>
+        <source>章节合并成功: {0}</source>
+        <translation>Chapter merge successful: {0}</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="101"/>
+        <source>章节合并未成功,请检查日志</source>
+        <translation>Chapter merge unsuccessful, please check logs</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="102"/>
+        <source>合并失败,请检查日志</source>
+        <translation>Merge failed, please check logs</translation>
+    </message>
+    <message>
+        <location filename="../workers/merge_worker.py" line="105"/>
+        <source>合并异常: {0}</source>
+        <translation>Merge exception: {0}</translation>
     </message>
 </context>
 <context>
@@ -228,7 +327,7 @@
     <message>
         <location filename="../tabs/model_config_tab.py" line="147"/>
         <source>Reranker（复用 Embedding 的 API Key / Base URL）</source>
-        <translation type="unfinished"></translation>
+        <translation>Reranker (Reuse Embedding API Key / Base URL)</translation>
     </message>
     <message>
         <location filename="../tabs/model_config_tab.py" line="150"/>
@@ -248,6 +347,7 @@
     <message>
         <location filename="../tabs/model_config_tab.py" line="160"/>
         <location filename="../tabs/model_config_tab.py" line="176"/>
+        <location filename="../tabs/model_config_tab.py" line="194"/>
         <source>API 模式</source>
         <translation>API Mode</translation>
     </message>
@@ -255,7 +355,7 @@
         <location filename="../tabs/model_config_tab.py" line="166"/>
         <location filename="../tabs/model_config_tab.py" line="182"/>
         <source>启用推理（Thinking/Reasoning）</source>
-        <translation type="unfinished"></translation>
+        <translation>Enable Reasoning (Thinking/Reasoning)</translation>
     </message>
     <message>
         <location filename="../tabs/model_config_tab.py" line="172"/>
@@ -273,51 +373,49 @@
         <translation>Model ID</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="194"/>
-        <source>API 模式</source>
-        <translation>API Mode</translation>
-    </message>
-    <message>
-        <location filename="../tabs/model_config_tab.py" line="197"/>
+        <location filename="../tabs/model_config_tab.py" line="199"/>
         <source>模型选择</source>
         <translation>Model Selection</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="204"/>
+        <location filename="../tabs/model_config_tab.py" line="206"/>
         <source>大纲生成提供商</source>
         <translation>Outline Generation Provider</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="208"/>
+        <location filename="../tabs/model_config_tab.py" line="210"/>
         <source>内容生成提供商</source>
         <translation>Content Generation Provider</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="229"/>
+        <location filename="../tabs/model_config_tab.py" line="231"/>
         <source>文件不存在</source>
         <translation>File Not Found</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="230"/>
+        <location filename="../tabs/model_config_tab.py" line="232"/>
         <source>.env 文件不存在:
 {0}
 
 请通过菜单「文件 → 打开 .env 文件」选择正确路径。</source>
-        <translation type="unfinished"></translation>
+        <translation>.env file not found:
+{0}
+
+Please select the correct path via menu "File → Open .env File".</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="278"/>
+        <location filename="../tabs/model_config_tab.py" line="280"/>
         <source>保存成功</source>
         <translation>Saved Successfully</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="278"/>
+        <location filename="../tabs/model_config_tab.py" line="280"/>
         <source>模型配置已保存。</source>
         <translation>Model configuration saved.</translation>
     </message>
     <message>
-        <location filename="../tabs/model_config_tab.py" line="338"/>
         <location filename="../tabs/model_config_tab.py" line="340"/>
+        <location filename="../tabs/model_config_tab.py" line="342"/>
         <source>{0} 测试</source>
         <translation>{0} Test</translation>
     </message>
@@ -325,670 +423,1033 @@
 <context>
     <name>NovelParamsTab</name>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="88"/>
+        <location filename="../tabs/novel_params_tab.py" line="618"/>
         <source>新建配置</source>
-        <translation type="vanished">New Config</translation>
+        <translation>New Config</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="92"/>
         <source>加载配置</source>
-        <translation type="vanished">Load Config</translation>
+        <translation>Load Config</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="93"/>
         <source>保存配置</source>
-        <translation type="vanished">Save Config</translation>
+        <translation>Save Config</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="105"/>
         <source>基本信息</source>
-        <translation type="vanished">Basic Information</translation>
+        <translation>Basic Information</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="120"/>
         <source>标题</source>
-        <translation type="vanished">Title</translation>
+        <translation>Title</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="121"/>
         <source>类型</source>
-        <translation type="vanished">Type</translation>
+        <translation>Type</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="122"/>
         <source>主题</source>
-        <translation type="vanished">Theme</translation>
+        <translation>Theme</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="123"/>
         <source>风格</source>
-        <translation type="vanished">Style</translation>
+        <translation>Style</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="124"/>
         <source>目标章节数</source>
-        <translation type="vanished">Target Chapters</translation>
+        <translation>Target Chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="125"/>
         <source>章节字数</source>
-        <translation type="vanished">Chapter Length</translation>
+        <translation>Chapter Length</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="133"/>
+        <source>写作指南（展开编辑）</source>
+        <translation>Writing Guide (Expand to Edit)</translation>
+    </message>
+    <message>
+        <location filename="../tabs/novel_params_tab.py" line="141"/>
         <source>输入简短故事创意,如:废柴少年意外获得上古传承,踏上逆天修仙之路</source>
-        <translation type="vanished">Enter a brief story idea, e.g.: A young underdog accidentally obtains an ancient legacy and embarks on a path of cultivation</translation>
+        <translation>Enter a brief story idea, e.g.: A young underdog accidentally obtains an ancient legacy and embarks on a path of cultivation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="142"/>
+        <location filename="../tabs/novel_params_tab.py" line="977"/>
         <source>自动生成写作指南</source>
-        <translation type="vanished">Auto-Generate Writing Guide</translation>
+        <translation>Auto-Generate Writing Guide</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="144"/>
         <source>根据故事创意和基本信息调用大纲模型自动生成</source>
-        <translation type="vanished">Automatically generate using outline model based on story idea and basic information</translation>
+        <translation>Automatically generate using outline model based on story idea and basic information</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="151"/>
         <source>世界观</source>
-        <translation type="vanished">World Building</translation>
+        <translation>World Building</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="156"/>
         <source>修炼体系</source>
-        <translation type="vanished">Cultivation System</translation>
+        <translation>Cultivation System</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="157"/>
         <source>社会体系</source>
-        <translation type="vanished">Social System</translation>
+        <translation>Social System</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="158"/>
+        <location filename="../tabs/novel_params_tab.py" line="167"/>
         <source>背景</source>
-        <translation type="vanished">Background</translation>
+        <translation>Background</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="162"/>
         <source>主角设定</source>
-        <translation type="vanished">Protagonist Setup</translation>
+        <translation>Protagonist Setup</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="168"/>
         <source>初始性格</source>
-        <translation type="vanished">Initial Personality</translation>
+        <translation>Initial Personality</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="169"/>
         <source>成长路线</source>
-        <translation type="vanished">Growth Path</translation>
+        <translation>Growth Path</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="173"/>
         <source>配角与反派(JSON)</source>
-        <translation type="vanished">Supporting Roles &amp; Antagonists (JSON)</translation>
+        <translation>Supporting Roles &amp; Antagonists (JSON)</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="179"/>
         <source>配角 (supporting_roles)</source>
-        <translation type="vanished">Supporting Roles</translation>
+        <translation>Supporting Roles</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="180"/>
         <source>反派 (antagonists)</source>
-        <translation type="vanished">Antagonists</translation>
+        <translation>Antagonists</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="184"/>
         <source>剧情结构</source>
-        <translation type="vanished">Plot Structure</translation>
+        <translation>Plot Structure</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="190"/>
         <source>第一幕 - setup</source>
-        <translation type="vanished">Act One - Setup</translation>
+        <translation>Act One - Setup</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="191"/>
         <source>第一幕 - inciting_incident</source>
-        <translation type="vanished">Act One - Inciting Incident</translation>
+        <translation>Act One - Inciting Incident</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="192"/>
         <source>第一幕 - first_plot_point</source>
-        <translation type="vanished">Act One - First Plot Point</translation>
+        <translation>Act One - First Plot Point</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="199"/>
         <source>第二幕 - rising_action</source>
-        <translation type="vanished">Act Two - Rising Action</translation>
+        <translation>Act Two - Rising Action</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="200"/>
         <source>第二幕 - midpoint</source>
-        <translation type="vanished">Act Two - Midpoint</translation>
+        <translation>Act Two - Midpoint</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="201"/>
         <source>第二幕 - complications</source>
-        <translation type="vanished">Act Two - Complications</translation>
+        <translation>Act Two - Complications</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="202"/>
         <source>第二幕 - darkest_moment</source>
-        <translation type="vanished">Act Two - Darkest Moment</translation>
+        <translation>Act Two - Darkest Moment</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="203"/>
         <source>第二幕 - second_plot_point</source>
-        <translation type="vanished">Act Two - Second Plot Point</translation>
+        <translation>Act Two - Second Plot Point</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="208"/>
         <source>第三幕 - climax</source>
-        <translation type="vanished">Act Three - Climax</translation>
+        <translation>Act Three - Climax</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="209"/>
         <source>第三幕 - resolution</source>
-        <translation type="vanished">Act Three - Resolution</translation>
+        <translation>Act Three - Resolution</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="210"/>
         <source>第三幕 - denouement</source>
-        <translation type="vanished">Act Three - Denouement</translation>
+        <translation>Act Three - Denouement</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="214"/>
         <source>风格指南</source>
-        <translation type="vanished">Style Guide</translation>
+        <translation>Style Guide</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="218"/>
         <source>tone(基调)</source>
-        <translation type="vanished">Tone</translation>
+        <translation>Tone</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="219"/>
         <source>pacing(节奏)</source>
-        <translation type="vanished">Pacing</translation>
+        <translation>Pacing</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="228"/>
         <source>生成配置</source>
-        <translation type="vanished">Generation Config</translation>
+        <translation>Generation Config</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="232"/>
         <source>大纲生成</source>
-        <translation type="vanished">Outline Generation</translation>
+        <translation>Outline Generation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="237"/>
         <source>每次 API 调用生成的章节数</source>
-        <translation type="vanished">Number of chapters generated per API call</translation>
+        <translation>Number of chapters generated per API call</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="238"/>
         <source>每批生成章节数</source>
-        <translation type="vanished">Chapters per Batch</translation>
+        <translation>Chapters per Batch</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="243"/>
         <source>主批次大小,超长大纲(400+章)建议设为 200</source>
-        <translation type="vanished">Main batch size, recommended 200 for long outlines (400+ chapters)</translation>
+        <translation>Main batch size, recommended 200 for long outlines (400+ chapters)</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="244"/>
         <source>主批次大小</source>
-        <translation type="vanished">Main Batch Size</translation>
+        <translation>Main Batch Size</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="248"/>
         <source>生成大纲时参考的前文章节数,章节越多上下文越丰富但 token 消耗更大</source>
-        <translation type="vanished">Number of previous chapters to reference when generating outline, more chapters = richer context but higher token consumption</translation>
+        <translation>Number of previous chapters to reference when generating outline, more chapters = richer context but higher token consumption</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="249"/>
         <source>上下文章节数</source>
-        <translation type="vanished">Context Chapters</translation>
+        <translation>Context Chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="253"/>
         <source>在上下文中详细展示的最近章节数</source>
-        <translation type="vanished">Number of recent chapters to show in detail in context</translation>
+        <translation>Number of recent chapters to show in detail in context</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="254"/>
         <source>详细展示章节数</source>
-        <translation type="vanished">Detailed Display Chapters</translation>
+        <translation>Detailed Display Chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="259"/>
         <source>验证</source>
-        <translation type="vanished">Validation</translation>
+        <translation>Validation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="261"/>
         <source>逻辑检查</source>
-        <translation type="vanished">Logic Check</translation>
+        <translation>Logic Check</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="262"/>
         <source>一致性检查</source>
-        <translation type="vanished">Consistency Check</translation>
+        <translation>Consistency Check</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="263"/>
         <source>重复检查</source>
-        <translation type="vanished">Duplicate Check</translation>
+        <translation>Duplicate Check</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="270"/>
         <source>人性化参数</source>
-        <translation type="vanished">Humanization Parameters</translation>
+        <translation>Humanization Parameters</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="288"/>
         <source>描写简化</source>
-        <translation type="vanished">Description Simplification</translation>
+        <translation>Description Simplification</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="289"/>
         <source>情感增强</source>
-        <translation type="vanished">Emotion Enhancement</translation>
+        <translation>Emotion Enhancement</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="290"/>
         <source>Humanizer-zh 增强</source>
-        <translation type="vanished">Humanizer-zh Enhancement</translation>
+        <translation>Humanizer-zh Enhancement</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="291"/>
         <source>启用 Humanizer-zh 人性化增强规则,降低 AI 写作痕迹</source>
-        <translation type="vanished">Enable Humanizer-zh humanization rules to reduce AI writing traces</translation>
+        <translation>Enable Humanizer-zh humanization rules to reduce AI writing traces</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="307"/>
         <source>知识库配置</source>
-        <translation type="vanished">Knowledge Base Config</translation>
+        <translation>Knowledge Base Config</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="314"/>
         <source>添加文件</source>
-        <translation type="vanished">Add Files</translation>
+        <translation>Add Files</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="315"/>
         <source>删除选中</source>
-        <translation type="vanished">Delete Selected</translation>
+        <translation>Delete Selected</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="327"/>
+        <location filename="../tabs/novel_params_tab.py" line="416"/>
         <source>参考文件</source>
-        <translation type="vanished">Reference Files</translation>
+        <translation>Reference Files</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="335"/>
         <source>分块大小</source>
-        <translation type="vanished">Chunk Size</translation>
+        <translation>Chunk Size</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="336"/>
         <source>分块重叠</source>
-        <translation type="vanished">Chunk Overlap</translation>
+        <translation>Chunk Overlap</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="344"/>
         <source>仿写配置(展开编辑)</source>
-        <translation type="vanished">Imitation Config (Expand to Edit)</translation>
+        <translation>Imitation Config (Expand to Edit)</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="350"/>
         <source>自动仿写</source>
-        <translation type="vanished">Auto Imitation</translation>
+        <translation>Auto Imitation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="353"/>
         <source>启用仿写功能</source>
-        <translation type="vanished">Enable Imitation</translation>
+        <translation>Enable Imitation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="356"/>
         <source>自动仿写(生成后自动执行)</source>
-        <translation type="vanished">Auto Imitation (Execute after generation)</translation>
+        <translation>Auto Imitation (Execute after generation)</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="359"/>
         <source>对所有章节触发</source>
-        <translation type="vanished">Trigger for all chapters</translation>
+        <translation>Trigger for all chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="363"/>
         <source>默认风格</source>
-        <translation type="vanished">Default Style</translation>
+        <translation>Default Style</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="367"/>
         <source>输出后缀</source>
-        <translation type="vanished">Output Suffix</translation>
+        <translation>Output Suffix</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="369"/>
         <source>备份原文</source>
-        <translation type="vanished">Backup Original</translation>
+        <translation>Backup Original</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="375"/>
         <source>风格源列表</source>
-        <translation type="vanished">Style Source List</translation>
+        <translation>Style Source List</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="386"/>
         <source>添加</source>
-        <translation type="vanished">Add</translation>
+        <translation>Add</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="387"/>
         <source>删除</source>
-        <translation type="vanished">Delete</translation>
+        <translation>Delete</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="399"/>
         <source>风格详情</source>
-        <translation type="vanished">Style Details</translation>
+        <translation>Style Details</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="402"/>
         <source>风格名称</source>
-        <translation type="vanished">Style Name</translation>
+        <translation>Style Name</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="404"/>
         <source>名称</source>
-        <translation type="vanished">Name</translation>
+        <translation>Name</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="410"/>
+        <location filename="../tabs/novel_params_tab.py" line="445"/>
+        <location filename="../tabs/novel_params_tab.py" line="577"/>
         <source>浏览</source>
-        <translation type="vanished">Browse</translation>
+        <translation>Browse</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="419"/>
         <source>风格描述</source>
-        <translation type="vanished">Style Description</translation>
+        <translation>Style Description</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="421"/>
         <source>描述</source>
-        <translation type="vanished">Description</translation>
+        <translation>Description</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="424"/>
         <source>额外仿写提示词</source>
-        <translation type="vanished">Extra Imitation Prompt</translation>
+        <translation>Extra Imitation Prompt</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="426"/>
         <source>额外提示词</source>
-        <translation type="vanished">Extra Prompt</translation>
+        <translation>Extra Prompt</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="436"/>
         <source>手动仿写</source>
-        <translation type="vanished">Manual Imitation</translation>
+        <translation>Manual Imitation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="439"/>
         <source>启用手动仿写</source>
-        <translation type="vanished">Enable Manual Imitation</translation>
+        <translation>Enable Manual Imitation</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="451"/>
+        <location filename="../tabs/novel_params_tab.py" line="583"/>
         <source>输出目录</source>
-        <translation type="vanished">Output Directory</translation>
+        <translation>Output Directory</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="456"/>
         <source>质量控制</source>
-        <translation type="vanished">Quality Control</translation>
+        <translation>Quality Control</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="463"/>
         <source>最低风格相似度</source>
-        <translation type="vanished">Minimum Style Similarity</translation>
+        <translation>Minimum Style Similarity</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="467"/>
         <source>最大重试次数</source>
-        <translation type="vanished">Max Retries</translation>
+        <translation>Max Retries</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="469"/>
         <source>内容保留检查</source>
-        <translation type="vanished">Content Preservation Check</translation>
+        <translation>Content Preservation Check</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="470"/>
         <source>风格一致性检查</source>
-        <translation type="vanished">Style Consistency Check</translation>
+        <translation>Style Consistency Check</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="478"/>
         <source>选择仿写输出目录</source>
-        <translation type="vanished">Select Imitation Output Directory</translation>
+        <translation>Select Imitation Output Directory</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="500"/>
+        <location filename="../tabs/novel_params_tab.py" line="560"/>
         <source>(未命名)</source>
-        <translation type="vanished">(Untitled)</translation>
+        <translation>(Untitled)</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="506"/>
         <source>新风格{0}</source>
-        <translation type="vanished">New Style {0}</translation>
+        <translation>New Style {0}</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="564"/>
         <source>选择风格参考文件</source>
-        <translation type="vanished">Select Style Reference File</translation>
+        <translation>Select Style Reference File</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="564"/>
         <source>文本文件 (*.txt);;所有文件 (*)</source>
-        <translation type="vanished">Text Files (*.txt);;All Files (*)</translation>
+        <translation>Text Files (*.txt);;All Files (*)</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="572"/>
         <source>输出配置</source>
-        <translation type="vanished">Output Config</translation>
+        <translation>Output Config</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="591"/>
         <source>选择参考文件</source>
-        <translation type="vanished">Select Reference Files</translation>
+        <translation>Select Reference Files</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="601"/>
         <source>选择输出目录</source>
-        <translation type="vanished">Select Output Directory</translation>
+        <translation>Select Output Directory</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="621"/>
+        <source>将备份当前配置文件并创建空白配置。
+当前配置会保存为 config.json.bak.{时间戳}
+
+确定继续?</source>
+        <translation>Will backup current config file and create a blank config.
+Current config will be saved as config.json.bak.{timestamp}
+
+Continue?</translation>
+    </message>
+    <message>
+        <location filename="../tabs/novel_params_tab.py" line="635"/>
         <source>备份失败</source>
-        <translation type="vanished">Backup Failed</translation>
+        <translation>Backup Failed</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="635"/>
         <source>无法备份配置文件: {0}</source>
-        <translation type="vanished">Failed to backup config file: {0}</translation>
+        <translation>Failed to backup config file: {0}</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="643"/>
         <source>创建失败</source>
-        <translation type="vanished">Creation Failed</translation>
+        <translation>Creation Failed</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="643"/>
         <source>无法创建空白配置: {0}</source>
-        <translation type="vanished">Failed to create blank config: {0}</translation>
+        <translation>Failed to create blank config: {0}</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="677"/>
         <source>新建完成</source>
-        <translation type="vanished">Creation Complete</translation>
+        <translation>Creation Complete</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="677"/>
         <source>已备份旧配置并创建空白配置,请填写新的小说参数。</source>
-        <translation type="vanished">Old config backed up and blank config created, please fill in new novel parameters.</translation>
+        <translation>Old config backed up and blank config created, please fill in new novel parameters.</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="695"/>
         <source>文件不存在</source>
-        <translation type="vanished">File Not Found</translation>
+        <translation>File Not Found</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="696"/>
+        <source>配置文件不存在:
+{0}
+
+请通过菜单「文件 → 打开配置文件」选择正确路径,
+或点击「新建配置」创建。</source>
+        <translation>Config file not found:
+{0}
+
+Please select the correct path via menu "File → Open Config File",
+or click "New Config" to create.</translation>
+    </message>
+    <message>
+        <location filename="../tabs/novel_params_tab.py" line="833"/>
+        <location filename="../tabs/novel_params_tab.py" line="838"/>
         <source>JSON 格式错误</source>
-        <translation type="vanished">JSON Format Error</translation>
+        <translation>JSON Format Error</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="833"/>
         <source>配角 JSON 格式不正确,请检查后重试。</source>
-        <translation type="vanished">Supporting roles JSON format is incorrect, please check and retry.</translation>
+        <translation>Supporting roles JSON format is incorrect, please check and retry.</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="838"/>
         <source>反派 JSON 格式不正确,请检查后重试。</source>
-        <translation type="vanished">Antagonists JSON format is incorrect, please check and retry.</translation>
+        <translation>Antagonists JSON format is incorrect, please check and retry.</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="941"/>
         <source>保存成功</source>
-        <translation type="vanished">Saved Successfully</translation>
+        <translation>Saved Successfully</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="941"/>
         <source>配置已保存到 config.json</source>
-        <translation type="vanished">Config saved to config.json</translation>
+        <translation>Config saved to config.json</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="955"/>
         <source>缺少信息</source>
-        <translation type="vanished">Missing Information</translation>
+        <translation>Missing Information</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="955"/>
         <source>请先输入简短的故事创意。</source>
-        <translation type="vanished">Please enter a brief story idea first.</translation>
+        <translation>Please enter a brief story idea first.</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="960"/>
         <source>正在生成…</source>
-        <translation type="vanished">Generating...</translation>
+        <translation>Generating...</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="965"/>
         <source>未命名</source>
-        <translation type="vanished">Untitled</translation>
+        <translation>Untitled</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="966"/>
+        <location filename="../tabs/novel_params_tab.py" line="967"/>
+        <location filename="../tabs/novel_params_tab.py" line="968"/>
         <source>通用</source>
-        <translation type="vanished">General</translation>
+        <translation>General</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="980"/>
         <source>生成失败</source>
-        <translation type="vanished">Generation Failed</translation>
+        <translation>Generation Failed</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="1029"/>
         <source>生成完成</source>
-        <translation type="vanished">Generation Complete</translation>
+        <translation>Generation Complete</translation>
     </message>
     <message>
+        <location filename="../tabs/novel_params_tab.py" line="1029"/>
         <source>写作指南已自动填充,请检查并按需调整后保存。</source>
-        <translation type="vanished">Writing guide auto-filled, please review and adjust as needed before saving.</translation>
+        <translation>Writing guide auto-filled, please review and adjust as needed before saving.</translation>
     </message>
 </context>
 <context>
     <name>PipelineWorker</name>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="28"/>
         <source>不支持的模型类型: {0}</source>
-        <translation type="vanished">Unsupported model type: {0}</translation>
+        <translation>Unsupported model type: {0}</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="130"/>
         <source>配置文件中未找到有效的目标章节数设置 (target_chapters)</source>
-        <translation type="vanished">Valid target chapter count setting (target_chapters) not found in config file</translation>
+        <translation>Valid target chapter count setting (target_chapters) not found in config file</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="134"/>
+        <location filename="../workers/pipeline_worker.py" line="220"/>
         <source>收到停止信号,流水线中止。</source>
-        <translation type="vanished">Stop signal received, pipeline aborted.</translation>
+        <translation>Stop signal received, pipeline aborted.</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="163"/>
         <source>大纲生成失败,停止流程。</source>
-        <translation type="vanished">Outline generation failed, stopping process.</translation>
+        <translation>Outline generation failed, stopping process.</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="164"/>
         <source>大纲生成成功!</source>
-        <translation type="vanished">Outline generated successfully!</translation>
+        <translation>Outline generated successfully!</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="170"/>
         <source>大纲章节数 ({0}) 小于目标章节数 ({1})</source>
-        <translation type="vanished">Outline chapter count ({0}) is less than target chapter count ({1})</translation>
+        <translation>Outline chapter count ({0}) is less than target chapter count ({1})</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="190"/>
         <source>读取 summary.json 失败: {0},将从第 1 章开始。</source>
-        <translation type="vanished">Failed to read summary.json: {0}, will start from chapter 1.</translation>
+        <translation>Failed to read summary.json: {0}, will start from chapter 1.</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="193"/>
         <source>所有章节均已完成,无需生成。</source>
-        <translation type="vanished">All chapters completed, no generation needed.</translation>
+        <translation>All chapters completed, no generation needed.</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="206"/>
         <source>指定章节模式:将生成 {0} 章: {1}</source>
-        <translation type="vanished">Specified chapter mode: will generate {0} chapters: {1}</translation>
+        <translation>Specified chapter mode: will generate {0} chapters: {1}</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="213"/>
         <source>没有需要生成的章节。</source>
-        <translation type="vanished">No chapters to generate.</translation>
+        <translation>No chapters to generate.</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="238"/>
         <source>生成返回失败</source>
-        <translation type="vanished">Generation returned failure</translation>
+        <translation>Generation returned failure</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="240"/>
         <source>第 {0} 章生成被用户取消。</source>
-        <translation type="vanished">Chapter {0} generation cancelled by user.</translation>
+        <translation>Chapter {0} generation cancelled by user.</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="244"/>
         <source>第 {0} 章生成异常: {1}</source>
-        <translation type="vanished">Chapter {0} generation exception: {1}</translation>
+        <translation>Chapter {0} generation exception: {1}</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="253"/>
         <source>开始合并所有章节...</source>
-        <translation type="vanished">Starting to merge all chapters...</translation>
+        <translation>Starting to merge all chapters...</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="256"/>
         <source>已合并所有章节到: {0}</source>
-        <translation type="vanished">All chapters merged to: {0}</translation>
+        <translation>All chapters merged to: {0}</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="258"/>
         <source>章节合并未成功,请检查日志</source>
-        <translation type="vanished">Chapter merge unsuccessful, please check logs</translation>
+        <translation>Chapter merge unsuccessful, please check logs</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="260"/>
         <source>章节合并失败: {0}</source>
-        <translation type="vanished">Chapter merge failed: {0}</translation>
+        <translation>Chapter merge failed: {0}</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="262"/>
         <source>自动生成流程全部完成!</source>
-        <translation type="vanished">Auto-generation process completed!</translation>
+        <translation>Auto-generation process completed!</translation>
     </message>
     <message>
+        <location filename="../workers/pipeline_worker.py" line="267"/>
         <source>流水线异常终止: {0}</source>
-        <translation type="vanished">Pipeline terminated abnormally: {0}</translation>
+        <translation>Pipeline terminated abnormally: {0}</translation>
     </message>
 </context>
 <context>
     <name>ProgressTab</name>
     <message>
+        <location filename="../tabs/progress_tab.py" line="56"/>
         <source>▶  启动</source>
-        <translation type="vanished">▶  Start</translation>
+        <translation>▶  Start</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="60"/>
         <source>■  停止</source>
-        <translation type="vanished">■  Stop</translation>
+        <translation>■  Stop</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="65"/>
         <source>强制重生成大纲</source>
-        <translation type="vanished">Force Regenerate Outline</translation>
+        <translation>Force Regenerate Outline</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="67"/>
         <source>额外提示词（可选）</source>
-        <translation type="vanished">Extra Prompt (Optional)</translation>
+        <translation>Extra Prompt (Optional)</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="79"/>
         <source>打开输出目录</source>
-        <translation type="vanished">Open Output Directory</translation>
+        <translation>Open Output Directory</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="83"/>
         <source>↻  刷新章节</source>
-        <translation type="vanished">↻  Refresh Chapters</translation>
+        <translation>↻  Refresh Chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="85"/>
         <source>从磁盘重新加载章节状态</source>
-        <translation type="vanished">Reload chapter status from disk</translation>
+        <translation>Reload chapter status from disk</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="88"/>
+        <location filename="../tabs/progress_tab.py" line="305"/>
         <source>🔄  重新生成选中章节</source>
-        <translation type="vanished">🔄  Regenerate Selected Chapters</translation>
+        <translation>🔄  Regenerate Selected Chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="91"/>
         <source>在章节列表中选中要重新生成的章节，然后点击此按钮</source>
-        <translation type="vanished">Select chapters to regenerate in the list, then click this button</translation>
+        <translation>Select chapters to regenerate in the list, then click this button</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="100"/>
+        <location filename="../tabs/progress_tab.py" line="494"/>
         <source>📢  生成营销内容</source>
-        <translation type="vanished">📢  Generate Marketing Content</translation>
+        <translation>📢  Generate Marketing Content</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="102"/>
         <source>根据已完成的章节生成营销文案、标题和封面提示词</source>
-        <translation type="vanished">Generate marketing copy, titles and cover prompts based on completed chapters</translation>
+        <translation>Generate marketing copy, titles and cover prompts based on completed chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="94"/>
+        <location filename="../tabs/progress_tab.py" line="515"/>
+        <source>📚  合并所有章节</source>
+        <translation>📚  Merge All Chapters</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="96"/>
+        <source>将所有已完成的章节合并为一个完整文件</source>
+        <translation>Merge all completed chapters into a single file</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="443"/>
+        <source>⏳  合并中...</source>
+        <translation>⏳  Merging...</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="445"/>
+        <source>开始合并所有章节...</source>
+        <translation>Starting to merge all chapters...</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="423"/>
+        <source>确认合并章节</source>
+        <translation>Confirm Chapter Merge</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="424"/>
+        <source>将所有已完成的章节合并为一个完整文件。
+
+确定要继续吗？</source>
+        <translation>Merge all completed chapters into a single file.
+
+Continue?</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="396"/>
+        <source>流水线正在运行中，请等待完成后再合并章节。</source>
+        <translation>Pipeline is running, please wait for completion before merging chapters.</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="404"/>
+        <source>章节合并正在进行中，请稍候...</source>
+        <translation>Chapter merge in progress, please wait...</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="519"/>
+        <source>合并成功</source>
+        <translation>Merge Successful</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="520"/>
+        <source>章节已成功合并到:
+{0}</source>
+        <translation>Chapters successfully merged to:
+{0}</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="522"/>
+        <source>章节合并成功: {0}</source>
+        <translation>Chapter merge successful: {0}</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="525"/>
+        <source>合并失败</source>
+        <translation>Merge Failed</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="526"/>
+        <source>章节合并失败:
+{0}</source>
+        <translation>Chapter merge failed:
+{0}</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="528"/>
+        <source>章节合并失败: {0}</source>
+        <translation>Chapter merge failed: {0}</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="129"/>
         <source>%v / %m 章  (%p%)</source>
-        <translation type="vanished">%v / %m Chapters  (%p%)</translation>
+        <translation>%v / %m Chapters  (%p%)</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="214"/>
         <source>配置错误</source>
-        <translation type="vanished">Configuration Error</translation>
+        <translation>Configuration Error</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="215"/>
         <source>请先在「小说参数」中设置有效的目标章节数 (target_chapters)。</source>
-        <translation type="vanished">Please set a valid target chapter count (target_chapters) in Novel Parameters first.</translation>
+        <translation>Please set a valid target chapter count (target_chapters) in Novel Parameters first.</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="245"/>
+        <source>检测到 {0} 章已完成，将从断点续写。</source>
+        <translation>Detected {0} completed chapters, will resume from checkpoint.</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="253"/>
+        <source>重新生成模式：将生成第 {0} 章</source>
+        <translation>Regeneration mode: will generate chapter {0}</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="294"/>
+        <source>已发送停止信号，等待当前章节完成后停止…</source>
+        <translation>Stop signal sent, waiting for current chapter to complete...</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="303"/>
         <source>🔄  重新生成 {0} 章</source>
-        <translation type="vanished">🔄  Regenerate {0} Chapters</translation>
+        <translation>🔄  Regenerate {0} Chapters</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="311"/>
+        <location filename="../tabs/progress_tab.py" line="331"/>
+        <location filename="../tabs/progress_tab.py" line="339"/>
+        <location filename="../tabs/progress_tab.py" line="353"/>
+        <location filename="../tabs/progress_tab.py" line="394"/>
+        <location filename="../tabs/progress_tab.py" line="402"/>
+        <location filename="../tabs/progress_tab.py" line="416"/>
         <source>提示</source>
-        <translation type="vanished">Notice</translation>
+        <translation>Notice</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="311"/>
         <source>请先在章节列表中选中要重新生成的章节。</source>
-        <translation type="vanished">Please select chapters to regenerate in the chapter list first.</translation>
+        <translation>Please select chapters to regenerate in the chapter list first.</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="316"/>
         <source>确认重新生成</source>
-        <translation type="vanished">Confirm Regeneration</translation>
+        <translation>Confirm Regeneration</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="317"/>
+        <source>确定要重新生成以下 {0} 章吗？
+第 {1} 章
+
+已有的章节内容将被覆盖。</source>
+        <translation>Regenerate the following {0} chapters?
+Chapter {1}
+
+Existing chapter content will be overwritten.</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="333"/>
+        <source>流水线正在运行中，请等待完成后再生成营销内容。</source>
+        <translation>Pipeline is running, please wait for completion before generating marketing content.</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="341"/>
+        <source>营销内容生成正在进行中，请稍候...</source>
+        <translation>Marketing content generation in progress, please wait...</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="355"/>
+        <location filename="../tabs/progress_tab.py" line="418"/>
+        <source>未找到章节摘要文件，请先生成至少一章内容。</source>
+        <translation>Chapter summary file not found, please generate at least one chapter first.</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="360"/>
         <source>确认生成营销内容</source>
-        <translation type="vanished">Confirm Marketing Content Generation</translation>
+        <translation>Confirm Marketing Content Generation</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="361"/>
+        <source>将根据已完成的章节生成营销文案、标题和封面提示词。
+
+这可能需要几分钟时间，确定要继续吗？</source>
+        <translation>Will generate marketing copy, titles and cover prompts based on completed chapters.
+
+This may take a few minutes, continue?</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="384"/>
         <source>⏳  生成中...</source>
-        <translation type="vanished">⏳  Generating...</translation>
+        <translation>⏳  Generating...</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="386"/>
         <source>开始生成营销内容...</source>
-        <translation type="vanished">Starting marketing content generation...</translation>
+        <translation>Starting marketing content generation...</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="461"/>
         <source>第 {0} 章失败: {1}</source>
-        <translation type="vanished">Chapter {0} failed: {1}</translation>
+        <translation>Chapter {0} failed: {1}</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="481"/>
         <source>流水线完成，共生成 {0} 章。</source>
-        <translation type="vanished">Pipeline completed, {0} chapters generated.</translation>
+        <translation>Pipeline completed, {0} chapters generated.</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="485"/>
         <source>流水线未完整完成，已生成 {0} 章。</source>
-        <translation type="vanished">Pipeline incomplete, {0} chapters generated.</translation>
+        <translation>Pipeline incomplete, {0} chapters generated.</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="498"/>
         <source>生成成功</source>
-        <translation type="vanished">Generation Successful</translation>
+        <translation>Generation Successful</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="501"/>
+        <source>营销内容生成成功！</source>
+        <translation>Marketing content generation successful!</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="504"/>
         <source>生成失败</source>
-        <translation type="vanished">Generation Failed</translation>
+        <translation>Generation Failed</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="505"/>
+        <source>营销内容生成失败：
+{0}</source>
+        <translation>Marketing content generation failed:
+{0}</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="507"/>
         <source>营销内容生成失败: {0}</source>
-        <translation type="vanished">Marketing content generation failed: {0}</translation>
+        <translation>Marketing content generation failed: {0}</translation>
     </message>
     <message>
+        <location filename="../tabs/progress_tab.py" line="544"/>
         <source>目录不存在</source>
-        <translation type="vanished">Directory Not Found</translation>
+        <translation>Directory Not Found</translation>
+    </message>
+    <message>
+        <location filename="../tabs/progress_tab.py" line="544"/>
+        <source>输出目录不存在:
+{0}</source>
+        <translation>Output directory not found:
+{0}</translation>
     </message>
 </context>
 </TS>

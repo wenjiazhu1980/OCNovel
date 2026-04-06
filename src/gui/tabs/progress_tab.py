@@ -12,6 +12,7 @@ from src.gui.widgets.log_viewer import LogViewer
 from src.gui.widgets.chapter_list import ChapterListWidget
 from src.gui.workers.pipeline_worker import PipelineWorker
 from src.gui.workers.marketing_worker import MarketingWorker
+from src.gui.workers.merge_worker import MergeWorker
 from src.gui.utils.log_handler import SignalLogHandler
 from src.gui.utils.config_io import load_config
 
@@ -28,6 +29,7 @@ class ProgressTab(QWidget):
         self._env_path = env_path
         self._worker: PipelineWorker | None = None
         self._marketing_worker: MarketingWorker | None = None
+        self._merge_worker: MergeWorker | None = None
 
         self._init_ui()
         self._connect_ui()
@@ -71,7 +73,7 @@ class ProgressTab(QWidget):
 
         root.addLayout(top_bar_1)
 
-        # 第二行:打开输出目录/刷新章节/重新生成选中章节/生成营销内容
+        # 第二行:打开输出目录/刷新章节/重新生成选中章节/合并所有章节/生成营销内容
         top_bar_2 = QHBoxLayout()
 
         self.btn_open_output = QPushButton(self.tr("打开输出目录"))
@@ -88,6 +90,12 @@ class ProgressTab(QWidget):
         self.btn_regen.setEnabled(False)
         self.btn_regen.setToolTip(self.tr("在章节列表中选中要重新生成的章节，然后点击此按钮"))
         top_bar_2.addWidget(self.btn_regen)
+
+        self.btn_merge = QPushButton(self.tr("📚  合并所有章节"))
+        self.btn_merge.setMinimumWidth(150)  # 改为最小宽度,允许自动扩展
+        self.btn_merge.setToolTip(self.tr("将所有已完成的章节合并为一个完整文件"))
+        self.btn_merge.setProperty("cssClass", "success")
+        top_bar_2.addWidget(self.btn_merge)
 
         self.btn_marketing = QPushButton(self.tr("📢  生成营销内容"))
         self.btn_marketing.setMinimumWidth(150)  # 改为最小宽度,允许自动扩展
@@ -132,6 +140,7 @@ class ProgressTab(QWidget):
         self.btn_stop.clicked.connect(self._on_stop)
         self.btn_refresh.clicked.connect(self.load_chapters)
         self.btn_regen.clicked.connect(self._on_regen)
+        self.btn_merge.clicked.connect(self._on_merge)
         self.btn_marketing.clicked.connect(self._on_generate_marketing)
         self.chapter_list.itemSelectionChanged.connect(self._on_selection_changed)
 
@@ -271,6 +280,8 @@ class ProgressTab(QWidget):
         self.btn_stop.setEnabled(True)
         self.btn_regen.setEnabled(False)
         self.btn_refresh.setEnabled(False)
+        self.btn_merge.setEnabled(False)
+        self.btn_marketing.setEnabled(False)
         self.pipeline_running_changed.emit(True)
 
         self._worker.start()
@@ -375,6 +386,65 @@ class ProgressTab(QWidget):
         self.log_viewer.append_log(self.tr("开始生成营销内容..."), "INFO")
         self._marketing_worker.start()
 
+    def _on_merge(self):
+        """合并所有章节"""
+        # 检查是否有流水线正在运行
+        if self._worker is not None:
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("流水线正在运行中，请等待完成后再合并章节。")
+            )
+            return
+
+        # 检查是否有合并正在运行
+        if self._merge_worker is not None:
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("章节合并正在进行中，请稍候...")
+            )
+            return
+
+        # 检查是否有已完成的章节
+        cfg = load_config(self._config_path)
+        output_dir = cfg.get("output_config", {}).get("output_dir", "data/output")
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
+        summary_file = os.path.join(output_dir, "summary.json")
+
+        if not os.path.exists(summary_file):
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("未找到章节摘要文件，请先生成至少一章内容。")
+            )
+            return
+
+        # 确认合并
+        reply = QMessageBox.question(
+            self, self.tr("确认合并章节"),
+            self.tr("将所有已完成的章节合并为一个完整文件。\n\n确定要继续吗？"),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        # 创建 Worker
+        self._merge_worker = MergeWorker(
+            config_path=self._config_path,
+            env_path=self._env_path,
+        )
+
+        # 连接信号
+        self._merge_worker.merge_finished.connect(self._on_merge_finished)
+        self._merge_worker.log_message.connect(self.log_viewer.append_log)
+
+        # 禁用按钮
+        self.btn_merge.setEnabled(False)
+        self.btn_merge.setText(self.tr("⏳  合并中..."))
+
+        self.log_viewer.append_log(self.tr("开始合并所有章节..."), "INFO")
+        self._merge_worker.start()
+
     # ------------------------------------------------------------------
     # Worker 信号处理
     # ------------------------------------------------------------------
@@ -401,6 +471,8 @@ class ProgressTab(QWidget):
         self.btn_stop.setEnabled(False)
         self.btn_regen.setEnabled(False)
         self.btn_refresh.setEnabled(True)
+        self.btn_merge.setEnabled(True)
+        self.btn_marketing.setEnabled(True)
         self.pipeline_running_changed.emit(False)
 
         completed = self.chapter_list.get_completed_count()
@@ -436,6 +508,27 @@ class ProgressTab(QWidget):
 
         # 清理 Worker 引用
         self._marketing_worker = None
+
+    def _on_merge_finished(self, success: bool, message: str):
+        """章节合并完成"""
+        self.btn_merge.setEnabled(True)
+        self.btn_merge.setText(self.tr("📚  合并所有章节"))
+
+        if success:
+            QMessageBox.information(
+                self, self.tr("合并成功"),
+                self.tr("章节已成功合并到:\n{0}").format(message)
+            )
+            self.log_viewer.append_log(self.tr("章节合并成功: {0}").format(message), "INFO")
+        else:
+            QMessageBox.critical(
+                self, self.tr("合并失败"),
+                self.tr("章节合并失败:\n{0}").format(message)
+            )
+            self.log_viewer.append_log(self.tr("章节合并失败: {0}").format(message), "ERROR")
+
+        # 清理 Worker 引用
+        self._merge_worker = None
 
     def _open_output_dir(self):
         """在系统文件管理器中打开输出目录"""
