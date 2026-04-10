@@ -10,6 +10,12 @@ class ChapterOutline:
     characters: List[str]
     settings: List[str]
     conflicts: List[str]
+    # 扩展字段（雪花写作法步骤7/10），均有默认值以兼容旧大纲
+    emotion_tone: str = ""          # 本章情感基调（如"压抑→爆发"、"温馨→不安"）
+    character_goals: Dict[str, str] = field(default_factory=dict)  # 各角色本章目标 {角色名: 目标}
+    scene_sequence: List[str] = field(default_factory=list)        # 场景顺序（场景级规划）
+    foreshadowing: List[str] = field(default_factory=list)         # 本章埋设/回收的伏笔
+    pov_character: str = ""         # 本章视点角色
 
 @dataclass
 class NovelOutline:

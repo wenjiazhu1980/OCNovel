@@ -208,6 +208,21 @@ class NovelParamsTab(QWidget):
         plot_form.addRow(self.tr("第三幕 - climax"), self._te_climax)
         plot_form.addRow(self.tr("第三幕 - resolution"), self._te_resolution)
         plot_form.addRow(self.tr("第三幕 - denouement"), self._te_denouement)
+
+        # 三次灾难锚点（雪花写作法）
+        disaster_grp = QGroupBox(self.tr("三次灾难锚点（雪花写作法）")); disaster_grp.setProperty("cssClass", "inner")
+        disaster_form = _expanding_form(disaster_grp)
+        self._te_disaster1 = _make_text_edit(2)
+        self._te_disaster1.setPlaceholderText(self.tr("约25%处的第一次重大挫折/灾难事件"))
+        self._te_disaster2 = _make_text_edit(2)
+        self._te_disaster2.setPlaceholderText(self.tr("约50%处的第二次重大挫折/灾难事件"))
+        self._te_disaster3 = _make_text_edit(2)
+        self._te_disaster3.setPlaceholderText(self.tr("约75%处的第三次重大挫折/灾难事件"))
+        disaster_form.addRow(self.tr("第一次灾难 (25%)"), self._te_disaster1)
+        disaster_form.addRow(self.tr("第二次灾难 (50%)"), self._te_disaster2)
+        disaster_form.addRow(self.tr("第三次灾难 (75%)"), self._te_disaster3)
+        outer.addWidget(disaster_grp)
+
         outer.addWidget(plot_grp)
 
         # --- 风格指南 ---
@@ -755,6 +770,13 @@ class NovelParamsTab(QWidget):
             self._te_resolution.setPlainText(str(a3.get("resolution", "")))
             self._te_denouement.setPlainText(str(a3.get("denouement", "")))
 
+        # --- 写作指南：三次灾难锚点 ---
+        disasters = _g(wg, "plot_structure", "disasters", default={})
+        if isinstance(disasters, dict):
+            self._te_disaster1.setPlainText(str(disasters.get("first_disaster", "")))
+            self._te_disaster2.setPlainText(str(disasters.get("second_disaster", "")))
+            self._te_disaster3.setPlainText(str(disasters.get("third_disaster", "")))
+
         # --- 写作指南：风格 ---
         sg = wg.get("style_guide", {})
         self._te_tone.setPlainText(str(sg.get("tone", "")))
@@ -879,6 +901,11 @@ class NovelParamsTab(QWidget):
                 "climax": self._te_climax.toPlainText(),
                 "resolution": self._te_resolution.toPlainText(),
                 "denouement": self._te_denouement.toPlainText(),
+            },
+            "disasters": {
+                "first_disaster": self._te_disaster1.toPlainText(),
+                "second_disaster": self._te_disaster2.toPlainText(),
+                "third_disaster": self._te_disaster3.toPlainText(),
             },
         }
         sg = wg.setdefault("style_guide", {})
@@ -1021,6 +1048,12 @@ class NovelParamsTab(QWidget):
             self._te_climax.setPlainText(str(a3.get("climax", "")))
             self._te_resolution.setPlainText(str(a3.get("resolution", "")))
             self._te_denouement.setPlainText(str(a3.get("denouement", "")))
+
+        disasters = _g(wg, "plot_structure", "disasters", default={})
+        if isinstance(disasters, dict):
+            self._te_disaster1.setPlainText(str(disasters.get("first_disaster", "")))
+            self._te_disaster2.setPlainText(str(disasters.get("second_disaster", "")))
+            self._te_disaster3.setPlainText(str(disasters.get("third_disaster", "")))
 
         sg = wg.get("style_guide", {})
         self._te_tone.setPlainText(str(sg.get("tone", "")))

@@ -5,7 +5,7 @@ import time
 from typing import List, Tuple, Optional
 from ..common.data_structures import ChapterOutline
 from ..common.utils import load_json_file, save_json_file, validate_directory
-from ..prompts import get_outline_prompt, get_sync_info_prompt
+from ..prompts import get_outline_prompt, get_sync_info_prompt, get_core_seed_prompt
 
 class OutlineGenerator:
     def __init__(self, config, outline_model, knowledge_base, content_model=None):
@@ -92,8 +92,19 @@ class OutlineGenerator:
                         "key_points": outline.key_points,
                         "characters": outline.characters,
                         "settings": outline.settings,
-                        "conflicts": outline.conflicts
+                        "conflicts": outline.conflicts,
                     }
+                    # 保存扩展字段（仅当非空时写入，保持向后兼容）
+                    if outline.emotion_tone:
+                        outline_dict["emotion_tone"] = outline.emotion_tone
+                    if outline.character_goals:
+                        outline_dict["character_goals"] = outline.character_goals
+                    if outline.scene_sequence:
+                        outline_dict["scene_sequence"] = outline.scene_sequence
+                    if outline.foreshadowing:
+                        outline_dict["foreshadowing"] = outline.foreshadowing
+                    if outline.pov_character:
+                        outline_dict["pov_character"] = outline.pov_character
                     outline_data.append(outline_dict)
                 else: # 如果不是 None 但也不是 ChapterOutline，才发出警告
                     logging.warning(f"尝试保存非 ChapterOutline 对象: {type(outline)} - {outline}")
@@ -113,7 +124,58 @@ class OutlineGenerator:
             logging.error(f"保存大纲文件时出错: {str(e)}", exc_info=True) # 添加 exc_info
             return False
 
-    def generate_outline(self, novel_type: str, theme: str, style: str, 
+    def _generate_core_seed(self) -> str:
+        """生成或加载故事核心种子（雪花写作法步骤1：一句话概括）
+
+        如果 core_seed.txt 已存在则直接复用，否则调用模型生成。
+
+        Returns:
+            核心种子文本，失败返回空字符串
+        """
+        core_seed_file = os.path.join(self.output_dir, "core_seed.txt")
+
+        # 如果已存在则复用
+        if os.path.exists(core_seed_file):
+            try:
+                with open(core_seed_file, 'r', encoding='utf-8') as f:
+                    seed = f.read().strip()
+                if seed:
+                    logging.info(f"复用已有核心种子：{seed[:80]}...")
+                    return seed
+            except Exception as e:
+                logging.warning(f"读取核心种子文件失败: {e}")
+
+        # 从配置中提取参数
+        novel_config = self.config.novel_config if hasattr(self.config, 'novel_config') else {}
+        topic = novel_config.get("theme", "")
+        genre = novel_config.get("type", "")
+        number_of_chapters = self.config.generator_config.get("target_chapters", 100) if hasattr(self.config, 'generator_config') else 100
+        word_number = novel_config.get("chapter_length", 3000)
+
+        if not topic or not genre:
+            logging.warning("缺少 theme 或 type 配置，跳过核心种子生成")
+            return ""
+
+        prompt = get_core_seed_prompt(topic, genre, number_of_chapters, word_number)
+        logging.info("正在生成故事核心种子（雪花写作法步骤1）...")
+
+        try:
+            seed = self.outline_model.generate(prompt)
+            if seed and seed.strip():
+                seed = seed.strip()
+                # 持久化
+                with open(core_seed_file, 'w', encoding='utf-8') as f:
+                    f.write(seed)
+                logging.info(f"核心种子生成成功：{seed[:80]}...")
+                return seed
+            else:
+                logging.warning("核心种子生成结果为空")
+                return ""
+        except Exception as e:
+            logging.error(f"核心种子生成失败: {e}")
+            return ""
+
+    def generate_outline(self, novel_type: str, theme: str, style: str,
                         mode: str = 'replace', replace_range: Tuple[int, int] = None, 
                         extra_prompt: Optional[str] = None) -> bool:
         """生成指定范围的章节大纲"""
@@ -189,7 +251,10 @@ class OutlineGenerator:
         
         # 获取前文大纲用于一致性检查
         previous_outlines = [o for o in self.chapter_outlines[:batch_start_num-1] if isinstance(o, ChapterOutline)]
-        
+
+        # 生成或加载核心种子（雪花写作法步骤1）
+        core_seed = self._generate_core_seed()
+
         # 生成提示词
         prompt = get_outline_prompt(
             novel_type=novel_type,
@@ -202,6 +267,7 @@ class OutlineGenerator:
             novel_config=self.config.novel_config,
             total_chapters=self.config.generator_config.get("target_chapters", 0),
             current_end_chapter_num=batch_end_num,
+            core_seed=core_seed,
         )
 
         # 新增：打印大纲生成提示词长度

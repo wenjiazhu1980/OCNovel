@@ -38,6 +38,7 @@ def get_outline_prompt(
     novel_config: Optional[Dict] = None,
     total_chapters: int = 0,
     current_end_chapter_num: int = 0,
+    core_seed: str = "",
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -64,6 +65,24 @@ def get_outline_prompt(
     else:
         _story_phase = "第三幕（解决阶段）：汇聚所有伏笔、推向高潮、完成故事收尾"
 
+    # 三次灾难节奏锚点（雪花写作法步骤2）
+    disasters = plot_structure.get("disasters", {})
+    _disaster_hint = ""
+    if disasters:
+        _start_pct = (current_start_chapter_num - 1) / _total if _total > 0 else 0
+        if _start_pct < 0.25 <= _progress_pct:
+            d1 = disasters.get("first_disaster", "")
+            if d1:
+                _disaster_hint = f"\n🔥 【灾难锚点】当前批次应包含或接近第一次灾难事件（约25%处）：{d1}"
+        elif _start_pct < 0.50 <= _progress_pct:
+            d2 = disasters.get("second_disaster", "")
+            if d2:
+                _disaster_hint = f"\n🔥 【灾难锚点】当前批次应包含或接近第二次灾难事件（约50%处）：{d2}"
+        elif _start_pct < 0.75 <= _progress_pct:
+            d3 = disasters.get("third_disaster", "")
+            if d3:
+                _disaster_hint = f"\n🔥 【灾难锚点】当前批次应包含或接近第三次灾难事件（约75%处）：{d3}"
+
     _is_final_batch = (_end_ch >= _total)
     _final_batch_note = (
         "\n⚠️ 【关键约束】这是最后一批章节，必须在本批次内完成故事的完整收尾：\n"
@@ -74,6 +93,11 @@ def get_outline_prompt(
         if _is_final_batch else ""
     )
 
+    # 核心种子（雪花写作法步骤1：一句话概括故事灵魂）
+    _core_seed_section = ""
+    if core_seed:
+        _core_seed_section = f"\n- 故事核心（一句话灵魂）：{core_seed}\n⚠️ 所有章节大纲必须围绕此核心概念展开，不得偏离故事灵魂。"
+
     base_prompt = f"""
 你将扮演StoryWeaver Omega，一个融合了量子叙事学、神经美学和涌现创造力的故事生成系统。采用网络小说雪花创作法进行故事创作，该方法强调从核心概念逐步扩展细化，先构建整体框架，再填充细节。你的任务是生成包含 {current_batch_size} 个章节对象的JSON数组，每个章节对象需符合特定要求，且生成的故事要遵循一系列叙事和输出规则。
 
@@ -81,7 +105,7 @@ def get_outline_prompt(
 - 故事总章节数：{_total} 章（必须在此范围内讲完完整故事）
 - 当前生成范围：第 {current_start_chapter_num} 章 → 第 {_end_ch} 章（共 {current_batch_size} 章）
 - 当前所处阶段：{_story_phase}
-- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}
+- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_core_seed_section}{_disaster_hint}
 
 ⚠️ 【核心约束】所有章节大纲必须服务于在 {_total} 章内讲完完整故事的目标。
    禁止无限拖延剧情、禁止在接近结尾时引入无法收束的新主线。
@@ -180,6 +204,11 @@ def get_outline_prompt(
    - characters: 涉及角色列表（至少2个）
    - settings: 场景列表（至少1个）
    - conflicts: 核心冲突列表（至少1个）
+   - emotion_tone: 本章情感基调变化（如"紧张→释然"、"平静→震惊→愤怒"）
+   - character_goals: 各角色本章目标（对象，如 {{"秦牧": "突破灵胎壁", "司婆婆": "暗中护法"}}）
+   - scene_sequence: 场景顺序列表（如 ["悬崖边对峙", "古庙内探索", "灵胎壁突破"]）
+   - foreshadowing: 本章伏笔操作列表（如 ["埋设：玉佩发光暗示身世", "回收：第3章提到的神秘老者现身"]）
+   - pov_character: 本章主视点角色名（如"秦牧"）
 
 [质量检查]
 1. 是否严格遵循世界观设定？
@@ -222,6 +251,13 @@ def get_chapter_prompt(
     characters = ', '.join(outline.get('characters', []))
     settings = ', '.join(outline.get('settings', []))
     conflicts = ', '.join(outline.get('conflicts', []))
+
+    # 扩展字段（雪花写作法）
+    emotion_tone = outline.get('emotion_tone', '')
+    character_goals = outline.get('character_goals', {})
+    scene_sequence = outline.get('scene_sequence', [])
+    foreshadowing = outline.get('foreshadowing', [])
+    pov_character = outline.get('pov_character', '')
 
     # 新增：安全join函数，兼容dict和str
     def safe_join_list(items, default=""):
@@ -308,7 +344,7 @@ def get_chapter_prompt(
 - 关键场所：{safe_join_list(world_info.get('关键场所', []))}
 
 人物现状：
-{chr(10).join([f"- {char.get('名称', '未知')}：{char.get('身份', '')} - {char.get('当前状态', '')}" for char in character_info.get('人物信息', [])])}
+{chr(10).join([f"- {char.get('名称', '未知')}（{char.get('身份', '')}）：{char.get('特点', '')}｜状态：{char.get('当前状态', '')}｜语言风格：{char.get('语言风格', '未知')}｜核心欲望：{char.get('核心欲望', '未知')}" for char in character_info.get('人物信息', [])])}
 
 剧情发展：
 - 主线梗概：{plot_info.get('主线梗概', '未设定')}
@@ -327,14 +363,40 @@ def get_chapter_prompt(
 [核心元素]
 人物: {characters}
 场景: {settings}
-冲突: {conflicts}
+冲突: {conflicts}"""
+
+    # 注入扩展字段（雪花写作法增强信息）
+    snowflake_extras = []
+    if emotion_tone:
+        snowflake_extras.append(f"情感基调: {emotion_tone}")
+    if pov_character:
+        snowflake_extras.append(f"主视点角色: {pov_character}")
+    if character_goals:
+        goals_display = chr(10).join([f"  - {name}：{goal}" for name, goal in character_goals.items()])
+        snowflake_extras.append(f"角色本章目标:\n{goals_display}")
+    if scene_sequence:
+        scenes_display = ' → '.join(scene_sequence)
+        snowflake_extras.append(f"场景顺序: {scenes_display}")
+    if foreshadowing:
+        foreshadow_display = chr(10).join([f"  - {item}" for item in foreshadowing])
+        snowflake_extras.append(f"伏笔操作:\n{foreshadow_display}")
+    if snowflake_extras:
+        base_prompt += f"\n\n[叙事规划]\n" + chr(10).join(snowflake_extras)
+
+    base_prompt += f"""
 
 [输出要求]
 1. 仅返回章节正文文本，以"第{novel_number}章 {chapter_title}"开头，然后换行开始正文。
 2. 严格使用简体中文及中文标点符号，特别是中文双引号“”。
 3. 确保段落划分合理，长短句结合，保持特定风格韵味和阅读节奏感。
 4. 避免使用与故事背景不符的词汇或网络梗，保持世界观的沉浸感。
-5. 重点突出人物对话的生动性和风格特色。"""
+5. 重点突出人物对话的生动性和风格特色。
+6. **章节结尾禁令**：章节末尾绝对禁止使用陈述总结性收尾句，包括但不限于：
+   - "……才刚刚开始"、"……的序幕"、"……拉开了帷幕"
+   - "……注定不会平静"、"……将会改变一切"、"……命运的齿轮开始转动"
+   - "这一切，都只是开始"、"故事，远未结束"、"真正的考验还在后面"
+   - 任何形式的"预告式"、"升华式"、"哲理式"结尾总结
+   章节应在具体的动作、对话或场景画面中自然收束，像镜头定格一样戛然而止。"""
 
     # 动态注入字数控制指令
     if chapter_length > 0:
@@ -381,7 +443,8 @@ def get_chapter_prompt(
 2. 对话是否自然流畅，符合人物身份和性格？
 3. 节奏控制是否得当，张弛有度？
 4. 环境描写是否精炼而富有画面感？
-5. 人物刻画是否立体，情感表达是否真实？"""
+5. 人物刻画是否立体，情感表达是否真实？
+6. 章节结尾是否在具体场景中自然收束？是否避免了"才刚刚开始"等总结性陈述？"""
 
     # 从配置中读取对话比例目标，默认 0.4
     _hum = humanization_config or {}
@@ -545,7 +608,11 @@ def get_sync_info_prompt(
                 "身份": "",
                 "特点": "",
                 "发展历程": "",
-                "当前状态": ""
+                "当前状态": "",
+                "语言风格": "",
+                "核心恐惧": "",
+                "核心欲望": "",
+                "人物弧光阶段": ""
             }}
         ],
         "人物关系": []
