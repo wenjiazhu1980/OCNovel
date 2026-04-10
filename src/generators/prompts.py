@@ -39,6 +39,7 @@ def get_outline_prompt(
     total_chapters: int = 0,
     current_end_chapter_num: int = 0,
     core_seed: str = "",
+    chapter_length: int = 0,
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -109,7 +110,26 @@ def get_outline_prompt(
 
 ⚠️ 【核心约束】所有章节大纲必须服务于在 {_total} 章内讲完完整故事的目标。
    禁止无限拖延剧情、禁止在接近结尾时引入无法收束的新主线。
+"""
 
+    # 字数与场景容量约束
+    if chapter_length > 0:
+        if chapter_length <= 2000:
+            scene_guide = "1-2个场景，聚焦单一核心事件"
+        elif chapter_length <= 3500:
+            scene_guide = "2-3个场景，一个主事件加一个过渡或铺垫"
+        elif chapter_length <= 5000:
+            scene_guide = "3-4个场景，可包含主线推进和支线穿插"
+        else:
+            scene_guide = "4-5个场景，可展开多条线索并行"
+        base_prompt += f"""
+【章节容量约束】
+- 每章目标字数：约 {chapter_length} 字
+- 场景容量建议：每章 {scene_guide}
+- 规划 key_points 和 scene_sequence 时，必须考虑字数承载能力，不要在单章中塞入过多事件导致内容生成时被迫压缩或流水账化。
+"""
+
+    base_prompt += f"""
 [世界观设定]
 1. 修炼/魔法体系：
 {world_building.get('magic_system', '[在此处插入详细的修炼体系、等级划分、核心规则、能量来源、特殊体质设定等]')}
