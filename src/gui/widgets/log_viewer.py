@@ -1,7 +1,7 @@
 """日志查看器组件：基于 QPlainTextEdit 的彩色日志显示"""
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 
 from ..theme import Theme
 
@@ -37,47 +37,73 @@ class LogViewer(QPlainTextEdit):
             "}"
         )
 
+        # 日志缓冲区 + 节流定时器，避免高频追加导致界面抖动
+        self._log_buffer: list[tuple[str, str]] = []
+        self._flush_timer = QTimer(self)
+        self._flush_timer.setInterval(50)  # 50ms 合并一次
+        self._flush_timer.setSingleShot(True)
+        self._flush_timer.timeout.connect(self._flush_buffer)
+
     # ------------------------------------------------------------------
     def append_log(self, message: str, level: str = "INFO"):
-        """追加一条日志，根据级别着色；超过上限时移除最早的行"""
-        # 检查是否在底部（允许 10 像素误差）
+        """追加一条日志到缓冲区，由定时器批量刷新"""
+        self._log_buffer.append((message, level))
+        if not self._flush_timer.isActive():
+            self._flush_timer.start()
+
+    # ------------------------------------------------------------------
+    def _flush_buffer(self):
+        """批量写入缓冲区中的日志，只触发一次滚动"""
+        if not self._log_buffer:
+            return
+
+        # 取出并清空缓冲区
+        batch = self._log_buffer
+        self._log_buffer = []
+
+        # 检查是否在底部
         v_scrollbar = self.verticalScrollBar()
         was_at_bottom = v_scrollbar.value() >= v_scrollbar.maximum() - 10
-
-        fmt = QTextCharFormat()
-        fmt.setForeground(_LEVEL_COLORS.get(level.upper(), _LEVEL_COLORS["INFO"]))
 
         cursor = self.textCursor()
         cursor.movePosition(QTextCursor.End)
 
-        # 非首行先插入换行
-        if self.document().characterCount() > 1:
-            cursor.insertText("\n")
+        # 暂停界面更新，批量写入
+        self.setUpdatesEnabled(False)
+        try:
+            for message, level in batch:
+                fmt = QTextCharFormat()
+                fmt.setForeground(_LEVEL_COLORS.get(level.upper(), _LEVEL_COLORS["INFO"]))
 
-        cursor.setCharFormat(fmt)
-        cursor.insertText(message)
+                if self.document().characterCount() > 1:
+                    cursor.insertText("\n")
+                cursor.setCharFormat(fmt)
+                cursor.insertText(message)
 
-        # 超出行数上限时裁剪头部
-        if self.document().blockCount() > _MAX_LINES:
-            trim_cursor = QTextCursor(self.document().begin())
-            trim_cursor.movePosition(
-                QTextCursor.Down,
-                QTextCursor.KeepAnchor,
-                self.document().blockCount() - _MAX_LINES,
-            )
-            trim_cursor.removeSelectedText()
+            # 超出行数上限时裁剪头部
+            if self.document().blockCount() > _MAX_LINES:
+                trim_cursor = QTextCursor(self.document().begin())
+                trim_cursor.movePosition(
+                    QTextCursor.Down,
+                    QTextCursor.KeepAnchor,
+                    self.document().blockCount() - _MAX_LINES,
+                )
+                trim_cursor.removeSelectedText()
+        finally:
+            self.setUpdatesEnabled(True)
 
-        # 仅当之前在底部时才自动滚动（保持水平滚动位置）
+        # 仅当之前在底部时才自动滚动
         if was_at_bottom:
             h_scrollbar = self.horizontalScrollBar()
-            h_pos = h_scrollbar.value()  # 保存当前水平滚动位置
+            h_pos = h_scrollbar.value()
 
             self.setTextCursor(cursor)
             self.ensureCursorVisible()
 
-            h_scrollbar.setValue(h_pos)  # 恢复水平滚动位置
+            h_scrollbar.setValue(h_pos)
 
     # ------------------------------------------------------------------
     def clear_logs(self):
         """清空所有日志"""
+        self._log_buffer.clear()
         self.clear()
