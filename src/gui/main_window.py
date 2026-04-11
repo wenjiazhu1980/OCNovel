@@ -2,9 +2,9 @@
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QStatusBar, QLabel,
-    QMenuBar, QFileDialog, QMessageBox,
+    QMenuBar, QFileDialog, QMessageBox, QInputDialog,
 )
-from PySide6.QtCore import Qt, QDir
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction
 
 from .tabs.model_config_tab import ModelConfigTab
@@ -84,19 +84,23 @@ class MainWindow(QMainWindow):
             self.novel_tab.reload()
 
     def _open_env_file(self):
-        """选择自定义 .env 路径（macOS 默认隐藏点文件，需特殊处理）"""
-        dlg = QFileDialog(self, self.tr("选择 .env 文件"), os.path.dirname(self._env_path))
-        dlg.setNameFilters([self.tr("Env 文件 (*.env)"), self.tr("所有文件 (*)")])
-        dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
-        # 显示隐藏文件（.env 以点开头）
-        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dlg.setFilter(QDir.AllEntries | QDir.Hidden | QDir.NoDotAndDotDot)
-        if not dlg.exec():
+        """手动输入 .env 文件路径"""
+        default_path = self._env_path or os.path.join(
+            os.path.dirname(self._config_path), ".env")
+        path, ok = QInputDialog.getText(
+            self,
+            self.tr("设置 .env 文件路径"),
+            self.tr("请输入 .env 文件的完整路径:"),
+            text=default_path,
+        )
+        if not ok or not path.strip():
             return
-        paths = dlg.selectedFiles()
-        if not paths:
+        path = path.strip()
+        if not os.path.exists(path):
+            QMessageBox.warning(
+                self, self.tr("文件不存在"),
+                self.tr("文件不存在: {0}").format(path))
             return
-        path = paths[0]
         self._env_path = path
         self._update_title()
         self.model_tab.set_env_path(path)
