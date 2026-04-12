@@ -55,6 +55,8 @@ OCNovel/
 │   │   ├── workers/
 │   │   │   ├── pipeline_worker.py    # Background generation pipeline
 │   │   │   ├── connection_tester.py  # Model connection test
+│   │   │   ├── marketing_worker.py   # Marketing content generation
+│   │   │   ├── merge_worker.py       # Chapter merging
 │   │   │   └── writing_guide_worker.py # AI generated writing guide
 │   │   ├── widgets/
 │   │   │   ├── log_viewer.py         # Real-time log viewer
@@ -158,8 +160,8 @@ python main.py imitate --style-source sample.txt --input-file original.txt --out
 After starting `python gui_main.py`, three Tab pages are provided:
 
 - **Model Configuration** — Manage API keys, Base URLs, and model names for Claude / Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
-- **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
-- **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs, progress bar indicating current progress, and support for breakpoint continuation.
+- **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), three-act disaster anchors, per-arc emotion pacing (chapters per arc), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
+- **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs (high-frequency log debouncing), progress bar indicating current progress, and support for breakpoint continuation, regenerating selected chapters, merging all chapters, and generating marketing content.
 
 ### Package as Desktop App
 
@@ -182,10 +184,12 @@ pyinstaller ocnovel_win.spec --clean
 ## Core Architecture
 
 - **Model Abstraction** — `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`
-- **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values).
-- **Generation Pipeline** — outline → content → finalize, connected via the `auto` command.
-- **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking.
-- **Retry/Fallback** — tenacity retries + automatic backup model switching.
+- **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values)
+- **Generation Pipeline** — Core seed → outline → content → finalize, connected via the `auto` command
+- **Snowflake Method** — Core seed (one-sentence summary) → Three-act structure → Disaster anchors → Per-arc emotion spiral (Growth → Setback → Despair → Eruption → Fall → New Arc)
+- **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking
+- **Retry/Fallback** — tenacity retries + automatic backup model switching
+- **Humanized Writing** — Humanizer-zh methodology + Zhuque AI detection optimization + adaptive AI-density reduction
 
 ## Supported AI Models
 
@@ -212,7 +216,7 @@ pyinstaller ocnovel_win.spec --clean
 
 | Configuration Block      | Description                                                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `novel_config`           | Basic novel information, writing guide (Worldview / Characters / Plot / Style).                                               |
+| `novel_config`           | Basic novel information, writing guide (Worldview / Characters / Plot / Style), arc structure config (`arc_config`).          |
 | `generation_config`      | Retry strategy, model selection, validation switches, humanization parameters (Humanizer-zh), sampling parameters (Temperature/Top_P). |
 | `knowledge_base_config`  | Reference file list, chunk size/overlap, cache directory.                                                                     |
 | `output_config`          | Output format, encoding, output directory.                                                                                    |

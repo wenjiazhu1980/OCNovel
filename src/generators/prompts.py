@@ -637,6 +637,24 @@ def get_chapter_prompt(
 [章节衔接提醒]
 本章是第一章或缺少上下文信息，请确保章节内部的场景转换流畅自然，避免突兀的时间、空间跳跃。"""
 
+    # 总 prompt 长度安全阀
+    max_prompt_chars = 8000
+    if len(base_prompt) > max_prompt_chars:
+        overflow = len(base_prompt) - max_prompt_chars
+        logging.warning(f"章节 prompt 过长 ({len(base_prompt)} 字符)，需裁剪 {overflow} 字符")
+
+        # 第1步：压缩上下文信息（最大的可变部分）
+        if context_info and len(context_info) > 300:
+            keep = max(300, len(context_info) - overflow - 200)
+            trimmed_ctx = context_info[-keep:]
+            base_prompt = base_prompt.replace(context_info, "...(前文已省略)\n" + trimmed_ctx)
+            logging.info(f"压缩上下文后 prompt 长度: {len(base_prompt)} 字符")
+
+        # 第2步：如果仍然超长，截断 prompt 尾部保留核心指令
+        if len(base_prompt) > max_prompt_chars:
+            logging.warning(f"二次裁剪: 从 {len(base_prompt)} 截断至 {max_prompt_chars} 字符")
+            base_prompt = base_prompt[:max_prompt_chars]
+
     return base_prompt
 
 

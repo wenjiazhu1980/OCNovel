@@ -165,8 +165,8 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 启动 `python gui_main.py` 后提供三个 Tab 页：
 
 - **模型配置** — 管理 Claude / Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL、模型名称，支持一键测试连接
-- **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
-- **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写
+- **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、三次灾难锚点、卷内情绪节奏（每卷章节数）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
+- **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志（高频日志防抖），进度条显示当前进度，支持断点续写、重新生成选中章节、合并所有章节、生成营销内容
 
 ### 国际化支持
 
@@ -201,9 +201,11 @@ pyinstaller ocnovel_win.spec --clean
 
 - **模型抽象** — `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`
 - **配置分层** — `config.json`（小说参数）+ `.env`（API 密钥）+ `AIConfig`（模型默认值）
-- **生成流水线** — outline → content → finalize，通过 `auto` 命令串联
+- **生成流水线** — 核心种子 → outline → content → finalize，通过 `auto` 命令串联
+- **雪花写作法** — 核心种子（一句话概括）→ 三幕式结构 → 灾难锚点 → 卷内情绪螺旋（成长→挫折→绝境→爆发→跌落→新局）
 - **知识库** — 文本分块 → 嵌入向量 → FAISS 检索 → Reranker API 精排
 - **重试/备用** — tenacity 重试 + 备用模型自动切换
+- **人性化写作** — Humanizer-zh 方法论 + 朱雀 AI 检测优化 + 自适应降 AI 浓度
 
 ## 支持的 AI 模型
 
@@ -230,7 +232,7 @@ pyinstaller ocnovel_win.spec --clean
 
 | 配置块                  | 说明                                                                                              |
 |------------------------|---------------------------------------------------------------------------------------------------|
-| `novel_config`         | 小说基本信息、写作指南（世界观/角色/剧情/风格）                                                     |
+| `novel_config`         | 小说基本信息、写作指南（世界观/角色/剧情/风格）、卷结构配置（`arc_config`）                          |
 | `generation_config`    | 重试策略、模型选择、验证开关、人性化参数（Humanizer-zh）、采样参数（Temperature/Top_P）             |
 | `knowledge_base_config`| 参考文件列表、分块大小/重叠、缓存目录                                                               |
 | `output_config`        | 输出格式、编码、输出目录                                                                           |
