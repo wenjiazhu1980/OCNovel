@@ -268,6 +268,12 @@ class NovelParamsTab(QWidget):
         self._sp_detail_chapters.setToolTip(self.tr("在上下文中详细展示的最近章节数"))
         o_form.addRow(self.tr("详细展示章节数"), self._sp_detail_chapters)
 
+        self._sp_chapters_per_arc = QSpinBox()
+        self._sp_chapters_per_arc.setRange(0, 200)
+        self._sp_chapters_per_arc.setSingleStep(5)
+        self._sp_chapters_per_arc.setToolTip(self.tr("每卷章节数,用于情绪节奏控制(螺旋上升模型)。设为 0 则禁用卷内情绪节奏"))
+        o_form.addRow(self.tr("每卷章节数(情绪节奏)"), self._sp_chapters_per_arc)
+
         outer.addWidget(o_grp)
 
         # 验证开关
@@ -788,6 +794,10 @@ class NovelParamsTab(QWidget):
         self._sp_context_chapters.setValue(int(gc.get("outline_context_chapters", 10)))
         self._sp_detail_chapters.setValue(int(gc.get("outline_detail_chapters", 5)))
 
+        # --- 生成配置：卷结构 ---
+        arc_cfg = nc.get("arc_config", {})
+        self._sp_chapters_per_arc.setValue(int(arc_cfg.get("chapters_per_arc", 30)))
+
         # --- 生成配置：验证 ---
         val = gc.get("validation", {})
         self._cb_logic.setChecked(bool(val.get("check_logic", True)))
@@ -868,6 +878,9 @@ class NovelParamsTab(QWidget):
         nc["style"] = self._le_style.text()
         nc["target_chapters"] = self._sp_chapters.value()
         nc["chapter_length"] = self._sp_chapter_len.value()
+        nc["arc_config"] = {
+            "chapters_per_arc": self._sp_chapters_per_arc.value(),
+        }
 
         wg = nc.setdefault("writing_guide", {})
         wg["world_building"] = {

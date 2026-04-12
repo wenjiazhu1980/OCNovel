@@ -269,6 +269,7 @@ class OutlineGenerator:
             current_end_chapter_num=batch_end_num,
             core_seed=core_seed,
             chapter_length=self.config.novel_config.get("chapter_length", 0) if hasattr(self.config, 'novel_config') else 0,
+            arc_config=self.config.novel_config.get("arc_config") if hasattr(self.config, 'novel_config') else None,
         )
 
         # 新增：打印大纲生成提示词长度

@@ -17,6 +17,9 @@
       "title": "牧神记",
       "target_chapters": 100,
       "chapter_length": 2500,
+      "arc_config": {
+        "chapters_per_arc": 30
+      },
       "knowledge_base": {
         "chunk_size": 1200,
         "chunk_overlap": 300,
