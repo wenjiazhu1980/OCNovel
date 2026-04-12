@@ -225,7 +225,10 @@ class ConsistencyChecker:
                                 # 尝试将 key 转换为整数进行比较
                                 if int(k) < chapter_idx:
                                     logging.debug(f"[{method_name}] Key '{k}' is valid and less than {chapter_idx}. Adding value.")
-                                    summary_parts.append(v)
+                                    # 兼容 dict 格式（含 title/summary/word_count）和纯字符串格式
+                                    summary_text = v.get("summary", "") if isinstance(v, dict) else str(v)
+                                    if summary_text:
+                                        summary_parts.append(summary_text)
                                 else:
                                      logging.debug(f"[{method_name}] Key '{k}' is not less than {chapter_idx}. Skipping.")
                             except ValueError:
@@ -284,6 +287,10 @@ class ConsistencyChecker:
                         # 使用 .get() 安全访问，如果 key 不存在则返回空字符串
                         logging.debug(f"[{method_name}] Attempting to get summary for key '{prev_chapter_num_str}' using .get()")
                         previous_summary = summaries.get(prev_chapter_num_str, "")
+                        # summary.json 的值可能是字符串或字典（含 title/summary/word_count）
+                        if isinstance(previous_summary, dict):
+                            previous_summary = previous_summary.get("summary", "")
+                        previous_summary = str(previous_summary) if previous_summary else ""
                         logging.debug(f"[{method_name}] .get() returned. previous_summary is now (first 100 chars): '{previous_summary[:100]}'")
 
                         # 如果未找到摘要，记录警告
@@ -302,6 +309,9 @@ class ConsistencyChecker:
             logging.debug(f"[{method_name}] chapter_idx is 0, no previous summary to get.")
 
         # 返回获取到的摘要（可能为空字符串）
+        if isinstance(previous_summary, dict):
+            previous_summary = previous_summary.get("summary", "")
+        previous_summary = str(previous_summary) if previous_summary else ""
         logging.debug(f"[{method_name}] Returning previous_summary (first 100 chars): '{previous_summary[:100]}'")
         return previous_summary
     
