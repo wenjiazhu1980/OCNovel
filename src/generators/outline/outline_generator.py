@@ -275,6 +275,33 @@ class OutlineGenerator:
         # 新增：打印大纲生成提示词长度
         logging.info(f"本次大纲生成prompt长度为: {len(prompt)} 字符")
 
+        # 总 prompt 长度安全阀：超过阈值时压缩上下文部分重新生成
+        max_prompt_chars = 8000
+        if len(prompt) > max_prompt_chars:
+            logging.warning(f"大纲 prompt 总长度 ({len(prompt)}) 超过安全阈值 ({max_prompt_chars})，压缩上下文重新生成")
+            # 计算需要截断的上下文长度
+            overflow = len(prompt) - max_prompt_chars
+            if len(existing_context) > overflow + 500:
+                compressed_context = "...(早期章节已省略)\n" + existing_context[overflow + 500:]
+            else:
+                compressed_context = existing_context[-1000:] if len(existing_context) > 1000 else existing_context
+            prompt = get_outline_prompt(
+                novel_type=novel_type,
+                theme=theme,
+                style=style,
+                current_start_chapter_num=batch_start_num,
+                current_batch_size=current_batch_size,
+                existing_context=compressed_context,
+                extra_prompt=extra_prompt,
+                novel_config=self.config.novel_config,
+                total_chapters=self.config.generator_config.get("target_chapters", 0),
+                current_end_chapter_num=batch_end_num,
+                core_seed=core_seed,
+                chapter_length=self.config.novel_config.get("chapter_length", 0) if hasattr(self.config, 'novel_config') else 0,
+                arc_config=self.config.novel_config.get("arc_config") if hasattr(self.config, 'novel_config') else None,
+            )
+            logging.info(f"压缩后 prompt 长度: {len(prompt)} 字符")
+
         batch_size = self.config.generation_config.get("batch_size", 5)  # 每次API调用生成的章节数
 
         if current_batch_size > batch_size:
@@ -754,7 +781,9 @@ class OutlineGenerator:
         result = "\n\n".join(context_parts)
 
         # 安全阀：限制上下文总长度，避免超出模型上下文窗口
-        max_context_chars = 8000
+        # 大纲 prompt 的固定部分（世界观/人物/剧情结构/情绪阶段等）约占 3000-4000 字符
+        # 为上下文预留的空间需要控制在合理范围内
+        max_context_chars = 5000
         if len(result) > max_context_chars:
             logging.warning(f"大纲上下文过长 ({len(result)} 字符)，截断至 {max_context_chars} 字符")
             # 保留末尾（最近的详细大纲更重要），截断开头的早期概要
