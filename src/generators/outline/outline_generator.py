@@ -702,20 +702,31 @@ class OutlineGenerator:
                     context_parts.append(f"- {conflict}")
         
         # 3. 获取前文大纲的详细信息与章节目录概要
-        # 解绑 context_chapters_count 对大纲目录的限制，获取更长的历史大纲列表
-        # 为了防止超长篇（如1000章以上）一次性加载爆 token，这里增加了一个软限制（最大 200 章，可根据模型上下文调整，也可以设为全量获取）
-        max_history_chapters = 200 
+        # 对超长篇做分层压缩：最近 N 章详细展示，更早的章节只保留标题，极早的章节按卷汇总
+        max_history_chapters = min(200, batch_start_num - 1)
         outline_start_index = max(0, batch_start_num - 1 - max_history_chapters)
-        
+
         previous_outlines = [o for o in self.chapter_outlines[outline_start_index:end_index] if isinstance(o, ChapterOutline)]
         if previous_outlines:
             context_parts.append(f"\n[大纲历史回顾 (共 {len(previous_outlines)} 章)]")
-            
-            # 对于更早的章节，只显示章节号和标题
+
             if len(previous_outlines) > detail_chapters_count:
-                context_parts.append("\n[更早章节概要目录]")
-                for prev_outline in previous_outlines[:-detail_chapters_count]:
-                    context_parts.append(f"第 {prev_outline.chapter_number} 章: {prev_outline.title}")
+                early_outlines = previous_outlines[:-detail_chapters_count]
+
+                # 超过50章的早期大纲：按每10章汇总一行，避免上下文爆炸
+                if len(early_outlines) > 50:
+                    context_parts.append("\n[早期章节汇总（每10章一组）]")
+                    for group_start in range(0, len(early_outlines), 10):
+                        group = early_outlines[group_start:group_start + 10]
+                        first_ch = group[0].chapter_number
+                        last_ch = group[-1].chapter_number
+                        titles = "、".join(o.title for o in group)
+                        context_parts.append(f"第{first_ch}-{last_ch}章: {titles}")
+                else:
+                    # 50章以内：逐章显示标题
+                    context_parts.append("\n[更早章节概要目录]")
+                    for prev_outline in early_outlines:
+                        context_parts.append(f"第 {prev_outline.chapter_number} 章: {prev_outline.title}")
 
             # 只显示最近 N 章的详细信息
             context_parts.append("\n[近期详细大纲]")
@@ -740,7 +751,16 @@ class OutlineGenerator:
                     # 确保所有元素都被转换为字符串，以防列表中包含非字符串元素（如字典）
                     context_parts.append(f"{key}: {', '.join(str(item) for item in value)}")
         
-        return "\n\n".join(context_parts)
+        result = "\n\n".join(context_parts)
+
+        # 安全阀：限制上下文总长度，避免超出模型上下文窗口
+        max_context_chars = 8000
+        if len(result) > max_context_chars:
+            logging.warning(f"大纲上下文过长 ({len(result)} 字符)，截断至 {max_context_chars} 字符")
+            # 保留末尾（最近的详细大纲更重要），截断开头的早期概要
+            result = "...(早期章节已省略)\n" + result[-max_context_chars:]
+
+        return result
 
     def _check_outline_consistency(self, new_outline: ChapterOutline, previous_outlines: List[ChapterOutline]) -> bool:
         """检查新生成的大纲与已有大纲的一致性，仅添加新角色和新场景"""
