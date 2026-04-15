@@ -5,6 +5,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QCheckBox, QLineEdit, QSplitter, QProgressBar, QMessageBox,
+    QLabel, QSpinBox,
 )
 from PySide6.QtCore import Qt, Signal
 
@@ -69,6 +70,24 @@ class ProgressTab(QWidget):
         self.btn_outline_only.setToolTip(self.tr("仅生成大纲而不生成章节内容，可先预览大纲效果"))
         self.btn_outline_only.setProperty("cssClass", "info")
 
+        # 大纲章节范围输入（0 = 自动推断）
+        self.spin_outline_start = QSpinBox()
+        self.spin_outline_start.setRange(0, 9999)
+        self.spin_outline_start.setValue(0)
+        self.spin_outline_start.setSpecialValueText(self.tr("自动"))
+        self.spin_outline_start.setToolTip(self.tr("大纲起始章节（0 = 自动推断）"))
+        self.spin_outline_start.setFixedWidth(72)
+
+        self.spin_outline_end = QSpinBox()
+        self.spin_outline_end.setRange(0, 9999)
+        self.spin_outline_end.setValue(0)
+        self.spin_outline_end.setSpecialValueText(self.tr("自动"))
+        self.spin_outline_end.setToolTip(self.tr("大纲结束章节（0 = 自动推断）"))
+        self.spin_outline_end.setFixedWidth(72)
+
+        lbl_outline_range = QLabel(self.tr("大纲范围:"))
+        lbl_outline_tilde = QLabel("~")
+
         self.chk_force_outline = QCheckBox(self.tr("强制重生成大纲"))
         self.edit_extra_prompt = QLineEdit()
         self.edit_extra_prompt.setPlaceholderText(self.tr("额外提示词（可选）"))
@@ -76,6 +95,10 @@ class ProgressTab(QWidget):
         top_bar_1.addWidget(self.btn_start)
         top_bar_1.addWidget(self.btn_stop)
         top_bar_1.addWidget(self.btn_outline_only)
+        top_bar_1.addWidget(lbl_outline_range)
+        top_bar_1.addWidget(self.spin_outline_start)
+        top_bar_1.addWidget(lbl_outline_tilde)
+        top_bar_1.addWidget(self.spin_outline_end)
         top_bar_1.addWidget(self.chk_force_outline)
         top_bar_1.addWidget(self.edit_extra_prompt, stretch=1)
 
@@ -367,6 +390,8 @@ class ProgressTab(QWidget):
             env_path=self._env_path,
             force_outline=self.chk_force_outline.isChecked(),
             extra_prompt=self.edit_extra_prompt.text().strip(),
+            start_chapter=self.spin_outline_start.value(),
+            end_chapter=self.spin_outline_end.value(),
         )
 
         self._outline_worker.outline_finished.connect(self._on_outline_finished)
