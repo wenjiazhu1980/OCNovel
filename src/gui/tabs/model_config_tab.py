@@ -12,6 +12,8 @@ from ..workers.connection_tester import ConnectionTesterWorker
 
 # 提供商选项（已移除火山引擎，统一使用大纲/内容模型配置）
 PROVIDERS = ["gemini", "openai", "claude"]
+# API 模式选项
+API_MODES = ["auto", "chat", "responses"]
 
 
 class ModelConfigTab(QWidget):
@@ -93,6 +95,15 @@ class ModelConfigTab(QWidget):
         self._fields[env_key] = edit
         return edit
 
+    def _add_combo_field(self, form: QFormLayout, label: str, env_key: str,
+                         items: list[str]):
+        """向表单添加一行 QComboBox 并注册到 _fields"""
+        combo = QComboBox()
+        combo.addItems(items)
+        form.addRow(label, combo)
+        self._fields[env_key] = combo
+        return combo
+
     def _make_group(self, title: str, provider_key: str | None = None):
         """创建 QGroupBox + QFormLayout，可选附带测试按钮"""
         group = QGroupBox(title)
@@ -157,8 +168,8 @@ class ModelConfigTab(QWidget):
         self._add_field(form, self.tr("API Key"), "OPENAI_OUTLINE_API_KEY", echo_password=True)
         self._add_field(form, self.tr("Base URL"), "OPENAI_OUTLINE_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
-        self._add_field(form, self.tr("API 模式"), "OPENAI_OUTLINE_API_MODE",
-                        placeholder="auto (自动) / chat (Chat Completions) / responses (Responses API)")
+        self._add_combo_field(form, self.tr("API 模式"), "OPENAI_OUTLINE_API_MODE",
+                              API_MODES)
         self._add_field(form, self.tr("模型名称"), "OPENAI_OUTLINE_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_field(form, self.tr("超时 (秒)"), "OPENAI_OUTLINE_TIMEOUT", placeholder="120")
@@ -173,8 +184,8 @@ class ModelConfigTab(QWidget):
         self._add_field(form, self.tr("API Key"), "OPENAI_CONTENT_API_KEY", echo_password=True)
         self._add_field(form, self.tr("Base URL"), "OPENAI_CONTENT_API_BASE",
                         placeholder="https://api.siliconflow.cn/v1")
-        self._add_field(form, self.tr("API 模式"), "OPENAI_CONTENT_API_MODE",
-                        placeholder="auto (自动) / chat (Chat Completions) / responses (Responses API)")
+        self._add_combo_field(form, self.tr("API 模式"), "OPENAI_CONTENT_API_MODE",
+                              API_MODES)
         self._add_field(form, self.tr("模型名称"), "OPENAI_CONTENT_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_field(form, self.tr("超时 (秒)"), "OPENAI_CONTENT_TIMEOUT", placeholder="180")
@@ -191,8 +202,8 @@ class ModelConfigTab(QWidget):
                         placeholder="https://api.siliconflow.cn/v1")
         self._add_field(form, self.tr("模型 ID"), "FALLBACK_MODEL_ID",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
-        self._add_field(form, self.tr("API 模式"), "FALLBACK_API_MODE",
-                        placeholder="auto")
+        self._add_combo_field(form, self.tr("API 模式"), "FALLBACK_API_MODE",
+                              API_MODES)
         self._add_test_button(form, "fallback")
 
     def _build_model_selection_group(self):
@@ -236,6 +247,10 @@ class ModelConfigTab(QWidget):
         for key, widget in self._fields.items():
             if isinstance(widget, QCheckBox):
                 widget.setChecked(env.get(key, "true").lower() == "true")
+            elif isinstance(widget, QComboBox):
+                val = env.get(key, "").strip().lower()
+                idx = widget.findText(val)
+                widget.setCurrentIndex(idx if idx >= 0 else 0)
             elif isinstance(widget, QLineEdit):
                 widget.setText(env.get(key, ""))
 
@@ -258,6 +273,8 @@ class ModelConfigTab(QWidget):
         for key, widget in self._fields.items():
             if isinstance(widget, QCheckBox):
                 env[key] = "true" if widget.isChecked() else "false"
+            elif isinstance(widget, QComboBox):
+                env[key] = widget.currentText()
             elif isinstance(widget, QLineEdit):
                 env[key] = widget.text().strip()
 
