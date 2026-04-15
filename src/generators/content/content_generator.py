@@ -71,7 +71,7 @@ class ContentGenerator:
         self.default_style = '古风雅致'  # 默认风格
 
     def _load_outline(self):
-        """加载大纲文件"""
+        """加载大纲文件，按 chapter_number 排序确保索引与编号一致"""
         outline_file = os.path.join(self.output_dir, "outline.json")
         outline_data = load_json_file(outline_file, default_value=[])
         
@@ -82,7 +82,31 @@ class ContentGenerator:
                     valid_chapters = [ch for ch in chapters_list if isinstance(ch, dict)]
                     if len(valid_chapters) != len(chapters_list):
                          logger.warning(f"大纲文件中包含非字典元素，已跳过。")
-                    self.chapter_outlines = [ChapterOutline(**chapter) for chapter in valid_chapters]
+                    outlines = [ChapterOutline(**chapter) for chapter in valid_chapters]
+                    # 按 chapter_number 排序，去重（保留最后出现的版本）
+                    seen = {}
+                    for o in outlines:
+                        seen[o.chapter_number] = o
+                    self.chapter_outlines = [seen[k] for k in sorted(seen.keys())]
+                    if len(self.chapter_outlines) != len(outlines):
+                        logger.warning(
+                            f"大纲去重：原始 {len(outlines)} 条 → 去重后 {len(self.chapter_outlines)} 条"
+                        )
+                    # 校验连续性：chapter_number 必须是 1, 2, 3, ... N
+                    if self.chapter_outlines:
+                        expected_nums = list(range(1, self.chapter_outlines[-1].chapter_number + 1))
+                        actual_nums = [o.chapter_number for o in self.chapter_outlines]
+                        if actual_nums != expected_nums:
+                            missing = sorted(set(expected_nums) - set(actual_nums))
+                            logger.error(
+                                f"大纲章节号不连续！缺失: {missing}。"
+                                f"请重新生成大纲或手动修复 outline.json。"
+                            )
+                            self._outline_discontinuous = missing
+                        else:
+                            self._outline_discontinuous = []
+                    else:
+                        self._outline_discontinuous = []
                     logger.info(f"从文件加载了 {len(self.chapter_outlines)} 章大纲")
                 except TypeError as e:
                     logger.error(f"加载大纲时字段不匹配或类型错误: {e} - 请检查 outline.json 结构是否与 ChapterOutline 定义一致。问题可能出在: {chapters_list[:2]}...")
@@ -172,6 +196,13 @@ class ContentGenerator:
         if not self.chapter_outlines:
             logger.error("无法生成内容：大纲未加载或为空。请先生成大纲。")
             return False
+        if getattr(self, '_outline_discontinuous', []):
+            missing = self._outline_discontinuous
+            logger.error(
+                f"大纲章节号不连续，缺失: {missing}。"
+                f"无法在不完整的大纲上生成内容，请先使用「强制重生成大纲」修复。"
+            )
+            return False
         try:
             if target_chapter is not None:
                 if 1 <= target_chapter <= len(self.chapter_outlines):
@@ -200,6 +231,13 @@ class ContentGenerator:
             logger.error(f"无效的章节号: {chapter_num}")
             return False
         chapter_outline = self.chapter_outlines[chapter_num - 1]
+        if chapter_outline.chapter_number != chapter_num:
+            logger.error(
+                f"大纲编号不匹配：请求生成第 {chapter_num} 章，"
+                f"但索引位置的大纲编号为 {chapter_outline.chapter_number}（{chapter_outline.title}）。"
+                f"请检查 outline.json 是否存在缺失或错乱的章节号。"
+            )
+            return False
         logger.info(f"[Chapter {chapter_num}] 开始处理章节: {chapter_outline.title}")
         success = False
         length_hint = ""  # 字数约束提示，重试时追加到 prompt
@@ -617,58 +655,76 @@ class ContentGenerator:
             return False
 
     def _get_context_for_chapter(self, chapter_num: int) -> str:
-        """获取章节的上下文信息（包括前一章摘要和内容）"""
+        """获取章节的上下文信息
+
+        采集前3章摘要 + 前一章结尾正文 + 后3章大纲预览，
+        为模型提供充分的前后文衔接信息。
+        """
+        context_parts = []
+        max_summary_len = 500
+
+        # ── 1. 前3章摘要（从远到近排列，让模型看到情节发展脉络） ──
+        summaries_collected = 0
+        for prev_ch in range(max(1, chapter_num - 3), chapter_num):
+            try:
+                summary = self.consistency_checker._get_previous_summary(prev_ch)
+                if summary:
+                    if len(summary) > max_summary_len:
+                        summary = summary[:max_summary_len] + "..."
+                    context_parts.append(f"第{prev_ch}章摘要：{summary}")
+                    summaries_collected += 1
+            except Exception as e:
+                logger.warning(f"获取第{prev_ch}章摘要时出错: {e}")
+        if summaries_collected > 0:
+            logger.debug(f"获取到前 {summaries_collected} 章摘要")
+
+        # ── 2. 前一章结尾正文（直接衔接用） ──
         if chapter_num > 1:
-            context_parts = []
-            
-            # 1. 尝试获取前一章摘要（限制长度）
             try:
-                prev_summary = self.consistency_checker._get_previous_summary(chapter_num - 1)
-                if prev_summary:
-                    # 限制摘要长度
-                    max_summary_length = 500
-                    if len(prev_summary) > max_summary_length:
-                        prev_summary = prev_summary[:max_summary_length] + "..."
-                    context_parts.append(f"前一章摘要：{prev_summary}")
-                    logger.debug(f"获取到第 {chapter_num-1} 章摘要")
-            except Exception as e:
-                logger.warning(f"获取第 {chapter_num-1} 章摘要时出错: {e}")
-
-            # 2. 获取前一章内容（进一步限制长度）
-            try:
-                prev_chapter_num = chapter_num - 1
-                if 0 <= prev_chapter_num - 1 < len(self.chapter_outlines):
-                    prev_chapter_title = self.chapter_outlines[prev_chapter_num - 1].title
-                    cleaned_prev_title = self._clean_filename(prev_chapter_title)
-                    prev_chapter_filename = f"第{prev_chapter_num}章_{cleaned_prev_title}.txt"
-                    prev_chapter_file = os.path.join(self.output_dir, prev_chapter_filename)
-                    
-                    if os.path.exists(prev_chapter_file):
-                        with open(prev_chapter_file, 'r', encoding='utf-8') as f:
+                prev_ch = chapter_num - 1
+                if 0 <= prev_ch - 1 < len(self.chapter_outlines):
+                    prev_title = self.chapter_outlines[prev_ch - 1].title
+                    prev_file = os.path.join(
+                        self.output_dir,
+                        f"第{prev_ch}章_{self._clean_filename(prev_title)}.txt",
+                    )
+                    if os.path.exists(prev_file):
+                        with open(prev_file, "r", encoding="utf-8") as f:
                             prev_content = f.read()
-                            # 进一步限制内容长度，只取最后一部分
-                            max_prev_content_length = 1500  # 减少到1500字符
-                            if len(prev_content) > max_prev_content_length:
-                                context_parts.append(f"前一章结尾：{prev_content[-max_prev_content_length:]}")
-                            else:
-                                context_parts.append(f"前一章内容：{prev_content}")
-                            logger.debug(f"获取到第 {prev_chapter_num} 章内容")
+                        max_tail = 2000
+                        if len(prev_content) > max_tail:
+                            context_parts.append(f"前一章结尾：\n{prev_content[-max_tail:]}")
+                        else:
+                            context_parts.append(f"前一章内容：\n{prev_content}")
                     else:
-                        logger.warning(f"未找到前一章文件 {prev_chapter_file}")
+                        logger.warning(f"未找到前一章文件: {prev_file}")
             except Exception as e:
-                logger.warning(f"读取第 {prev_chapter_num} 章内容时出错: {str(e)}")
+                logger.warning(f"读取前一章内容时出错: {e}")
 
-            # 返回所有上下文信息，并限制总长度
-            if context_parts:
-                combined_context = "\n".join(context_parts)
-                # 限制总上下文长度
-                max_total_context_length = 2000
-                if len(combined_context) > max_total_context_length:
-                    combined_context = combined_context[-max_total_context_length:] + "...(前文已省略)"
-                return combined_context
-            return "（无法获取前一章信息）"
-        else:
-            return "（这是第一章，无前文）"
+        # ── 3. 后3章大纲预览（让模型知道后续走向，合理铺垫伏笔） ──
+        next_previews = []
+        for next_ch in range(chapter_num + 1, min(chapter_num + 4, len(self.chapter_outlines) + 1)):
+            try:
+                idx = next_ch - 1
+                if idx < len(self.chapter_outlines) and self.chapter_outlines[idx] is not None:
+                    outline = self.chapter_outlines[idx]
+                    preview = f"第{next_ch}章「{outline.title}」: {', '.join(outline.key_points[:3])}"
+                    next_previews.append(preview)
+            except Exception as e:
+                logger.warning(f"获取第{next_ch}章大纲预览时出错: {e}")
+        if next_previews:
+            context_parts.append("后续章节预览（用于伏笔铺垫，不要提前剧透）：\n" + "\n".join(next_previews))
+
+        # ── 4. 组装并限制总长度 ──
+        if not context_parts:
+            return "（这是第一章，无前文）" if chapter_num <= 1 else "（无法获取前后章节信息）"
+
+        combined = "\n\n".join(context_parts)
+        max_total = 5000
+        if len(combined) > max_total:
+            combined = combined[-max_total:]
+            combined = "...(前文已省略)\n" + combined
+        return combined
 
     def _get_references_for_chapter(self, chapter_outline: ChapterOutline) -> dict:
         """获取章节的参考信息（从知识库），使用优化后的检索逻辑"""

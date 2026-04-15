@@ -65,6 +65,30 @@ class OutlineGenerator:
                     else:
                         logging.warning(f"Non-dict chapter data found while loading outline: {chapter_data} - Skipped")
                 self.chapter_outlines = valid_chapters
+                # 按 chapter_number 排序并去重，确保索引与编号一致
+                seen = {}
+                for o in self.chapter_outlines:
+                    seen[o.chapter_number] = o
+                self.chapter_outlines = [seen[k] for k in sorted(seen.keys())]
+                if len(self.chapter_outlines) != len(valid_chapters):
+                    logging.warning(
+                        f"大纲去重：原始 {len(valid_chapters)} 条 → 去重后 {len(self.chapter_outlines)} 条"
+                    )
+                # 校验连续性：chapter_number 必须是 1, 2, 3, ... N
+                if self.chapter_outlines:
+                    expected_nums = list(range(1, self.chapter_outlines[-1].chapter_number + 1))
+                    actual_nums = [o.chapter_number for o in self.chapter_outlines]
+                    if actual_nums != expected_nums:
+                        missing = sorted(set(expected_nums) - set(actual_nums))
+                        logging.error(
+                            f"大纲章节号不连续！缺失: {missing}。"
+                            f"请重新生成大纲或手动修复 outline.json。"
+                        )
+                        self._outline_discontinuous = missing
+                    else:
+                        self._outline_discontinuous = []
+                else:
+                    self._outline_discontinuous = []
                 logging.info(f"Loaded {len(self.chapter_outlines)} valid chapter outlines from file")
             else:
                 logging.error("Unrecognized outline file format, should be a list or dict with 'chapters' key.")
@@ -188,6 +212,18 @@ class OutlineGenerator:
             if start_chapter < 1 or end_chapter < start_chapter:
                 logging.error(f"无效的章节范围: start={start_chapter}, end={end_chapter}")
                 return False
+
+            # 已有大纲不连续时，仅允许覆盖整个范围（强制重生成），拒绝追加
+            if getattr(self, '_outline_discontinuous', []):
+                missing = self._outline_discontinuous
+                covers_gap = start_chapter <= min(missing) and end_chapter >= max(missing)
+                if not covers_gap:
+                    logging.error(
+                        f"大纲存在缺失章节 {missing}，无法在此基础上追加新大纲。"
+                        f"请先使用「强制重生成大纲」覆盖完整范围（1~{end_chapter}），"
+                        f"或手动修复 outline.json 补齐缺失章节。"
+                    )
+                    return False
 
             total_chapters_to_generate = end_chapter - start_chapter + 1
             # 确保大纲列表至少有 end_chapter 的长度，如果不够则填充 None 或空 ChapterOutline

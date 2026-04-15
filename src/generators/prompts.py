@@ -422,6 +422,28 @@ def get_chapter_prompt(
     if snowflake_extras:
         base_prompt += f"\n\n[叙事规划]\n" + chr(10).join(snowflake_extras)
 
+    # 注入知识库参考信息
+    if references:
+        ref_parts = []
+        for ref_type, ref_label in [
+            ("plot_references", "情节参考"),
+            ("character_references", "人物参考"),
+            ("setting_references", "场景参考"),
+        ]:
+            items = references.get(ref_type, [])
+            if items:
+                texts = []
+                for item in items:
+                    if isinstance(item, dict):
+                        texts.append(item.get("text", item.get("content", str(item))))
+                    elif isinstance(item, str):
+                        texts.append(item)
+                    else:
+                        texts.append(str(item))
+                ref_parts.append(f"[{ref_label}]\n" + chr(10).join(f"- {t[:300]}" for t in texts if t))
+        if ref_parts:
+            base_prompt += "\n\n[知识库参考素材]\n以下是从已有内容中检索到的相关片段，请参考其风格、细节和设定保持一致性：\n" + chr(10).join(ref_parts)
+
     base_prompt += f"""
 
 [输出要求]
@@ -530,9 +552,10 @@ def get_chapter_prompt(
     # 添加上下文信息（限制长度）
     if context_info:
         # 限制上下文信息长度，避免过长
-        max_context_length = 1500  # 减少上下文长度，避免过度依赖
+        max_context_length = 5000
         if len(context_info) > max_context_length:
-            context_info = context_info[-max_context_length:] + "...(前文已省略)"
+            context_info = context_info[-max_context_length:]
+            context_info = "...(前文已省略)\n" + context_info
 
         base_prompt += f"""
 
