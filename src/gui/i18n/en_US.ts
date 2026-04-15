@@ -230,6 +230,49 @@ Please restart the application to apply the new language settings.</translation>
     </message>
 </context>
 <context>
+    <name>OutlineWorker</name>
+    <message>
+        <source>不支持的模型类型: {0}</source>
+        <translation>Unsupported model type: {0}</translation>
+    </message>
+    <message>
+        <source>配置文件中未找到有效的目标章节数设置 (target_chapters)</source>
+        <translation>No valid target_chapters setting found in config</translation>
+    </message>
+    <message>
+        <source>收到停止信号，大纲生成中止。</source>
+        <translation>Stop signal received, outline generation aborted.</translation>
+    </message>
+    <message>
+        <source>用户取消</source>
+        <translation>User cancelled</translation>
+    </message>
+    <message>
+        <source>强制重新生成全部大纲 (1~{0})</source>
+        <translation>Force regenerating all outlines (1~{0})</translation>
+    </message>
+    <message>
+        <source>大纲已完整（{0}/{1} 章），无需重新生成。如需覆盖请勾选「强制重生成大纲」。</source>
+        <translation>Outline is complete ({0}/{1} chapters), no regeneration needed. Check "Force Regenerate Outline" to overwrite.</translation>
+    </message>
+    <message>
+        <source>补充生成大纲 ({0}~{1})</source>
+        <translation>Supplementing outline ({0}~{1})</translation>
+    </message>
+    <message>
+        <source>大纲生成成功！共 {0} 章。</source>
+        <translation>Outline generated successfully! {0} chapters total.</translation>
+    </message>
+    <message>
+        <source>大纲生成失败，请检查日志。</source>
+        <translation>Outline generation failed, please check logs.</translation>
+    </message>
+    <message>
+        <source>大纲生成异常: {0}</source>
+        <translation>Outline generation exception: {0}</translation>
+    </message>
+</context>
+<context>
     <name>ModelConfigTab</name>
     <message>
         <location filename="../tabs/model_config_tab.py" line="51"/>
@@ -1170,6 +1213,44 @@ or click "New Config" to create.</translation>
         <translation>Force Regenerate Outline</translation>
     </message>
     <message>
+        <source>📝  仅生成大纲</source>
+        <translation>📝  Outline Only</translation>
+    </message>
+    <message>
+        <source>仅生成大纲而不生成章节内容，可先预览大纲效果</source>
+        <translation>Generate outline only without chapter content, preview outline first</translation>
+    </message>
+    <message>
+        <source>⏳  大纲生成中...</source>
+        <translation>⏳  Generating Outline...</translation>
+    </message>
+    <message>
+        <source>流水线正在运行中，请等待完成后再生成大纲。</source>
+        <translation>Pipeline is running, please wait before generating outline.</translation>
+    </message>
+    <message>
+        <source>大纲生成正在进行中，请稍候...</source>
+        <translation>Outline generation in progress, please wait...</translation>
+    </message>
+    <message>
+        <source>开始生成大纲...</source>
+        <translation>Starting outline generation...</translation>
+    </message>
+    <message>
+        <source>大纲生成完成</source>
+        <translation>Outline Generation Complete</translation>
+    </message>
+    <message>
+        <source>大纲生成失败</source>
+        <translation>Outline Generation Failed</translation>
+    </message>
+    <message>
+        <source>大纲生成失败：
+{0}</source>
+        <translation>Outline generation failed:
+{0}</translation>
+    </message>
+    <message>
         <location filename="../tabs/progress_tab.py" line="67"/>
         <source>额外提示词（可选）</source>
         <translation>Extra Prompt (Optional)</translation>
@@ -1319,6 +1400,10 @@ Continue?</translation>
         <location filename="../tabs/progress_tab.py" line="294"/>
         <source>已发送停止信号，等待当前章节完成后停止…</source>
         <translation>Stop signal sent, waiting for current chapter to complete...</translation>
+    </message>
+    <message>
+        <source>已发送停止信号，等待当前操作完成后停止…</source>
+        <translation>Stop signal sent, waiting for current operation to complete...</translation>
     </message>
     <message>
         <location filename="../tabs/progress_tab.py" line="303"/>

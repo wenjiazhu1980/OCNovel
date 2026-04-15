@@ -585,7 +585,7 @@ def get_chapter_prompt(
 本章是第一章或缺少上下文信息，请确保章节内部的场景转换流畅自然，避免突兀的时间、空间跳跃。"""
 
     # 总 prompt 长度安全阀
-    max_prompt_chars = 8000
+    max_prompt_chars = 20000
     if len(base_prompt) > max_prompt_chars:
         overflow = len(base_prompt) - max_prompt_chars
         logging.warning(f"章节 prompt 过长 ({len(base_prompt)} 字符)，需裁剪 {overflow} 字符")

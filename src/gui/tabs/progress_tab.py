@@ -13,6 +13,7 @@ from src.gui.widgets.chapter_list import ChapterListWidget
 from src.gui.workers.pipeline_worker import PipelineWorker
 from src.gui.workers.marketing_worker import MarketingWorker
 from src.gui.workers.merge_worker import MergeWorker
+from src.gui.workers.outline_worker import OutlineWorker
 from src.gui.utils.log_handler import SignalLogHandler
 from src.gui.utils.config_io import load_config
 
@@ -30,6 +31,7 @@ class ProgressTab(QWidget):
         self._worker: PipelineWorker | None = None
         self._marketing_worker: MarketingWorker | None = None
         self._merge_worker: MergeWorker | None = None
+        self._outline_worker: OutlineWorker | None = None
 
         self._init_ui()
         self._connect_ui()
@@ -62,12 +64,18 @@ class ProgressTab(QWidget):
         self.btn_stop.setEnabled(False)
         self.btn_stop.setProperty("cssClass", "danger")
 
+        self.btn_outline_only = QPushButton(self.tr("📝  仅生成大纲"))
+        self.btn_outline_only.setMinimumWidth(140)
+        self.btn_outline_only.setToolTip(self.tr("仅生成大纲而不生成章节内容，可先预览大纲效果"))
+        self.btn_outline_only.setProperty("cssClass", "info")
+
         self.chk_force_outline = QCheckBox(self.tr("强制重生成大纲"))
         self.edit_extra_prompt = QLineEdit()
         self.edit_extra_prompt.setPlaceholderText(self.tr("额外提示词（可选）"))
 
         top_bar_1.addWidget(self.btn_start)
         top_bar_1.addWidget(self.btn_stop)
+        top_bar_1.addWidget(self.btn_outline_only)
         top_bar_1.addWidget(self.chk_force_outline)
         top_bar_1.addWidget(self.edit_extra_prompt, stretch=1)
 
@@ -138,6 +146,7 @@ class ProgressTab(QWidget):
     def _connect_ui(self):
         self.btn_start.clicked.connect(self._on_start)
         self.btn_stop.clicked.connect(self._on_stop)
+        self.btn_outline_only.clicked.connect(self._on_generate_outline)
         self.btn_refresh.clicked.connect(self.load_chapters)
         self.btn_regen.clicked.connect(self._on_regen)
         self.btn_merge.clicked.connect(self._on_merge)
@@ -278,6 +287,7 @@ class ProgressTab(QWidget):
         # 切换按钮状态
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
+        self.btn_outline_only.setEnabled(False)
         self.btn_regen.setEnabled(False)
         self.btn_refresh.setEnabled(False)
         self.btn_merge.setEnabled(False)
@@ -287,11 +297,13 @@ class ProgressTab(QWidget):
         self._worker.start()
 
     def _on_stop(self):
-        """请求停止流水线"""
+        """请求停止流水线或大纲生成"""
         if self._worker is not None:
             self._worker.stop()
+        if self._outline_worker is not None:
+            self._outline_worker.stop()
         self.btn_stop.setEnabled(False)
-        self.log_viewer.append_log(self.tr("已发送停止信号，等待当前章节完成后停止…"), "WARNING")
+        self.log_viewer.append_log(self.tr("已发送停止信号，等待当前操作完成后停止…"), "WARNING")
 
     def _on_selection_changed(self):
         """章节列表选择变化时，更新重新生成按钮状态"""
@@ -322,6 +334,70 @@ class ProgressTab(QWidget):
             return
 
         self._start_pipeline(target_chapters_list=selected)
+
+    def _on_generate_outline(self):
+        """仅生成大纲"""
+        if self._worker is not None:
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("流水线正在运行中，请等待完成后再生成大纲。"),
+            )
+            return
+
+        if self._outline_worker is not None:
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("大纲生成正在进行中，请稍候..."),
+            )
+            return
+
+        cfg = load_config(self._config_path)
+        target_chapters = (cfg.get("novel_config") or {}).get("target_chapters", 0)
+        if target_chapters <= 0:
+            QMessageBox.warning(
+                self, self.tr("配置错误"),
+                self.tr("请先在「小说参数」中设置有效的目标章节数 (target_chapters)。"),
+            )
+            return
+
+        self.log_viewer.clear_logs()
+
+        self._outline_worker = OutlineWorker(
+            config_path=self._config_path,
+            env_path=self._env_path,
+            force_outline=self.chk_force_outline.isChecked(),
+            extra_prompt=self.edit_extra_prompt.text().strip(),
+        )
+
+        self._outline_worker.outline_finished.connect(self._on_outline_finished)
+        self._outline_worker.log_message.connect(self.log_viewer.append_log)
+
+        self.btn_outline_only.setEnabled(False)
+        self.btn_outline_only.setText(self.tr("⏳  大纲生成中..."))
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.pipeline_running_changed.emit(True)
+
+        self.log_viewer.append_log(self.tr("开始生成大纲..."), "INFO")
+        self._outline_worker.start()
+
+    def _on_outline_finished(self, success: bool, message: str):
+        """大纲生成完成"""
+        self.btn_outline_only.setEnabled(True)
+        self.btn_outline_only.setText(self.tr("📝  仅生成大纲"))
+        self.btn_start.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self.pipeline_running_changed.emit(False)
+
+        if success:
+            QMessageBox.information(self, self.tr("大纲生成完成"), message)
+        else:
+            QMessageBox.critical(
+                self, self.tr("大纲生成失败"),
+                self.tr("大纲生成失败：\n{0}").format(message),
+            )
+
+        self._outline_worker = None
 
     def _on_generate_marketing(self):
         """生成营销内容"""
@@ -469,6 +545,7 @@ class ProgressTab(QWidget):
         """流水线结束（成功或失败）"""
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
+        self.btn_outline_only.setEnabled(True)
         self.btn_regen.setEnabled(False)
         self.btn_refresh.setEnabled(True)
         self.btn_merge.setEnabled(True)
