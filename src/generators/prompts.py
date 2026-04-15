@@ -41,6 +41,7 @@ def get_outline_prompt(
     core_seed: str = "",
     chapter_length: int = 0,
     arc_config: Optional[Dict] = None,
+    following_context: str = "",
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -241,6 +242,16 @@ def get_outline_prompt(
     # 上下文
     if existing_context:
         base_prompt += f"\n[上下文]\n{existing_context}\n"
+
+    # 后续章节衔接约束（仅当生成中间章节时存在）
+    if following_context:
+        base_prompt += f"""\n[后续衔接约束]
+⚠️ 本批次为中间章节，其后已有既定大纲，生成时必须满足以下衔接要求：
+{following_context}
+- 本批次最后一章的冲突/伏笔/角色状态，必须能自然引出上述后续章节的第一章
+- 禁止引入后续章节中不存在的新主线或新角色（支线/配角可以）
+- 若后续章节涉及某个伏笔，本批次应在合适位置提前埋设该伏笔
+"""
 
     # 叙事要求（精简合并）
     base_prompt += f"""
