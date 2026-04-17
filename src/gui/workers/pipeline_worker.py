@@ -75,7 +75,6 @@ class PipelineWorker(QThread):
             # ---- 1. 加载配置 ----
             from dotenv import load_dotenv
             load_dotenv(self._env_path, override=True)
-            logger.info(f"加载环境变量文件: {self._env_path} (exists={os.path.exists(self._env_path)})")
 
             from src.config.config import Config
             config = Config(self._config_path)

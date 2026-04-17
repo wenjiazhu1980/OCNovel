@@ -27,7 +27,6 @@ class OpenAIModel(BaseModel):
         super().__init__(config)
         self._validate_config()
         self.api_mode = "auto"
-        self.temperature = config.get("temperature", 0.7)
         self.reasoning_enabled = config.get("reasoning_enabled", False)
         self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self._init_standard_client(config)
@@ -568,8 +567,8 @@ class OpenAIModel(BaseModel):
             max_tokens: 最大生成token数
             **kwargs: 额外参数，如 temperature, top_p 等
         """
-        # 从 kwargs 中提取采样参数，未指定则使用模型配置的默认值
-        temperature = kwargs.get("temperature", self.temperature)
+        # 从 kwargs 中提取采样参数，未指定则使用默认值
+        temperature = kwargs.get("temperature", 0.7)
         top_p = kwargs.get("top_p", None)
         # 对推理模型自动清理不支持的采样参数
         temperature, top_p = self._sanitize_sampling_params(self.model_name, temperature, top_p)

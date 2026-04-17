@@ -99,9 +99,7 @@ class KnowledgeBase:
                     # 当达到目标长度时创建新块
                     if current_length >= chunk_size:
                         chunk_text = "".join(current_chunk)
-                        # 清理空字节和不可见字符，确保块内容有效
-                        chunk_text = chunk_text.replace('\x00', '').strip()
-                        if chunk_text:  # 确保块非空
+                        if chunk_text.strip():  # 确保块不为空
                             chunk = TextChunk(
                                 content=chunk_text,
                                 chapter=chapter_idx,
@@ -125,8 +123,7 @@ class KnowledgeBase:
                 # 处理最后一个块
                 if current_chunk:
                     chunk_text = "".join(current_chunk)
-                    chunk_text = chunk_text.replace('\x00', '').strip()
-                    if chunk_text:
+                    if chunk_text.strip():
                         chunk = TextChunk(
                             content=chunk_text,
                             chapter=chapter_idx,
@@ -413,10 +410,7 @@ class KnowledgeBase:
         for file_path in file_paths:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
-                    file_content = f.read()
-                # 清理空字节等不可见字符
-                file_content = file_content.replace('\x00', '')
-                combined_text += file_content + "\n\n"
+                    combined_text += f.read() + "\n\n"
                 logging.info(f"已加载文件: {file_path}")
             except Exception as e:
                 logging.error(f"加载文件 {file_path} 失败: {str(e)}")

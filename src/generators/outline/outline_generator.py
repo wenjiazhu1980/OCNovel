@@ -65,35 +65,7 @@ class OutlineGenerator:
                     else:
                         logging.warning(f"Non-dict chapter data found while loading outline: {chapter_data} - Skipped")
                 self.chapter_outlines = valid_chapters
-                # 按 chapter_number 排序并去重，确保索引与编号一致
-                seen = {}
-                for o in self.chapter_outlines:
-                    seen[o.chapter_number] = o
-                if len(seen) != len(valid_chapters):
-                    logging.warning(
-                        f"大纲去重：原始 {len(valid_chapters)} 条 → 去重后 {len(seen)} 条"
-                    )
-                # 校验连续性：chapter_number 必须是 1, 2, 3, ... N
-                if seen:
-                    max_num = max(seen.keys())
-                    actual_nums = sorted(seen.keys())
-                    expected_nums = list(range(1, max_num + 1))
-                    if actual_nums != expected_nums:
-                        missing = sorted(set(expected_nums) - set(actual_nums))
-                        logging.error(
-                            f"大纲章节号不连续！缺失: {missing}。"
-                            f"请重新生成大纲或手动修复 outline.json。"
-                        )
-                        self._outline_discontinuous = missing
-                    else:
-                        self._outline_discontinuous = []
-                    # 构建稀疏列表：索引 i 对应第 i+1 章，缺失章节用 None 填充
-                    # 这样 chapter_outlines[n-1] 始终对应第 n 章，切片赋值才能正确定位
-                    self.chapter_outlines = [seen.get(i) for i in range(1, max_num + 1)]
-                else:
-                    self._outline_discontinuous = []
-                    self.chapter_outlines = []
-                logging.info(f"Loaded {len([o for o in self.chapter_outlines if o is not None])} valid chapter outlines from file")
+                logging.info(f"Loaded {len(self.chapter_outlines)} valid chapter outlines from file")
             else:
                 logging.error("Unrecognized outline file format, should be a list or dict with 'chapters' key.")
                 self.chapter_outlines = []
@@ -217,18 +189,6 @@ class OutlineGenerator:
                 logging.error(f"无效的章节范围: start={start_chapter}, end={end_chapter}")
                 return False
 
-            # 已有大纲不连续时，仅允许覆盖整个范围（强制重生成），拒绝追加
-            if getattr(self, '_outline_discontinuous', []):
-                missing = self._outline_discontinuous
-                covers_gap = start_chapter <= min(missing) and end_chapter >= max(missing)
-                if not covers_gap:
-                    logging.error(
-                        f"大纲存在缺失章节 {missing}，无法在此基础上追加新大纲。"
-                        f"请先使用「强制重生成大纲」覆盖完整范围（1~{end_chapter}），"
-                        f"或手动修复 outline.json 补齐缺失章节。"
-                    )
-                    return False
-
             total_chapters_to_generate = end_chapter - start_chapter + 1
             # 确保大纲列表至少有 end_chapter 的长度，如果不够则填充 None 或空 ChapterOutline
             # 这对于替换逻辑很重要
@@ -287,9 +247,7 @@ class OutlineGenerator:
         logging.info(f"开始生成第 {batch_start_num} 到 {batch_end_num} 章的大纲（共 {current_batch_size} 章）")
 
         # 获取当前批次的上下文
-        existing_context, following_context = self._get_context_for_batch(batch_start_num, batch_end_num)
-        if following_context:
-            logging.info(f"检测到后续章节大纲，将注入衔接约束（第 {batch_end_num + 1} 章起）")
+        existing_context = self._get_context_for_batch(batch_start_num)
         
         # 获取前文大纲用于一致性检查
         previous_outlines = [o for o in self.chapter_outlines[:batch_start_num-1] if isinstance(o, ChapterOutline)]
@@ -310,41 +268,10 @@ class OutlineGenerator:
             total_chapters=self.config.generator_config.get("target_chapters", 0),
             current_end_chapter_num=batch_end_num,
             core_seed=core_seed,
-            chapter_length=self.config.novel_config.get("chapter_length", 0) if hasattr(self.config, 'novel_config') else 0,
-            arc_config=self.config.novel_config.get("arc_config") if hasattr(self.config, 'novel_config') else None,
-            following_context=following_context,
         )
 
         # 新增：打印大纲生成提示词长度
         logging.info(f"本次大纲生成prompt长度为: {len(prompt)} 字符")
-
-        # 总 prompt 长度安全阀：超过阈值时压缩上下文部分重新生成
-        max_prompt_chars = 20000
-        if len(prompt) > max_prompt_chars:
-            logging.warning(f"大纲 prompt 总长度 ({len(prompt)}) 超过安全阈值 ({max_prompt_chars})，压缩上下文重新生成")
-            # 计算需要截断的上下文长度
-            overflow = len(prompt) - max_prompt_chars
-            if len(existing_context) > overflow + 500:
-                compressed_context = "...(早期章节已省略)\n" + existing_context[overflow + 500:]
-            else:
-                compressed_context = existing_context[-1000:] if len(existing_context) > 1000 else existing_context
-            prompt = get_outline_prompt(
-                novel_type=novel_type,
-                theme=theme,
-                style=style,
-                current_start_chapter_num=batch_start_num,
-                current_batch_size=current_batch_size,
-                existing_context=compressed_context,
-                extra_prompt=extra_prompt,
-                novel_config=self.config.novel_config,
-                total_chapters=self.config.generator_config.get("target_chapters", 0),
-                current_end_chapter_num=batch_end_num,
-                core_seed=core_seed,
-                chapter_length=self.config.novel_config.get("chapter_length", 0) if hasattr(self.config, 'novel_config') else 0,
-                arc_config=self.config.novel_config.get("arc_config") if hasattr(self.config, 'novel_config') else None,
-                following_context=following_context,
-            )
-            logging.info(f"压缩后 prompt 长度: {len(prompt)} 字符")
 
         batch_size = self.config.generation_config.get("batch_size", 5)  # 每次API调用生成的章节数
 
@@ -402,22 +329,6 @@ class OutlineGenerator:
             
             start_index = batch_start_num - 1
             end_index = batch_end_num
-            expected_count = end_index - start_index  # = batch_end_num - batch_start_num + 1
-
-            # 截断或补齐到精确长度，防止切片赋值扩展/收缩列表破坏后续章节
-            if len(new_outlines_batch) > expected_count:
-                logging.warning(
-                    f"模型返回了 {len(new_outlines_batch)} 章，超过预期 {expected_count} 章，"
-                    f"截断多余部分以保护后续章节大纲。"
-                )
-                new_outlines_batch = new_outlines_batch[:expected_count]
-            elif len(new_outlines_batch) < expected_count:
-                logging.warning(
-                    f"模型返回了 {len(new_outlines_batch)} 章，少于预期 {expected_count} 章，"
-                    f"用 None 补齐缺失位置。"
-                )
-                new_outlines_batch.extend([None] * (expected_count - len(new_outlines_batch)))
-
             self.chapter_outlines[start_index:end_index] = new_outlines_batch
             
             if not self._save_outline():
@@ -759,192 +670,75 @@ class OutlineGenerator:
             logging.error(f"降级方案也失败了: {str(e)}", exc_info=True)
             return False
 
-    def _get_context_for_batch(self, batch_start_num: int, batch_end_num: int = 0) -> tuple[str, str]:
-        """获取批次的上下文信息
-
-        采用分段预算制：按优先级为各 section 分配字符预算，
-        避免粗暴截断导致关键情节信息丢失。
-
-        Args:
-            batch_start_num: 本批次起始章节号
-            batch_end_num: 本批次结束章节号（用于收集后续衔接章节，0 表示不收集）
-
-        Returns:
-            (existing_context, following_context) 元组
-        """
+    def _get_context_for_batch(self, batch_start_num: int) -> str:
+        """获取批次的上下文信息"""
+        context_parts = []
+        
+        # 1. 获取前文上下文
         context_chapters_count = self.config.generation_config.get("outline_context_chapters", 10)
         detail_chapters_count = self.config.generation_config.get("outline_detail_chapters", 5)
+        start_index = max(0, batch_start_num - 1 - context_chapters_count)
         end_index = max(0, batch_start_num - 1)
-
-        # ── 第1步：分段采集原始内容 ──
-
-        # Section A: 近期详细大纲（紧邻章节，情节衔接核心）
-        sec_recent = ""
-        max_history_chapters = min(200, batch_start_num - 1)
-        outline_start_index = max(0, batch_start_num - 1 - max_history_chapters)
-        previous_outlines = [o for o in self.chapter_outlines[outline_start_index:end_index]
-                             if isinstance(o, ChapterOutline)]
-        if previous_outlines:
-            parts = ["\n[近期详细大纲]"]
-            for prev in previous_outlines[-detail_chapters_count:]:
-                parts.append(f"\n第 {prev.chapter_number} 章: {prev.title}")
-                parts.append(f"关键点: {', '.join(prev.key_points)}")
-                parts.append(f"涉及角色: {', '.join(prev.characters)}")
-                parts.append(f"场景: {', '.join(prev.settings)}")
-                parts.append(f"冲突: {', '.join(prev.conflicts)}")
-                if prev.foreshadowing:
-                    parts.append(f"伏笔: {', '.join(str(f) for f in prev.foreshadowing)}")
-            sec_recent = "\n".join(parts)
-
-        # Section B: 故事脉络（主线梗概 + 进行中冲突 + 重要事件）
-        sec_story = ""
+        
+        # 2. 添加故事发展脉络
         if self.sync_info:
-            parts = ["[故事发展脉络]"]
+            context_parts.append("[故事发展脉络]")
+            # 主线发展
             if self.sync_info.get("剧情发展", {}).get("主线梗概"):
-                parts.append(f"主线发展：{self.sync_info['剧情发展']['主线梗概']}")
-            if self.sync_info.get("剧情发展", {}).get("进行中冲突"):
-                parts.append("\n当前主要冲突：")
-                for conflict in self.sync_info["剧情发展"]["进行中冲突"]:
-                    parts.append(f"- {conflict}")
+                context_parts.append(f"主线发展：{self.sync_info['剧情发展']['主线梗概']}")
+            
+            # 重要事件时间线
             if self.sync_info.get("剧情发展", {}).get("重要事件"):
-                parts.append("\n重要事件时间线：")
+                context_parts.append("重要事件时间线：")
                 for event in self.sync_info["剧情发展"]["重要事件"][-context_chapters_count:]:
-                    parts.append(f"- {event}")
-            if len(parts) > 1:
-                sec_story = "\n".join(parts)
+                    context_parts.append(f"- {event}")
+            
+            # 进行中的冲突
+            if self.sync_info.get("剧情发展", {}).get("进行中冲突"):
+                context_parts.append("\n当前主要冲突：")
+                for conflict in self.sync_info["剧情发展"]["进行中冲突"]:
+                    context_parts.append(f"- {conflict}")
+        
+        # 3. 获取前文大纲的详细信息与章节目录概要
+        # 解绑 context_chapters_count 对大纲目录的限制，获取更长的历史大纲列表
+        # 为了防止超长篇（如1000章以上）一次性加载爆 token，这里增加了一个软限制（最大 200 章，可根据模型上下文调整，也可以设为全量获取）
+        max_history_chapters = 200 
+        outline_start_index = max(0, batch_start_num - 1 - max_history_chapters)
+        
+        previous_outlines = [o for o in self.chapter_outlines[outline_start_index:end_index] if isinstance(o, ChapterOutline)]
+        if previous_outlines:
+            context_parts.append(f"\n[大纲历史回顾 (共 {len(previous_outlines)} 章)]")
+            
+            # 对于更早的章节，只显示章节号和标题
+            if len(previous_outlines) > detail_chapters_count:
+                context_parts.append("\n[更早章节概要目录]")
+                for prev_outline in previous_outlines[:-detail_chapters_count]:
+                    context_parts.append(f"第 {prev_outline.chapter_number} 章: {prev_outline.title}")
 
-        # Section C: 人物关系
-        sec_chars = ""
+            # 只显示最近 N 章的详细信息
+            context_parts.append("\n[近期详细大纲]")
+            for prev_outline in previous_outlines[-detail_chapters_count:]:
+                context_parts.append(f"\n第 {prev_outline.chapter_number} 章: {prev_outline.title}")
+                context_parts.append(f"关键点: {', '.join(prev_outline.key_points)}")
+                context_parts.append(f"涉及角色: {', '.join(prev_outline.characters)}")
+                context_parts.append(f"场景: {', '.join(prev_outline.settings)}")
+                context_parts.append(f"冲突: {', '.join(prev_outline.conflicts)}")
+        
+        # 4. 添加人物关系网络
         if self.sync_info.get("人物设定", {}).get("人物关系"):
-            parts = ["\n[关键人物关系]"]
+            context_parts.append("\n[关键人物关系]")
             for relation in self.sync_info["人物设定"]["人物关系"][-context_chapters_count:]:
-                parts.append(f"- {relation}")
-            sec_chars = "\n".join(parts)
-
-        # Section D: 世界观
-        sec_world = ""
+                context_parts.append(f"- {relation}")
+        
+        # 5. 添加世界观关键信息
         if self.sync_info.get("世界观"):
-            parts = ["\n[世界观关键信息]"]
+            context_parts.append("\n[世界观关键信息]")
             for key, value in self.sync_info["世界观"].items():
-                if value:
-                    parts.append(f"{key}: {', '.join(str(item) for item in value)}")
-            if len(parts) > 1:
-                sec_world = "\n".join(parts)
-
-        # Section E: 早期章节汇总（最低优先级）
-        sec_early = ""
-        if previous_outlines and len(previous_outlines) > detail_chapters_count:
-            early_outlines = previous_outlines[:-detail_chapters_count]
-            parts = [f"\n[大纲历史回顾 (共 {len(previous_outlines)} 章)]"]
-            if len(early_outlines) > 50:
-                parts.append("\n[早期章节汇总（每10章一组）]")
-                for group_start in range(0, len(early_outlines), 10):
-                    group = early_outlines[group_start:group_start + 10]
-                    first_ch = group[0].chapter_number
-                    last_ch = group[-1].chapter_number
-                    titles = "、".join(o.title for o in group)
-                    parts.append(f"第{first_ch}-{last_ch}章: {titles}")
-            else:
-                parts.append("\n[更早章节概要目录]")
-                for prev in early_outlines:
-                    parts.append(f"第 {prev.chapter_number} 章: {prev.title}")
-            sec_early = "\n".join(parts)
-
-        # Section F: 后续章节大纲（仅当生成中间章节时存在，用于衔接）
-        sec_following = ""
-        if batch_end_num > 0:
-            following_outlines = [
-                o for o in self.chapter_outlines[batch_end_num:]
-                if isinstance(o, ChapterOutline)
-            ]
-            if following_outlines:
-                follow_count = min(detail_chapters_count, len(following_outlines))
-                parts = [f"\n[后续章节大纲（需衔接，共 {len(following_outlines)} 章）]"]
-                for fo in following_outlines[:follow_count]:
-                    parts.append(f"\n第 {fo.chapter_number} 章: {fo.title}")
-                    parts.append(f"关键点: {', '.join(fo.key_points)}")
-                    if fo.characters:
-                        parts.append(f"涉及角色: {', '.join(fo.characters)}")
-                    if fo.conflicts:
-                        parts.append(f"冲突: {', '.join(fo.conflicts)}")
-                    if fo.foreshadowing:
-                        parts.append(f"伏笔: {', '.join(str(f) for f in fo.foreshadowing)}")
-                sec_following = "\n".join(parts)
-
-        # ── 第2步：分段预算制截断 ──
-        max_context_chars = 15000
-
-        # 按优先级排列：(section_content, 预算比例, section名称)
-        # 后续衔接 20% > 近期大纲 35% > 故事脉络 20% > 人物关系 12% > 世界观 8% > 早期汇总 5%
-        # 若无后续章节，后续衔接预算归零，其余按原比例分配
-        if sec_following:
-            sections = [
-                (sec_following, 0.20, "后续章节衔接"),
-                (sec_recent,    0.35, "近期详细大纲"),
-                (sec_story,     0.20, "故事脉络"),
-                (sec_chars,     0.12, "人物关系"),
-                (sec_world,     0.08, "世界观"),
-                (sec_early,     0.05, "早期章节汇总"),
-            ]
-        else:
-            sections = [
-                (sec_recent, 0.40, "近期详细大纲"),
-                (sec_story,  0.25, "故事脉络"),
-                (sec_chars,  0.15, "人物关系"),
-                (sec_world,  0.10, "世界观"),
-                (sec_early,  0.10, "早期章节汇总"),
-            ]
-
-        total_raw = sum(len(s[0]) for s in sections)
-        if total_raw <= max_context_chars:
-            result = "\n\n".join(s[0] for s in sections if s[0])
-            return result
-
-        logging.info(f"大纲上下文原始长度 {total_raw} 字符，启用分段预算制截断至 {max_context_chars}")
-
-        # 第一轮：计算各 section 的初始预算，未用完的余量重新分配给超额 section
-        budgets = {}
-        surplus = 0
-        deficit_sections = []
-        for content, ratio, name in sections:
-            budget = int(max_context_chars * ratio)
-            if len(content) <= budget:
-                budgets[name] = len(content)
-                surplus += budget - len(content)
-            else:
-                budgets[name] = budget
-                deficit_sections.append(name)
-
-        # 第二轮：将余量按比例分配给超额 section
-        if surplus > 0 and deficit_sections:
-            deficit_ratios = {name: ratio for content, ratio, name in sections if name in deficit_sections}
-            total_deficit_ratio = sum(deficit_ratios.values())
-            for name in deficit_sections:
-                extra = int(surplus * deficit_ratios[name] / total_deficit_ratio) if total_deficit_ratio > 0 else 0
-                budgets[name] += extra
-
-        # 第3步：按预算截断各 section
-        final_parts = []
-        for content, ratio, name in sections:
-            if not content:
-                continue
-            budget = budgets.get(name, 0)
-            if len(content) <= budget:
-                final_parts.append(content)
-            else:
-                # 近期大纲和故事脉络：保留尾部（最新信息更重要）
-                # 早期汇总：保留头部标题 + 尾部（最近的早期章节）
-                if name in ("近期详细大纲", "故事脉络", "人物关系"):
-                    truncated = "...(部分已省略)\n" + content[-(budget - 20):]
-                else:
-                    # 世界观和早期汇总：保留开头（标题/结构）+ 尾部
-                    head_size = min(300, budget // 3)
-                    tail_size = budget - head_size - 20
-                    truncated = content[:head_size] + "\n...(部分已省略)\n" + content[-tail_size:]
-                final_parts.append(truncated)
-                logging.info(f"  [{name}] {len(content)} → {len(truncated)} 字符 (预算 {budget})")
-
-        return "\n\n".join(final_parts), sec_following
+                if value:  # 只添加非空信息
+                    # 确保所有元素都被转换为字符串，以防列表中包含非字符串元素（如字典）
+                    context_parts.append(f"{key}: {', '.join(str(item) for item in value)}")
+        
+        return "\n\n".join(context_parts)
 
     def _check_outline_consistency(self, new_outline: ChapterOutline, previous_outlines: List[ChapterOutline]) -> bool:
         """检查新生成的大纲与已有大纲的一致性，仅添加新角色和新场景"""

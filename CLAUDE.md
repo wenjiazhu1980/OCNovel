@@ -2,20 +2,24 @@
 
 ## Project Overview
 
-AI小说自动生成系统，支持东方玄幻/仙侠/武侠等类型。Python 3.9+，CLI 驱动。
+AI小说自动生成系统，支持东方玄幻/仙侠/武侠等类型。Python 3.9+，CLI + PySide6 GUI 双入口。
 
 ## Architecture
 
 ```
 main.py                          # CLI入口，argparse子命令
+gui_main.py                      # GUI入口（PySide6）
+ocnovel.spec / ocnovel_win.spec  # PyInstaller macOS / Windows 打包配置
 src/
   config/
     config.py                    # Config类，加载config.json + .env
-    ai_config.py                 # AIConfig类，多模型配置(Gemini/OpenAI)
+    ai_config.py                 # AIConfig类，多模型配置(Claude/Gemini/OpenAI)
   models/
     base_model.py                # BaseModel ABC: generate() + embed()
-    openai_model.py              # OpenAI兼容实现
-    gemini_model.py              # Google Gemini实现
+    claude_model.py              # Anthropic Claude 实现
+    gemini_model.py              # Google Gemini 实现
+    gemini_safety_config.py      # Gemini 安全策略配置
+    openai_model.py              # OpenAI 兼容实现
   generators/
     outline/outline_generator.py # 大纲生成
     content/content_generator.py # 章节内容生成
@@ -28,7 +32,16 @@ src/
     common/data_structures.py
     common/utils.py              # setup_logging等工具
   knowledge_base/
-    knowledge_base.py            # 知识库，ChromaDB + FAISS向量检索
+    knowledge_base.py            # 知识库，FAISS向量检索 + Reranker
+  gui/                           # PySide6 可视化界面
+    app.py                       # QApplication 工厂
+    main_window.py               # 主窗口（3 Tab）
+    theme.py
+    i18n/                        # 中英文翻译（zh_CN / en_US）
+    tabs/                        # model_config_tab / novel_params_tab / progress_tab
+    workers/                     # pipeline_worker / connection_tester / marketing_worker / writing_guide_worker
+    widgets/                     # log_viewer / chapter_list
+    utils/                       # config_io / log_handler / resource_path / platform_utils / fonts
   tools/
     generate_config.py
     generate_marketing.py
@@ -39,14 +52,17 @@ data/                            # 运行时数据（gitignored）
 
 ## Key Patterns
 
-- **Model abstraction**: `BaseModel` ABC → `OpenAIModel` / `GeminiModel`。
+- **Model abstraction**: `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`。
 - **Config layering**: `config.json`（小说参数） + `.env`（API密钥/敏感配置） + `AIConfig`（模型默认值）。`config.json`中的`model_config`优先级高于AIConfig defaults。
-- **Pipeline**: outline → content → finalize，通过`auto`命令串联。
+- **Pipeline**: outline → content → finalize，通过`auto`命令串联（CLI 和 GUI `pipeline_worker` 共用）。
 - **Retry/Fallback**: tenacity重试 + 备用模型机制。
-- **Knowledge Base**: 文本分块 → 嵌入(Qwen3-Embedding) → ChromaDB/FAISS向量检索 → Reranker。
+- **Knowledge Base**: 文本分块 → 嵌入(OpenAI 兼容 Embedding) → FAISS 向量检索 → Reranker API。Claude 不支持嵌入，需额外配置 OpenAI 兼容的嵌入模型。
+- **GUI**: PySide6 三 Tab 界面（模型配置 / 小说参数 / 创作进度），`pipeline_worker` 后台线程运行生成流水线，`log_handler` 将 `logging` 桥接到 Qt Signal 实时输出。支持中英双语切换（i18n .qm 文件）。
 - **Sensitive data sanitization**: `_sanitize_config_for_logging()` 过滤API key日志输出。
 
 ## Commands
+
+### CLI
 
 ```bash
 python main.py outline --start 1 --end 10        # 生成大纲
@@ -56,6 +72,19 @@ python main.py finalize --chapter 8               # 定稿
 python main.py auto                               # 全流程
 python main.py auto --force-outline               # 强制重生成大纲
 python main.py imitate --style-source ... --input-file ... --output-file ...
+```
+
+### GUI
+
+```bash
+python gui_main.py                                # 启动 PySide6 可视化界面
+```
+
+### 打包
+
+```bash
+pyinstaller ocnovel.spec --clean                  # macOS → dist/OCNovel.app
+pyinstaller ocnovel_win.spec --clean              # Windows → dist/OCNovel/OCNovel.exe
 ```
 
 ## Development Rules

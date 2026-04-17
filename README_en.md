@@ -48,6 +48,12 @@ OCNovel/
 │   │   ├── app.py             # QApplication factory + global styles
 │   │   ├── main_window.py     # Main window (3 Tabs)
 │   │   ├── theme.py           # Theme color constants
+│   │   ├── i18n/              # Internationalization translation files
+│   │   │   ├── translator.py  # Translation manager
+│   │   │   ├── zh_CN.ts       # Chinese translation source file
+│   │   │   ├── en_US.ts       # English translation source file
+│   │   │   ├── zh_CN.qm       # Compiled Chinese translation
+│   │   │   └── en_US.qm       # Compiled English translation
 │   │   ├── tabs/
 │   │   │   ├── model_config_tab.py   # Model configuration
 │   │   │   ├── novel_params_tab.py   # Novel parameters
@@ -56,7 +62,6 @@ OCNovel/
 │   │   │   ├── pipeline_worker.py    # Background generation pipeline
 │   │   │   ├── connection_tester.py  # Model connection test
 │   │   │   ├── marketing_worker.py   # Marketing content generation
-│   │   │   ├── merge_worker.py       # Chapter merging
 │   │   │   └── writing_guide_worker.py # AI generated writing guide
 │   │   ├── widgets/
 │   │   │   ├── log_viewer.py         # Real-time log viewer
@@ -160,8 +165,19 @@ python main.py imitate --style-source sample.txt --input-file original.txt --out
 After starting `python gui_main.py`, three Tab pages are provided:
 
 - **Model Configuration** — Manage API keys, Base URLs, and model names for Claude / Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
-- **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), three-act disaster anchors, per-arc emotion pacing (chapters per arc), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
-- **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs (high-frequency log debouncing), progress bar indicating current progress, and support for breakpoint continuation, regenerating selected chapters, merging all chapters, and generating marketing content.
+- **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
+- **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs, progress bar indicating current progress, and support for breakpoint continuation.
+
+### Internationalization
+
+The GUI supports both **Chinese** and **English**:
+
+- **Auto-detection**: Chinese systems default to the Chinese interface; non-Chinese systems default to English.
+- **Manual switching**: Switch language at any time via the menu bar `Language / 语言`.
+- **Persistence**: Language preference is saved automatically and preserved across restarts.
+- **Coverage**: All buttons, labels, menus, message boxes, and tooltips are translated (242 strings, 91.7% translated).
+
+> Note: Technical logs from core generation modules remain in English for easier debugging and issue tracking.
 
 ### Package as Desktop App
 
@@ -184,12 +200,10 @@ pyinstaller ocnovel_win.spec --clean
 ## Core Architecture
 
 - **Model Abstraction** — `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`
-- **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values)
-- **Generation Pipeline** — Core seed → outline → content → finalize, connected via the `auto` command
-- **Snowflake Method** — Core seed (one-sentence summary) → Three-act structure → Disaster anchors → Per-arc emotion spiral (Growth → Setback → Despair → Eruption → Fall → New Arc)
-- **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking
-- **Retry/Fallback** — tenacity retries + automatic backup model switching
-- **Humanized Writing** — Humanizer-zh methodology + Zhuque AI detection optimization + adaptive AI-density reduction
+- **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values).
+- **Generation Pipeline** — outline → content → finalize, connected via the `auto` command.
+- **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking.
+- **Retry/Fallback** — tenacity retries + automatic backup model switching.
 
 ## Supported AI Models
 
@@ -216,7 +230,7 @@ pyinstaller ocnovel_win.spec --clean
 
 | Configuration Block      | Description                                                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `novel_config`           | Basic novel information, writing guide (Worldview / Characters / Plot / Style), arc structure config (`arc_config`).          |
+| `novel_config`           | Basic novel information, writing guide (Worldview / Characters / Plot / Style).                                               |
 | `generation_config`      | Retry strategy, model selection, validation switches, humanization parameters (Humanizer-zh), sampling parameters (Temperature/Top_P). |
 | `knowledge_base_config`  | Reference file list, chunk size/overlap, cache directory.                                                                     |
 | `output_config`          | Output format, encoding, output directory.                                                                                    |

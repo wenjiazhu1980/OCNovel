@@ -39,9 +39,6 @@ def get_outline_prompt(
     total_chapters: int = 0,
     current_end_chapter_num: int = 0,
     core_seed: str = "",
-    chapter_length: int = 0,
-    arc_config: Optional[Dict] = None,
-    following_context: str = "",
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -67,77 +64,6 @@ def get_outline_prompt(
         _story_phase = "第二幕（对抗阶段）：推进主线冲突、角色成长、情节升级"
     else:
         _story_phase = "第三幕（解决阶段）：汇聚所有伏笔、推向高潮、完成故事收尾"
-
-    # 卷内情绪阶段（螺旋上升情绪卡点模型）
-    _emotion_phase_hint = ""
-    _arc = arc_config or effective_novel_config.get("arc_config", {})
-    _chapters_per_arc = int(_arc.get("chapters_per_arc", 0))
-    if _chapters_per_arc > 0:
-        _arc_pos = ((current_start_chapter_num - 1) % _chapters_per_arc) + 1
-        _arc_num = ((current_start_chapter_num - 1) // _chapters_per_arc) + 1
-        _arc_pct = _arc_pos / _chapters_per_arc
-
-        # 同时计算批次结束位置在卷内的进度，用于跨阶段批次
-        _arc_end_pos = ((_end_ch - 1) % _chapters_per_arc) + 1
-        _arc_end_pct = _arc_end_pos / _chapters_per_arc
-
-        # 6阶段映射
-        _PHASES = [
-            (0.23, "成长", "享受红利，高歌猛进",
-             "爽感、期待感、安全感",
-             "主角利用已有积累在新环境中迅速建立优势，收割资源，收服队友，系统/世界给予正向反馈。",
-             "不要在此阶段引入重大挫折或危机，让读者充分享受成长的爽感。"),
-            (0.47, "挫折", "舒适区打破，规则生变",
-             "紧张、危机感、好奇心",
-             "现有经验和战力突然不够用。遇到无法用常规战术解决的敌人，或环境规则剧变，已有优势开始失效。",
-             "挫折要有合理的逻辑支撑，不能为难而难。要让读者感到'确实没办法'而非'作者在强行降智'。"),
-            (0.70, "绝境", "底牌耗尽，十死无生",
-             "极致的压抑、窒息感、迫切期待破局",
-             "外部威胁加剧，内部可能出现分歧或背叛。主角团队被逼入死角，退无可退，常规手段全部失效。",
-             "压抑要层层递进，不能一步到位。每一章都要比上一章更绝望，但要留一线生机的暗示。"),
-            (0.87, "爆发", "超限突破，破釜沉舟",
-             "极致的燃点、释放感、多巴胺飙升",
-             "压抑到极点后的瞬间释放。主角支付惨痛代价触发最高级别的逆转，完成跨阶层的逆杀。",
-             "爆发必须有足够的铺垫支撑，代价要真实可感。爽感来自'终于等到了'而非'凭空开挂'。"),
-            (0.93, "跌落", "升维打击，格局撕裂",
-             "倒吸一口凉气、格局突然打开的震撼",
-             "虽然打赢了这场仗，却暴露在更恐怖的视线中，发现引以为傲的实力在更高维度只是蝼蚁。",
-             "⚠️ 绝对禁止削弱主角的核心能力或没收金手指！跌落是'环境升维'而非'主角降级'。"),
-            (1.00, "新局", "消化收益，开启新篇",
-             "重燃斗志、对下一卷的强烈期待",
-             "在跌落的低谷中清点爆发阶段获得的战利品，确立下一个更大、更疯狂的目标。",
-             "必须给读者一个明确的'下一卷会更精彩'的信号，同时完成本卷的情绪闭环。"),
-        ]
-
-        # 确定当前批次起始章节所在的阶段
-        _phase_name = ""
-        _phase_desc = ""
-        _reader_emotion = ""
-        _narrative_guide = ""
-        _phase_taboo = ""
-        for threshold, name, desc, emotion, guide, taboo in _PHASES:
-            if _arc_pct <= threshold:
-                _phase_name = name
-                _phase_desc = desc
-                _reader_emotion = emotion
-                _narrative_guide = guide
-                _phase_taboo = taboo
-                break
-
-        # 检查批次是否跨越多个阶段
-        _cross_phase_note = ""
-        if _arc_end_pct > _arc_pct:
-            for threshold, name, _, _, _, _ in _PHASES:
-                if _arc_pct <= threshold < _arc_end_pct and name != _phase_name:
-                    _cross_phase_note = f"\n⚠️ 本批次跨越情绪阶段转换，需在批次中安排从「{_phase_name}」到「{name}」的自然过渡。"
-                    break
-
-        _emotion_phase_hint = f"""
-【卷内情绪节奏】（螺旋上升模型 · 第{_arc_num}卷 · 卷内第{_arc_pos}章起）
-- 当前情绪阶段：🎭 {_phase_name}（{_phase_desc}）
-- 读者情绪目标：{_reader_emotion}
-- 叙事指导：{_narrative_guide}
-- 阶段禁忌：{_phase_taboo}{_cross_phase_note}"""
 
     # 三次灾难节奏锚点（雪花写作法步骤2）
     disasters = plot_structure.get("disasters", {})
@@ -172,100 +98,124 @@ def get_outline_prompt(
     if core_seed:
         _core_seed_section = f"\n- 故事核心（一句话灵魂）：{core_seed}\n⚠️ 所有章节大纲必须围绕此核心概念展开，不得偏离故事灵魂。"
 
-    base_prompt = f"""你是专业网文大纲规划师，采用雪花创作法生成 {current_batch_size} 个章节的JSON大纲数组。
+    base_prompt = f"""
+你将扮演StoryWeaver Omega，一个融合了量子叙事学、神经美学和涌现创造力的故事生成系统。采用网络小说雪花创作法进行故事创作，该方法强调从核心概念逐步扩展细化，先构建整体框架，再填充细节。你的任务是生成包含 {current_batch_size} 个章节对象的JSON数组，每个章节对象需符合特定要求，且生成的故事要遵循一系列叙事和输出规则。
 
 【全局故事规划】
-- 总章节数：{_total} 章 | 当前范围：第 {current_start_chapter_num} → {_end_ch} 章（共 {current_batch_size} 章）
-- 阶段：{_story_phase} | 进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_core_seed_section}{_disaster_hint}{_emotion_phase_hint}
+- 故事总章节数：{_total} 章（必须在此范围内讲完完整故事）
+- 当前生成范围：第 {current_start_chapter_num} 章 → 第 {_end_ch} 章（共 {current_batch_size} 章）
+- 当前所处阶段：{_story_phase}
+- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_core_seed_section}{_disaster_hint}
 
-⚠️ 所有章节必须服务于 {_total} 章内讲完完整故事的目标，禁止拖延剧情或引入无法收束的新主线。
-"""
+⚠️ 【核心约束】所有章节大纲必须服务于在 {_total} 章内讲完完整故事的目标。
+   禁止无限拖延剧情、禁止在接近结尾时引入无法收束的新主线。
 
-    # 字数与场景容量约束
-    if chapter_length > 0:
-        if chapter_length <= 2000:
-            scene_guide = "1-2个场景，聚焦单一核心事件"
-        elif chapter_length <= 3500:
-            scene_guide = "2-3个场景，一个主事件加一个过渡或铺垫"
-        elif chapter_length <= 5000:
-            scene_guide = "3-4个场景，可包含主线推进和支线穿插"
-        else:
-            scene_guide = "4-5个场景，可展开多条线索并行"
-        base_prompt += f"""每章约 {chapter_length} 字，场景容量：{scene_guide}。key_points 和 scene_sequence 必须匹配字数承载能力。
-"""
+[世界观设定]
+1. 修炼/魔法体系：
+{world_building.get('magic_system', '[在此处插入详细的修炼体系、等级划分、核心规则、能量来源、特殊体质设定等]')}
 
-    # 世界观（仅输出有实际内容的字段）
-    _wb_parts = []
-    if world_building.get('magic_system'):
-        _wb_parts.append(f"修炼体系：{world_building['magic_system']}")
-    if world_building.get('social_system'):
-        _wb_parts.append(f"社会结构：{world_building['social_system']}")
-    if world_building.get('background'):
-        _wb_parts.append(f"时代背景：{world_building['background']}")
-    if _wb_parts:
-        base_prompt += f"\n[世界观]\n" + chr(10).join(_wb_parts) + "\n"
+2. 社会结构与地理：
+{world_building.get('social_system', '[在此处插入世界的社会结构、主要国家/地域划分、关键势力（如门派、家族、组织）及其相互关系等]')}
 
-    # 人物设定（仅输出有实际内容的字段，去掉空占位符）
-    _char_parts = []
-    prot = character_guide.get('protagonist', {})
-    if any(prot.get(k) for k in ('background', 'initial_personality', 'growth_path')):
-        _char_parts.append(f"主角：{prot.get('background', '')} | 性格：{prot.get('initial_personality', '')} | 成长：{prot.get('growth_path', '')}")
-    for role in character_guide.get('supporting_roles', []):
-        _char_parts.append(f"配角-{role.get('role_type', '?')}：{role.get('personality', '')} - {role.get('relationship', '')}")
-    for role in character_guide.get('antagonists', []):
-        _char_parts.append(f"对手-{role.get('role_type', '?')}：{role.get('personality', '')} - {role.get('conflict_point', '')}")
-    if _char_parts:
-        base_prompt += f"\n[人物]\n" + chr(10).join(_char_parts) + "\n"
+3. 时代背景与核心矛盾：
+{world_building.get('background', '[在此处插入故事发生的时代背景、核心的宏观冲突（如正邪大战、文明危机、神魔博弈）、以及关键的历史事件或传说]')}
 
-    # 剧情结构（精简为关键节点）
-    _plot_parts = []
-    a1 = plot_structure.get('act_one', {})
-    a2 = plot_structure.get('act_two', {})
-    a3 = plot_structure.get('act_three', {})
-    if any(a1.get(k) for k in ('setup', 'inciting_incident', 'first_plot_point')):
-        _plot_parts.append(f"第一幕：{a1.get('setup', '')} → {a1.get('inciting_incident', '')} → {a1.get('first_plot_point', '')}")
-    if any(a2.get(k) for k in ('rising_action', 'midpoint', 'darkest_moment')):
-        _plot_parts.append(f"第二幕：{a2.get('rising_action', '')} → {a2.get('midpoint', '')} → {a2.get('complications', '')} → {a2.get('darkest_moment', '')} → {a2.get('second_plot_point', '')}")
-    if any(a3.get(k) for k in ('climax', 'resolution', 'denouement')):
-        _plot_parts.append(f"第三幕：{a3.get('climax', '')} → {a3.get('resolution', '')} → {a3.get('denouement', '')}")
-    if _plot_parts:
-        base_prompt += f"\n[剧情结构]\n" + chr(10).join(_plot_parts) + "\n"
+[人物设定]
+1. 主角设定：
+- 背景：{character_guide.get('protagonist', {}).get('background', '[主角的出身、家庭背景、特殊身份、携带的关键信物或谜团等]')}
+- 性格：{character_guide.get('protagonist', {}).get('initial_personality', '[主角初期的性格特点、核心价值观、内在的矛盾与驱动力]')}
+- 成长路径：{character_guide.get('protagonist', {}).get('growth_path', '[主角从故事开始到结局的预期转变，包括能力、心智和地位的成长弧光]')}
 
-    # 风格（一行）
-    _tone = style_guide.get('tone', '')
-    _pacing = style_guide.get('pacing', '')
-    _focus = style_guide.get('description_focus', [])
-    if _tone or _pacing or _focus:
-        _focus_str = '、'.join(_focus) if _focus else ''
-        base_prompt += f"\n[风格] 基调：{_tone} | 节奏：{_pacing} | 重点：{_focus_str}\n"
+2. 重要配角：
+- [导师/引路人]：[性格特点] - [与主角的关系，以及在剧情中的核心作用]
+- [伙伴/挚友]：[性格特点] - [与主角的关系，以及在剧情中的核心作用]
+- [红颜/道侣]：[性格特点] - [与主角的关系，以及在剧情中的核心作用]
+{chr(10).join([f"- {role.get('role_type', '[其他配角类型]')}：{role.get('personality', '[性格特点]')} - {role.get('relationship', '[与主角的关系及作用]')}" for role in character_guide.get('supporting_roles', [])])}
 
-    # 上下文
-    if existing_context:
-        base_prompt += f"\n[上下文]\n{existing_context}\n"
+3. 主要对手：
+- [初期反派]：[性格/能力特点] - [与主角的核心冲突点]
+- [中期BOSS]：[性格/能力特点] - [与主角的核心冲突点]
+- [宿敌/一生之敌]：[性格/能力特点] - [与主角的核心冲突点]
+- [幕后黑手]：[性格/能力特点] - [与主角的核心冲突点]
+{chr(10).join([f"- {role.get('role_type', '[其他对手类型]')}：{role.get('personality', '[性格特点]')} - {role.get('conflict_point', '[与主角的核心冲突点]')}" for role in character_guide.get('antagonists', [])])}
 
-    # 后续章节衔接约束（仅当生成中间章节时存在）
-    if following_context:
-        base_prompt += f"""\n[后续衔接约束]
-⚠️ 本批次为中间章节，其后已有既定大纲，生成时必须满足以下衔接要求：
-{following_context}
-- 本批次最后一章的冲突/伏笔/角色状态，必须能自然引出上述后续章节的第一章
-- 禁止引入后续章节中不存在的新主线或新角色（支线/配角可以）
-- 若后续章节涉及某个伏笔，本批次应在合适位置提前埋设该伏笔
-"""
 
-    # 叙事要求（精简合并）
-    base_prompt += f"""
+[剧情结构（三幕式）]
+1. 第一幕：建立
+- 铺垫：{plot_structure.get('act_one', {}).get('setup', '[故事开端，介绍主角和其所处的世界，展示其日常状态和初步矛盾]')}
+- 触发事件：{plot_structure.get('act_one', {}).get('inciting_incident', '[一个关键事件打破主角的平静生活，迫使其踏上征程或做出改变]')}
+- 第一情节点：{plot_structure.get('act_one', {}).get('first_plot_point', '[主角做出第一个重大决定，正式进入新的世界或接受挑战，无法回头]')}
+
+2. 第二幕：对抗
+- 上升行动：{plot_structure.get('act_two', {}).get('rising_action', '[主角学习新技能，结识新伙伴，遭遇一系列挑战和胜利，逐步接近目标]')}
+- 中点：{plot_structure.get('act_two', {}).get('midpoint', '[剧情发生重大转折，主角可能获得关键信息或遭遇重大失败，故事的赌注被提高]')}
+- 复杂化：{plot_structure.get('act_two', {}).get('complications', '[盟友可能是敌人，计划出现意外，主角面临更复杂的困境和道德抉择]')}
+- 最黑暗时刻：{plot_structure.get('act_two', {}).get('darkest_moment', '[主角遭遇最惨重的失败，失去一切希望，仿佛已经无力回天]')}
+- 第二情节点：{plot_structure.get('act_two', {}).get('second_plot_point', '[主角获得新的启示、力量或盟友，重新振作，制定最终决战的计划]')}
+
+3. 第三幕：解决
+- 高潮：{plot_structure.get('act_three', {}).get('climax', '[主角与最终反派展开决战，所有次要情节汇集于此，是故事最紧张的时刻]')}
+- 结局：{plot_structure.get('act_three', {}).get('resolution', '[决战结束，核心冲突得到解决，主角达成或未能达成其最终目标]')}
+- 尾声：{plot_structure.get('act_three', {}).get('denouement', '[展示决战后的世界和人物状态，为续集或新的故事线埋下伏笔]')}
+
+[写作风格]
+1. 基调：{style_guide.get('tone', '[故事的整体基调，如：热血、黑暗、幽默、悬疑、史诗等]')}
+2. 节奏：{style_guide.get('pacing', '[故事的节奏，如：快节奏、单元剧、慢热、张弛有度等]')}
+3. 描写重点：
+- {style_guide.get('description_focus', ['[描写的第一个侧重点，如：战斗场面、世界观奇观、人物内心等]'])[0]}
+- {style_guide.get('description_focus', ['[描写的第二个侧重点，如：势力间的权谋博弈、神秘氛围的营造等]'])[1]}
+- {style_guide.get('description_focus', ['[描写的第三个侧重点，如：主角的成长与反思、配角群像的刻画等]'])[2]}
+
+[上下文信息]
+{existing_context}
+
 [叙事要求]
-- 基于前文发展，承接伏笔并埋设新伏笔，人物行为符合性格设定
-- 每章起承转合，每3-5章一个故事单元，每10-20章一个大弧
-- 严格遵守世界观规则，新设定必须兼容已有设定
-- 绝不重复已有章节的标题、情节、冲突，每章必须有独特的新内容
+1. 情节连贯性：
+   - 必须基于前文发展，保持故事逻辑的连贯性
+   - 每个新章节都要承接前文伏笔，并为后续发展埋下伏笔
+   - 确保人物行为符合其性格设定和发展轨迹
+
+2. 结构完整性：
+   - 每章必须包含起承转合四个部分
+   - 每3-5章形成一个完整的故事单元
+   - 每10-20章形成一个大的故事弧
+
+3. 人物发展：
+   - 确保主要人物的性格和动机保持一致性
+   - 根据前文发展合理推进人物关系
+   - 适时引入新角色，但需与现有角色产生关联
+
+4. 世界观一致性：
+   - 严格遵守已建立的世界规则
+   - 新设定必须与现有设定兼容
+   - 保持场景和环境的连贯性
+
+5. 避免重复与独创性：
+   - **绝不能重复现有章节（特别是 `[上下文信息]` 中提供的内容）的标题、关键情节、核心冲突或主要事件。**
+   - **每一章都必须有独特的、推进剧情的新内容，即使主题相似，也要有新的角度和发展。**
+   - 充分利用 `[上下文信息]` 来理解故事的当前状态，并在此基础上进行创新和扩展，而非简单的变体或重复。
 
 [输出要求]
-直接输出JSON数组，{current_batch_size} 个章节对象，每个包含：
-chapter_number, title, key_points(≥3), characters(≥2), settings(≥1), conflicts(≥1),
-emotion_tone(情感基调变化), character_goals(各角色目标), scene_sequence(场景顺序),
-foreshadowing(伏笔操作), pov_character(主视点角色)
+1. 直接输出JSON数组，包含 {current_batch_size} 个章节对象
+2. 每个章节对象必须包含：
+   - chapter_number: 章节号
+   - title: 章节标题
+   - key_points: 关键剧情点列表（至少3个）
+   - characters: 涉及角色列表（至少2个）
+   - settings: 场景列表（至少1个）
+   - conflicts: 核心冲突列表（至少1个）
+   - emotion_tone: 本章情感基调变化（如"紧张→释然"、"平静→震惊→愤怒"）
+   - character_goals: 各角色本章目标（对象，如 {{"秦牧": "突破灵胎壁", "司婆婆": "暗中护法"}}）
+   - scene_sequence: 场景顺序列表（如 ["悬崖边对峙", "古庙内探索", "灵胎壁突破"]）
+   - foreshadowing: 本章伏笔操作列表（如 ["埋设：玉佩发光暗示身世", "回收：第3章提到的神秘老者现身"]）
+   - pov_character: 本章主视点角色名（如"秦牧"）
+
+[质量检查]
+1. 是否严格遵循世界观设定？
+2. 人物行为是否符合其设定和发展轨迹？
+3. 情节是否符合整体剧情结构？
+4. 是否保持写作风格的一致性？
+5. 是否包含足够的伏笔和悬念？
 """
 
     if extra_prompt:
@@ -433,28 +383,6 @@ def get_chapter_prompt(
     if snowflake_extras:
         base_prompt += f"\n\n[叙事规划]\n" + chr(10).join(snowflake_extras)
 
-    # 注入知识库参考信息
-    if references:
-        ref_parts = []
-        for ref_type, ref_label in [
-            ("plot_references", "情节参考"),
-            ("character_references", "人物参考"),
-            ("setting_references", "场景参考"),
-        ]:
-            items = references.get(ref_type, [])
-            if items:
-                texts = []
-                for item in items:
-                    if isinstance(item, dict):
-                        texts.append(item.get("text", item.get("content", str(item))))
-                    elif isinstance(item, str):
-                        texts.append(item)
-                    else:
-                        texts.append(str(item))
-                ref_parts.append(f"[{ref_label}]\n" + chr(10).join(f"- {t[:300]}" for t in texts if t))
-        if ref_parts:
-            base_prompt += "\n\n[知识库参考素材]\n以下是从已有内容中检索到的相关片段，请参考其风格、细节和设定保持一致性：\n" + chr(10).join(ref_parts)
-
     base_prompt += f"""
 
 [输出要求]
@@ -563,10 +491,9 @@ def get_chapter_prompt(
     # 添加上下文信息（限制长度）
     if context_info:
         # 限制上下文信息长度，避免过长
-        max_context_length = 5000
+        max_context_length = 1500  # 减少上下文长度，避免过度依赖
         if len(context_info) > max_context_length:
-            context_info = context_info[-max_context_length:]
-            context_info = "...(前文已省略)\n" + context_info
+            context_info = context_info[-max_context_length:] + "...(前文已省略)"
 
         base_prompt += f"""
 
@@ -617,24 +544,6 @@ def get_chapter_prompt(
 
 [章节衔接提醒]
 本章是第一章或缺少上下文信息，请确保章节内部的场景转换流畅自然，避免突兀的时间、空间跳跃。"""
-
-    # 总 prompt 长度安全阀
-    max_prompt_chars = 20000
-    if len(base_prompt) > max_prompt_chars:
-        overflow = len(base_prompt) - max_prompt_chars
-        logging.warning(f"章节 prompt 过长 ({len(base_prompt)} 字符)，需裁剪 {overflow} 字符")
-
-        # 第1步：压缩上下文信息（最大的可变部分）
-        if context_info and len(context_info) > 300:
-            keep = max(300, len(context_info) - overflow - 200)
-            trimmed_ctx = context_info[-keep:]
-            base_prompt = base_prompt.replace(context_info, "...(前文已省略)\n" + trimmed_ctx)
-            logging.info(f"压缩上下文后 prompt 长度: {len(base_prompt)} 字符")
-
-        # 第2步：如果仍然超长，截断 prompt 尾部保留核心指令
-        if len(base_prompt) > max_prompt_chars:
-            logging.warning(f"二次裁剪: 从 {len(base_prompt)} 截断至 {max_prompt_chars} 字符")
-            base_prompt = base_prompt[:max_prompt_chars]
 
     return base_prompt
 
