@@ -19,12 +19,15 @@ _PROMPT = """你是一个富有创造力的小说设定助手。
 类型: {novel_type}
 主题: {theme}
 风格: {style}
+目标篇幅: {target_chapters} 章（约 {total_words_wan} 万字）
 
 【角色数量要求】
-- supporting_roles 必须恰好生成 {n_supporting} 个
-- antagonists 必须恰好生成 {n_antagonists} 个
+- supporting_roles 必须恰好生成 {n_supporting} 个（当前篇幅为 {target_chapters} 章，角色数量应与篇幅匹配：短篇 ≤30 章建议 2-4 个配角，中篇 30-100 章建议 4-8 个，长篇 100+ 章建议 8-15 个）
+- antagonists 必须恰好生成 {n_antagonists} 个（短篇 1-2 个，中篇 2-4 个，长篇 4-8 个）
 - 所有角色（supporting_roles + antagonists）中，约 {female_pct}% 应为女性角色
 - 每个角色必须包含 name（中文姓名，2-4 字）、gender（"男" / "女" / "其他"）、role_type、personality 字段
+- 配角的 role_type 应多样化（导师/亲人、伙伴/挚友、红颜/道侣、对手/竞争者、情报/线人等），避免全部是同一类型
+- 反派应分层次（初期反派、中期BOSS、幕后黑手等），确保不同阶段都有对手
 
 请以故事创意为核心，展开完整的世界观、人物、剧情和风格设定。
 严格按照以下 JSON 结构输出，所有字段都必须用中文填写，内容要具体、有创意、与故事创意紧密相关。
@@ -98,7 +101,8 @@ class WritingGuideWorker(QThread):
     def __init__(self, env_path: str, story_idea: str, title: str,
                  novel_type: str, theme: str, style: str,
                  n_supporting: int = 6, n_antagonists: int = 4,
-                 female_ratio: float = 0.3, parent=None):
+                 female_ratio: float = 0.3, target_chapters: int = 100,
+                 chapter_length: int = 2500, parent=None):
         super().__init__(parent)
         self._env_path = env_path
         self._story_idea = story_idea
@@ -109,6 +113,8 @@ class WritingGuideWorker(QThread):
         self._n_supporting = max(0, int(n_supporting))
         self._n_antagonists = max(0, int(n_antagonists))
         self._female_ratio = max(0.0, min(1.0, float(female_ratio)))
+        self._target_chapters = max(1, int(target_chapters))
+        self._chapter_length = max(500, int(chapter_length))
 
     def run(self):
         try:
@@ -125,6 +131,7 @@ class WritingGuideWorker(QThread):
                 return
 
             # 构建提示词
+            total_words = self._target_chapters * self._chapter_length
             prompt = _PROMPT.format(
                 story_idea=self._story_idea,
                 title=self._title,
@@ -134,6 +141,8 @@ class WritingGuideWorker(QThread):
                 n_supporting=self._n_supporting,
                 n_antagonists=self._n_antagonists,
                 female_pct=int(round(self._female_ratio * 100)),
+                target_chapters=self._target_chapters,
+                total_words_wan=f"{total_words / 10000:.0f}",
             )
 
             # 调用 API

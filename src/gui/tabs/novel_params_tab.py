@@ -114,6 +114,7 @@ class NovelParamsTab(QWidget):
 
         self._sp_chapters = QSpinBox()
         self._sp_chapters.setRange(1, 9999)
+        self._sp_chapters.valueChanged.connect(self._on_chapters_changed)
 
         self._sp_chapter_len = QSpinBox()
         self._sp_chapter_len.setRange(500, 50000)
@@ -1139,6 +1140,11 @@ class NovelParamsTab(QWidget):
         ant = _g(wg, "character_guide", "antagonists", default=[])
         self._load_roles("_sup_data", sr)
         self._load_roles("_ant_data", ant)
+        # 同步角色数量旋钮为当前实际数量
+        if isinstance(sr, list) and sr:
+            self._sp_gen_supporting.setValue(len(sr))
+        if isinstance(ant, list) and ant:
+            self._sp_gen_antagonists.setValue(len(ant))
 
         # --- 写作指南：剧情结构 ---
         a1 = _g(wg, "plot_structure", "act_one", default={})
@@ -1378,6 +1384,25 @@ class NovelParamsTab(QWidget):
         QMessageBox.information(self, self.tr("保存成功"), self.tr("配置已保存到 config.json"))
 
     # ======================================================================
+    # 目标章节数变化 → 自适应角色数量建议
+    # ======================================================================
+    def _on_chapters_changed(self, chapters: int):
+        """根据目标章节数自动调整配角/反派数量的建议默认值"""
+        if chapters <= 30:
+            sup, ant = 3, 2
+        elif chapters <= 100:
+            sup, ant = 6, 4
+        elif chapters <= 300:
+            sup, ant = 10, 6
+        else:
+            sup, ant = 15, 8
+        # 仅当用户未手动修改过时才自动更新（用 tooltip 提示推荐值）
+        self._sp_gen_supporting.setToolTip(
+            self.tr("当前篇幅 {0} 章，建议 {1} 个配角").format(chapters, sup))
+        self._sp_gen_antagonists.setToolTip(
+            self.tr("当前篇幅 {0} 章，建议 {1} 个反派").format(chapters, ant))
+
+    # ======================================================================
     # 自动生成写作指南
     # ======================================================================
     def _on_generate_guide(self):
@@ -1406,6 +1431,8 @@ class NovelParamsTab(QWidget):
             n_supporting=self._sp_gen_supporting.value(),
             n_antagonists=self._sp_gen_antagonists.value(),
             female_ratio=self._dsb_gen_female_ratio.value(),
+            target_chapters=self._sp_chapters.value(),
+            chapter_length=self._sp_chapter_len.value(),
             parent=self,
         )
         self._guide_worker.finished_result.connect(self._on_guide_result)
