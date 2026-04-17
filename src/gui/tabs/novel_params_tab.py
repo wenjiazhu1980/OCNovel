@@ -5,19 +5,21 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
     QLineEdit, QSpinBox, QDoubleSpinBox, QCheckBox, QTextEdit,
     QComboBox, QPushButton, QScrollArea, QListWidget, QFileDialog, QMessageBox,
+    QLabel,
 )
 from PySide6.QtCore import Qt
 
 from ..utils.config_io import load_config, save_config
 from ..workers.writing_guide_worker import WritingGuideWorker
+from ..widgets.resizable_text_edit import ResizableTextEdit
 
 
 # ---------------------------------------------------------------------------
 # 辅助：创建固定行高的 QTextEdit
 # ---------------------------------------------------------------------------
 def _make_text_edit(rows: int = 3) -> QTextEdit:
-    """创建指定最小行高的 QTextEdit，宽度自适应"""
-    te = QTextEdit()
+    """创建支持拖拽调整高度的 QTextEdit，宽度自适应"""
+    te = ResizableTextEdit()
     line_h = te.fontMetrics().lineSpacing()
     te.setMinimumHeight(line_h * rows + 16)
     te.setAcceptRichText(False)
@@ -147,6 +149,30 @@ class NovelParamsTab(QWidget):
         gen_bar.addWidget(self._btn_gen_guide)
         outer.addLayout(gen_bar)
 
+        # 角色生成数量与性别比例控制
+        count_bar = QHBoxLayout()
+        count_bar.addWidget(QLabel(self.tr("配角数")))
+        self._sp_gen_supporting = QSpinBox()
+        self._sp_gen_supporting.setRange(0, 30)
+        self._sp_gen_supporting.setValue(6)
+        count_bar.addWidget(self._sp_gen_supporting)
+        count_bar.addSpacing(12)
+        count_bar.addWidget(QLabel(self.tr("反派数")))
+        self._sp_gen_antagonists = QSpinBox()
+        self._sp_gen_antagonists.setRange(0, 30)
+        self._sp_gen_antagonists.setValue(4)
+        count_bar.addWidget(self._sp_gen_antagonists)
+        count_bar.addSpacing(12)
+        count_bar.addWidget(QLabel(self.tr("女性比例")))
+        self._dsb_gen_female_ratio = QDoubleSpinBox()
+        self._dsb_gen_female_ratio.setRange(0.0, 1.0)
+        self._dsb_gen_female_ratio.setSingleStep(0.1)
+        self._dsb_gen_female_ratio.setDecimals(2)
+        self._dsb_gen_female_ratio.setValue(0.3)
+        count_bar.addWidget(self._dsb_gen_female_ratio)
+        count_bar.addStretch()
+        outer.addLayout(count_bar)
+
         # --- 世界观 ---
         wb_grp = QGroupBox(self.tr("世界观")); wb_grp.setProperty("cssClass", "inner")
         wb_form = _expanding_form(wb_grp)
@@ -169,15 +195,34 @@ class NovelParamsTab(QWidget):
         prot_form.addRow(self.tr("成长路线"), self._te_prot_growth)
         outer.addWidget(prot_grp)
 
-        # --- 配角 & 反派(JSON 原文编辑)---
-        roles_grp = QGroupBox(self.tr("配角与反派(JSON)")); roles_grp.setProperty("cssClass", "inner")
-        roles_form = _expanding_form(roles_grp)
-        self._te_supporting = _make_text_edit(4)
-        self._te_supporting.setPlaceholderText('[{"role_type":"...","personality":"...","relationship":"..."}]')
-        self._te_antagonists = _make_text_edit(4)
-        self._te_antagonists.setPlaceholderText('[{"role_type":"...","personality":"...","conflict_point":"..."}]')
-        roles_form.addRow(self.tr("配角 (supporting_roles)"), self._te_supporting)
-        roles_form.addRow(self.tr("反派 (antagonists)"), self._te_antagonists)
+        # --- 配角 & 反派（结构化列表 + 详情表单）---
+        roles_grp = QGroupBox(self.tr("配角与反派")); roles_grp.setProperty("cssClass", "inner")
+        roles_outer = QVBoxLayout(roles_grp)
+
+        # 配角编辑器
+        self._sup_data: list[dict] = []
+        self._sup_updating = False
+        sup_box = self._make_role_editor(
+            title=self.tr("配角 (supporting_roles)"),
+            data_attr="_sup_data",
+            last_field_key="relationship",
+            last_field_label=self.tr("与主角关系"),
+            is_antagonist=False,
+        )
+        roles_outer.addWidget(sup_box)
+
+        # 反派编辑器
+        self._ant_data: list[dict] = []
+        self._ant_updating = False
+        ant_box = self._make_role_editor(
+            title=self.tr("反派 (antagonists)"),
+            data_attr="_ant_data",
+            last_field_key="conflict_point",
+            last_field_label=self.tr("冲突点"),
+            is_antagonist=True,
+        )
+        roles_outer.addWidget(ant_box)
+
         outer.addWidget(roles_grp)
 
         # --- 剧情结构 ---
@@ -208,6 +253,16 @@ class NovelParamsTab(QWidget):
         plot_form.addRow(self.tr("第三幕 - climax"), self._te_climax)
         plot_form.addRow(self.tr("第三幕 - resolution"), self._te_resolution)
         plot_form.addRow(self.tr("第三幕 - denouement"), self._te_denouement)
+        # 节奏锚点（三次灾难，对应 plot_structure.disasters）
+        self._te_disaster_1 = _make_text_edit(2)
+        self._te_disaster_1.setPlaceholderText(self.tr("约 25% 处：第一次灾难事件，主角首次面临生死考验"))
+        self._te_disaster_2 = _make_text_edit(2)
+        self._te_disaster_2.setPlaceholderText(self.tr("约 50% 处：第二次灾难事件，主角遭遇重大挫折或身份危机"))
+        self._te_disaster_3 = _make_text_edit(2)
+        self._te_disaster_3.setPlaceholderText(self.tr("约 75% 处：第三次灾难事件，主角必须直面远超自身的敌人"))
+        plot_form.addRow(self.tr("节奏锚点 - 第一次灾难"), self._te_disaster_1)
+        plot_form.addRow(self.tr("节奏锚点 - 第二次灾难"), self._te_disaster_2)
+        plot_form.addRow(self.tr("节奏锚点 - 第三次灾难"), self._te_disaster_3)
         outer.addWidget(plot_grp)
 
         # --- 风格指南 ---
@@ -217,9 +272,288 @@ class NovelParamsTab(QWidget):
         self._te_pacing = _make_text_edit(3)
         style_form.addRow(self.tr("tone(基调)"), self._te_tone)
         style_form.addRow(self.tr("pacing(节奏)"), self._te_pacing)
+
+        # description_focus: 描写侧重点列表(至少 3 条)
+        focus_wrapper = QWidget()
+        focus_layout = QVBoxLayout(focus_wrapper)
+        focus_layout.setContentsMargins(0, 0, 0, 0)
+        focus_layout.setSpacing(4)
+        focus_tip = QLabel(self.tr("至少 3 条，每条描述一个描写侧重点(战斗 / 世界观 / 人物等)"))
+        focus_tip.setStyleSheet("color: gray; font-size: 11px;")
+        focus_layout.addWidget(focus_tip)
+
+        focus_row = QHBoxLayout()
+        self._lw_desc_focus = QListWidget()
+        self._lw_desc_focus.setMinimumHeight(80)
+        self._lw_desc_focus.setMaximumHeight(140)
+        self._lw_desc_focus.currentRowChanged.connect(self._on_focus_selected)
+        focus_row.addWidget(self._lw_desc_focus, stretch=1)
+
+        focus_btn_col = QVBoxLayout()
+        btn_add_focus = QPushButton(self.tr("添加"))
+        btn_del_focus = QPushButton(self.tr("删除"))
+        btn_up_focus = QPushButton(self.tr("上移"))
+        btn_down_focus = QPushButton(self.tr("下移"))
+        for b in (btn_add_focus, btn_del_focus, btn_up_focus, btn_down_focus):
+            b.setMinimumWidth(60)
+        btn_add_focus.clicked.connect(self._add_desc_focus)
+        btn_del_focus.clicked.connect(self._del_desc_focus)
+        btn_up_focus.clicked.connect(lambda: self._move_desc_focus(-1))
+        btn_down_focus.clicked.connect(lambda: self._move_desc_focus(1))
+        focus_btn_col.addWidget(btn_add_focus)
+        focus_btn_col.addWidget(btn_del_focus)
+        focus_btn_col.addWidget(btn_up_focus)
+        focus_btn_col.addWidget(btn_down_focus)
+        focus_btn_col.addStretch()
+        focus_row.addLayout(focus_btn_col)
+        focus_layout.addLayout(focus_row)
+
+        self._te_desc_focus_detail = _make_text_edit(3)
+        self._te_desc_focus_detail.setPlaceholderText(self.tr("选中左侧条目后编辑描写侧重点内容"))
+        self._te_desc_focus_detail.textChanged.connect(self._on_focus_detail_changed)
+        focus_layout.addWidget(self._te_desc_focus_detail)
+
+        style_form.addRow(self.tr("描写重点 (description_focus)"), focus_wrapper)
+
+        # 内部数据列表 + 更新锁
+        self._desc_focus_data: list[str] = []
+        self._focus_updating = False
+
         outer.addWidget(style_grp)
 
         self._layout.addWidget(grp)
+
+    # ------------------------------------------------------------------
+    # 角色编辑器（配角 / 反派通用）
+    # ------------------------------------------------------------------
+    def _make_role_editor(
+        self,
+        title: str,
+        data_attr: str,
+        last_field_key: str,
+        last_field_label: str,
+        is_antagonist: bool,
+    ) -> QGroupBox:
+        """创建「列表 + 详情表单」形式的角色编辑器
+
+        参数：
+            data_attr: 实例上的数据列表属性名（_sup_data / _ant_data）
+            last_field_key: 独有字段的 JSON key（relationship / conflict_point）
+            last_field_label: 独有字段的 UI 标签
+            is_antagonist: 是否反派（用于保存时区分）
+        """
+        grp = QGroupBox(title)
+        outer_v = QVBoxLayout(grp)
+
+        # 上：列表 + 操作按钮
+        list_row = QHBoxLayout()
+        lw = QListWidget()
+        lw.setMinimumHeight(100)
+        lw.setMaximumHeight(160)
+        list_row.addWidget(lw, stretch=1)
+
+        btn_col = QVBoxLayout()
+        btn_add = QPushButton(self.tr("添加"))
+        btn_del = QPushButton(self.tr("删除"))
+        btn_up = QPushButton(self.tr("上移"))
+        btn_down = QPushButton(self.tr("下移"))
+        for b in (btn_add, btn_del, btn_up, btn_down):
+            b.setMinimumWidth(60)
+        btn_col.addWidget(btn_add)
+        btn_col.addWidget(btn_del)
+        btn_col.addWidget(btn_up)
+        btn_col.addWidget(btn_down)
+        btn_col.addStretch()
+        list_row.addLayout(btn_col)
+        outer_v.addLayout(list_row)
+
+        # 下：详情表单
+        detail = QGroupBox(self.tr("角色详情"))
+        form = _expanding_form(detail)
+        le_name = QLineEdit()
+        le_name.setPlaceholderText(self.tr("角色名称（列表仅显示此字段）"))
+        cb_gender = QComboBox()
+        cb_gender.addItems([self.tr("未指定"), self.tr("男"), self.tr("女"), self.tr("其他")])
+        le_role_type = QLineEdit()
+        le_role_type.setPlaceholderText(self.tr("角色类型，如 导师/亲人、初期反派 等"))
+        te_personality = _make_text_edit(3)
+        te_personality.setPlaceholderText(self.tr("性格描述与背景"))
+        te_last = _make_text_edit(2)
+        te_last.setPlaceholderText(
+            self.tr("与主角的冲突点") if is_antagonist else self.tr("与主角的关系")
+        )
+        form.addRow(self.tr("名称"), le_name)
+        form.addRow(self.tr("性别"), cb_gender)
+        form.addRow(self.tr("角色类型"), le_role_type)
+        form.addRow(self.tr("性格"), te_personality)
+        form.addRow(last_field_label, te_last)
+        outer_v.addWidget(detail)
+
+        # 保存控件引用（按 data_attr 前缀区分）
+        prefix = "_sup" if data_attr == "_sup_data" else "_ant"
+        setattr(self, f"{prefix}_lw", lw)
+        setattr(self, f"{prefix}_le_name", le_name)
+        setattr(self, f"{prefix}_cb_gender", cb_gender)
+        setattr(self, f"{prefix}_le_role_type", le_role_type)
+        setattr(self, f"{prefix}_te_personality", te_personality)
+        setattr(self, f"{prefix}_te_last", te_last)
+        setattr(self, f"{prefix}_last_key", last_field_key)
+
+        # 绑定事件
+        lw.currentRowChanged.connect(
+            lambda row, a=data_attr: self._on_role_selected(row, a)
+        )
+        btn_add.clicked.connect(lambda: self._add_role(data_attr))
+        btn_del.clicked.connect(lambda: self._del_role(data_attr))
+        btn_up.clicked.connect(lambda: self._move_role(data_attr, -1))
+        btn_down.clicked.connect(lambda: self._move_role(data_attr, 1))
+
+        le_name.textChanged.connect(lambda _: self._on_role_detail_changed(data_attr))
+        cb_gender.currentIndexChanged.connect(lambda _: self._on_role_detail_changed(data_attr))
+        le_role_type.textChanged.connect(lambda _: self._on_role_detail_changed(data_attr))
+        te_personality.textChanged.connect(lambda: self._on_role_detail_changed(data_attr))
+        te_last.textChanged.connect(lambda: self._on_role_detail_changed(data_attr))
+
+        return grp
+
+    def _role_widgets(self, data_attr: str):
+        """根据 data_attr 返回控件元组"""
+        prefix = "_sup" if data_attr == "_sup_data" else "_ant"
+        return (
+            getattr(self, f"{prefix}_lw"),
+            getattr(self, f"{prefix}_le_name"),
+            getattr(self, f"{prefix}_cb_gender"),
+            getattr(self, f"{prefix}_le_role_type"),
+            getattr(self, f"{prefix}_te_personality"),
+            getattr(self, f"{prefix}_te_last"),
+            getattr(self, f"{prefix}_last_key"),
+        )
+
+    def _set_role_updating(self, data_attr: str, value: bool):
+        attr = "_sup_updating" if data_attr == "_sup_data" else "_ant_updating"
+        setattr(self, attr, value)
+
+    def _get_role_updating(self, data_attr: str) -> bool:
+        attr = "_sup_updating" if data_attr == "_sup_data" else "_ant_updating"
+        return getattr(self, attr, False)
+
+    def _refresh_role_list(self, data_attr: str):
+        data = getattr(self, data_attr)
+        lw, *_ = self._role_widgets(data_attr)
+        lw.clear()
+        for item in data:
+            display = item.get("name") or item.get("role_type") or self.tr("(未命名)")
+            lw.addItem(str(display))
+
+    def _add_role(self, data_attr: str):
+        data = getattr(self, data_attr)
+        new_item = {
+            "name": "",
+            "gender": "",
+            "role_type": "",
+            "personality": "",
+        }
+        # 末字段占位
+        _, _, _, _, _, _, last_key = self._role_widgets(data_attr)
+        new_item[last_key] = ""
+        data.append(new_item)
+        self._refresh_role_list(data_attr)
+        lw, *_ = self._role_widgets(data_attr)
+        lw.setCurrentRow(len(data) - 1)
+
+    def _del_role(self, data_attr: str):
+        data = getattr(self, data_attr)
+        lw, *_ = self._role_widgets(data_attr)
+        row = lw.currentRow()
+        if 0 <= row < len(data):
+            data.pop(row)
+            self._refresh_role_list(data_attr)
+            if data:
+                lw.setCurrentRow(min(row, len(data) - 1))
+            else:
+                self._clear_role_detail(data_attr)
+
+    def _move_role(self, data_attr: str, delta: int):
+        data = getattr(self, data_attr)
+        lw, *_ = self._role_widgets(data_attr)
+        row = lw.currentRow()
+        new_row = row + delta
+        if 0 <= row < len(data) and 0 <= new_row < len(data):
+            data[row], data[new_row] = data[new_row], data[row]
+            self._refresh_role_list(data_attr)
+            lw.setCurrentRow(new_row)
+
+    def _clear_role_detail(self, data_attr: str):
+        self._set_role_updating(data_attr, True)
+        _, le_name, cb_gender, le_role_type, te_personality, te_last, _ = self._role_widgets(data_attr)
+        le_name.clear()
+        cb_gender.setCurrentIndex(0)
+        le_role_type.clear()
+        te_personality.clear()
+        te_last.clear()
+        self._set_role_updating(data_attr, False)
+
+    def _on_role_selected(self, row: int, data_attr: str):
+        data = getattr(self, data_attr)
+        _, le_name, cb_gender, le_role_type, te_personality, te_last, last_key = self._role_widgets(data_attr)
+        self._set_role_updating(data_attr, True)
+        if 0 <= row < len(data):
+            item = data[row]
+            le_name.setText(str(item.get("name", "")))
+            gender = str(item.get("gender", ""))
+            gender_map = {"": 0, "男": 1, "女": 2, "其他": 3}
+            cb_gender.setCurrentIndex(gender_map.get(gender, 0))
+            le_role_type.setText(str(item.get("role_type", "")))
+            te_personality.setPlainText(str(item.get("personality", "")))
+            te_last.setPlainText(str(item.get(last_key, "")))
+        else:
+            le_name.clear()
+            cb_gender.setCurrentIndex(0)
+            le_role_type.clear()
+            te_personality.clear()
+            te_last.clear()
+        self._set_role_updating(data_attr, False)
+
+    def _on_role_detail_changed(self, data_attr: str):
+        if self._get_role_updating(data_attr):
+            return
+        data = getattr(self, data_attr)
+        lw, le_name, cb_gender, le_role_type, te_personality, te_last, last_key = self._role_widgets(data_attr)
+        row = lw.currentRow()
+        if not (0 <= row < len(data)):
+            return
+        gender_text = cb_gender.currentText()
+        if gender_text == self.tr("未指定"):
+            gender_text = ""
+        data[row] = {
+            "name": le_name.text(),
+            "gender": gender_text,
+            "role_type": le_role_type.text(),
+            "personality": te_personality.toPlainText(),
+            last_key: te_last.toPlainText(),
+        }
+        # 同步列表显示
+        display = data[row].get("name") or data[row].get("role_type") or self.tr("(未命名)")
+        item = lw.item(row)
+        if item:
+            item.setText(str(display))
+
+    def _load_roles(self, data_attr: str, raw):
+        """将 raw(list[dict]) 装载到数据模型中，并刷新 UI"""
+        normalized: list[dict] = []
+        if isinstance(raw, list):
+            for it in raw:
+                if isinstance(it, dict):
+                    normalized.append(dict(it))
+                elif isinstance(it, str):
+                    normalized.append({"name": it})
+        setattr(self, data_attr, normalized)
+        self._refresh_role_list(data_attr)
+        lw, *_ = self._role_widgets(data_attr)
+        if normalized:
+            lw.setCurrentRow(0)
+        else:
+            self._clear_role_detail(data_attr)
 
     # ------------------------------------------------------------------
     # Section 3: 生成配置
@@ -565,6 +899,68 @@ class NovelParamsTab(QWidget):
         if path:
             self._le_ss_path.setText(path)
 
+    # --- 描写重点列表交互 ---
+    def _refresh_desc_focus_list(self):
+        """刷新描写重点 QListWidget 显示"""
+        self._lw_desc_focus.clear()
+        for item in self._desc_focus_data:
+            text = item if isinstance(item, str) else str(item)
+            preview = (text[:30] + "…") if len(text) > 30 else text
+            self._lw_desc_focus.addItem(preview or self.tr("(空)"))
+
+    def _add_desc_focus(self):
+        """追加一条空的描写重点"""
+        self._desc_focus_data.append("")
+        self._refresh_desc_focus_list()
+        self._lw_desc_focus.setCurrentRow(len(self._desc_focus_data) - 1)
+
+    def _del_desc_focus(self):
+        """删除选中的描写重点"""
+        row = self._lw_desc_focus.currentRow()
+        if 0 <= row < len(self._desc_focus_data):
+            self._desc_focus_data.pop(row)
+            self._refresh_desc_focus_list()
+            if self._desc_focus_data:
+                self._lw_desc_focus.setCurrentRow(min(row, len(self._desc_focus_data) - 1))
+            else:
+                self._focus_updating = True
+                self._te_desc_focus_detail.clear()
+                self._focus_updating = False
+
+    def _move_desc_focus(self, delta: int):
+        """上移/下移选中的描写重点"""
+        row = self._lw_desc_focus.currentRow()
+        new_row = row + delta
+        if 0 <= row < len(self._desc_focus_data) and 0 <= new_row < len(self._desc_focus_data):
+            self._desc_focus_data[row], self._desc_focus_data[new_row] = (
+                self._desc_focus_data[new_row],
+                self._desc_focus_data[row],
+            )
+            self._refresh_desc_focus_list()
+            self._lw_desc_focus.setCurrentRow(new_row)
+
+    def _on_focus_selected(self, row: int):
+        """列表选中变化时，把详情写到编辑框"""
+        self._focus_updating = True
+        if 0 <= row < len(self._desc_focus_data):
+            self._te_desc_focus_detail.setPlainText(str(self._desc_focus_data[row]))
+        else:
+            self._te_desc_focus_detail.clear()
+        self._focus_updating = False
+
+    def _on_focus_detail_changed(self):
+        """编辑框变化回写到数据列表"""
+        if self._focus_updating:
+            return
+        row = self._lw_desc_focus.currentRow()
+        if 0 <= row < len(self._desc_focus_data):
+            self._desc_focus_data[row] = self._te_desc_focus_detail.toPlainText()
+            text = self._desc_focus_data[row]
+            preview = (text[:30] + "…") if len(text) > 30 else text
+            item = self._lw_desc_focus.item(row)
+            if item:
+                item.setText(preview or self.tr("(空)"))
+
     # ------------------------------------------------------------------
     # Section 6: 输出配置
     # ------------------------------------------------------------------
@@ -724,15 +1120,11 @@ class NovelParamsTab(QWidget):
             self._te_prot_personality.setPlainText(str(prot.get("initial_personality", "")))
             self._te_prot_growth.setPlainText(str(prot.get("growth_path", "")))
 
-        # --- 写作指南：配角 & 反派（JSON）---
+        # --- 写作指南：配角 & 反派（结构化）---
         sr = _g(wg, "character_guide", "supporting_roles", default=[])
         ant = _g(wg, "character_guide", "antagonists", default=[])
-        self._te_supporting.setPlainText(
-            json.dumps(sr, ensure_ascii=False, indent=2) if isinstance(sr, list) else str(sr)
-        )
-        self._te_antagonists.setPlainText(
-            json.dumps(ant, ensure_ascii=False, indent=2) if isinstance(ant, list) else str(ant)
-        )
+        self._load_roles("_sup_data", sr)
+        self._load_roles("_ant_data", ant)
 
         # --- 写作指南：剧情结构 ---
         a1 = _g(wg, "plot_structure", "act_one", default={})
@@ -755,10 +1147,32 @@ class NovelParamsTab(QWidget):
             self._te_resolution.setPlainText(str(a3.get("resolution", "")))
             self._te_denouement.setPlainText(str(a3.get("denouement", "")))
 
+        # 节奏锚点（disasters）
+        disasters = _g(wg, "plot_structure", "disasters", default={})
+        if isinstance(disasters, dict):
+            self._te_disaster_1.setPlainText(str(disasters.get("first_disaster", "")))
+            self._te_disaster_2.setPlainText(str(disasters.get("second_disaster", "")))
+            self._te_disaster_3.setPlainText(str(disasters.get("third_disaster", "")))
+
         # --- 写作指南：风格 ---
         sg = wg.get("style_guide", {})
         self._te_tone.setPlainText(str(sg.get("tone", "")))
         self._te_pacing.setPlainText(str(sg.get("pacing", "")))
+        # description_focus 列表
+        df = sg.get("description_focus", [])
+        if isinstance(df, list):
+            self._desc_focus_data = [str(x) for x in df]
+        elif isinstance(df, str) and df:
+            self._desc_focus_data = [df]
+        else:
+            self._desc_focus_data = []
+        self._refresh_desc_focus_list()
+        if self._desc_focus_data:
+            self._lw_desc_focus.setCurrentRow(0)
+        else:
+            self._focus_updating = True
+            self._te_desc_focus_detail.clear()
+            self._focus_updating = False
 
         # --- 生成配置：大纲参数 ---
         self._sp_batch_size.setValue(int(gc.get("batch_size", 10)))
@@ -826,17 +1240,19 @@ class NovelParamsTab(QWidget):
         # 先加载原始配置,保留本 Tab 不管理的字段
         cfg = load_config(self._config_path)
 
-        # --- 解析配角/反派 JSON ---
-        try:
-            supporting = json.loads(self._te_supporting.toPlainText() or "[]")
-        except json.JSONDecodeError:
-            QMessageBox.warning(self, self.tr("JSON 格式错误"), self.tr("配角 JSON 格式不正确,请检查后重试。"))
-            return
-        try:
-            antagonists = json.loads(self._te_antagonists.toPlainText() or "[]")
-        except json.JSONDecodeError:
-            QMessageBox.warning(self, self.tr("JSON 格式错误"), self.tr("反派 JSON 格式不正确,请检查后重试。"))
-            return
+        # --- 收集配角/反派（结构化列表，过滤完全空白项）---
+        def _clean_roles(data: list[dict]) -> list[dict]:
+            cleaned = []
+            for item in data:
+                if not isinstance(item, dict):
+                    continue
+                # 至少一个非空字段才保留
+                if any(str(v).strip() for v in item.values()):
+                    cleaned.append({k: (v if v is not None else "") for k, v in item.items()})
+            return cleaned
+
+        supporting = _clean_roles(self._sup_data)
+        antagonists = _clean_roles(self._ant_data)
 
         # --- 组装 novel_config ---
         nc = cfg.setdefault("novel_config", {})
@@ -880,10 +1296,17 @@ class NovelParamsTab(QWidget):
                 "resolution": self._te_resolution.toPlainText(),
                 "denouement": self._te_denouement.toPlainText(),
             },
+            "disasters": {
+                "first_disaster": self._te_disaster_1.toPlainText(),
+                "second_disaster": self._te_disaster_2.toPlainText(),
+                "third_disaster": self._te_disaster_3.toPlainText(),
+            },
         }
         sg = wg.setdefault("style_guide", {})
         sg["tone"] = self._te_tone.toPlainText()
         sg["pacing"] = self._te_pacing.toPlainText()
+        # description_focus: 过滤空项，保留非空字符串列表
+        sg["description_focus"] = [s.strip() for s in self._desc_focus_data if s and s.strip()]
 
         # --- 组装 generation_config ---
         gc = cfg.setdefault("generation_config", {})
@@ -966,6 +1389,9 @@ class NovelParamsTab(QWidget):
             novel_type=novel_type or self.tr("通用"),
             theme=theme or self.tr("通用"),
             style=style or self.tr("通用"),
+            n_supporting=self._sp_gen_supporting.value(),
+            n_antagonists=self._sp_gen_antagonists.value(),
+            female_ratio=self._dsb_gen_female_ratio.value(),
             parent=self,
         )
         self._guide_worker.finished_result.connect(self._on_guide_result)
@@ -995,12 +1421,8 @@ class NovelParamsTab(QWidget):
 
         sr = _g(wg, "character_guide", "supporting_roles", default=[])
         ant = _g(wg, "character_guide", "antagonists", default=[])
-        self._te_supporting.setPlainText(
-            json.dumps(sr, ensure_ascii=False, indent=2) if isinstance(sr, list) else str(sr)
-        )
-        self._te_antagonists.setPlainText(
-            json.dumps(ant, ensure_ascii=False, indent=2) if isinstance(ant, list) else str(ant)
-        )
+        self._load_roles("_sup_data", sr)
+        self._load_roles("_ant_data", ant)
 
         a1 = _g(wg, "plot_structure", "act_one", default={})
         if isinstance(a1, dict):
@@ -1022,9 +1444,30 @@ class NovelParamsTab(QWidget):
             self._te_resolution.setPlainText(str(a3.get("resolution", "")))
             self._te_denouement.setPlainText(str(a3.get("denouement", "")))
 
+        disasters = _g(wg, "plot_structure", "disasters", default={})
+        if isinstance(disasters, dict):
+            self._te_disaster_1.setPlainText(str(disasters.get("first_disaster", "")))
+            self._te_disaster_2.setPlainText(str(disasters.get("second_disaster", "")))
+            self._te_disaster_3.setPlainText(str(disasters.get("third_disaster", "")))
+
         sg = wg.get("style_guide", {})
         self._te_tone.setPlainText(str(sg.get("tone", "")))
         self._te_pacing.setPlainText(str(sg.get("pacing", "")))
+        # description_focus 列表同步
+        df = sg.get("description_focus", [])
+        if isinstance(df, list):
+            self._desc_focus_data = [str(x) for x in df]
+        elif isinstance(df, str) and df:
+            self._desc_focus_data = [df]
+        else:
+            self._desc_focus_data = []
+        self._refresh_desc_focus_list()
+        if self._desc_focus_data:
+            self._lw_desc_focus.setCurrentRow(0)
+        else:
+            self._focus_updating = True
+            self._te_desc_focus_detail.clear()
+            self._focus_updating = False
 
         QMessageBox.information(self, self.tr("生成完成"), self.tr("写作指南已自动填充,请检查并按需调整后保存。"))
 

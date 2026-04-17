@@ -255,6 +255,29 @@ class OutlineGenerator:
         # 生成或加载核心种子（雪花写作法步骤1）
         core_seed = self._generate_core_seed()
 
+        # 抽取未回收伏笔，注入 prompt 以强制本批次处理
+        pending_foreshadowing: List[str] = []
+        try:
+            raw_fs = (
+                self.sync_info.get("剧情发展", {}).get("悬念伏笔", [])
+                if isinstance(self.sync_info, dict) else []
+            )
+            for item in raw_fs:
+                if isinstance(item, str):
+                    pending_foreshadowing.append(item)
+                elif isinstance(item, dict):
+                    # 兼容 dict 结构：取名称 / 内容 / 描述字段
+                    text = (
+                        item.get("内容") or item.get("描述") or item.get("名称")
+                        or item.get("content") or item.get("desc") or str(item)
+                    )
+                    pending_foreshadowing.append(str(text))
+            # 取最早埋设的若干条，避免 prompt 过长
+            pending_foreshadowing = pending_foreshadowing[:10]
+        except Exception as e:
+            logging.warning(f"抽取未回收伏笔失败，忽略此次注入: {e}")
+            pending_foreshadowing = []
+
         # 生成提示词
         prompt = get_outline_prompt(
             novel_type=novel_type,
@@ -268,6 +291,7 @@ class OutlineGenerator:
             total_chapters=self.config.generator_config.get("target_chapters", 0),
             current_end_chapter_num=batch_end_num,
             core_seed=core_seed,
+            pending_foreshadowing=pending_foreshadowing,
         )
 
         # 新增：打印大纲生成提示词长度

@@ -20,6 +20,12 @@ _PROMPT = """你是一个富有创造力的小说设定助手。
 主题: {theme}
 风格: {style}
 
+【角色数量要求】
+- supporting_roles 必须恰好生成 {n_supporting} 个
+- antagonists 必须恰好生成 {n_antagonists} 个
+- 所有角色（supporting_roles + antagonists）中，约 {female_pct}% 应为女性角色
+- 每个角色必须包含 name（中文姓名，2-4 字）、gender（"男" / "女" / "其他"）、role_type、personality 字段
+
 请以故事创意为核心，展开完整的世界观、人物、剧情和风格设定。
 严格按照以下 JSON 结构输出，所有字段都必须用中文填写，内容要具体、有创意、与故事创意紧密相关。
 只返回纯 JSON，不要添加任何解释或 markdown 标记。
@@ -37,10 +43,10 @@ _PROMPT = """你是一个富有创造力的小说设定助手。
       "growth_path": "主角的成长路线"
     }},
     "supporting_roles": [
-      {{"role_type": "角色类型", "personality": "性格描述", "relationship": "与主角的关系"}}
+      {{"name": "角色姓名", "gender": "男/女/其他", "role_type": "角色类型", "personality": "性格描述", "relationship": "与主角的关系"}}
     ],
     "antagonists": [
-      {{"role_type": "反派类型", "personality": "性格描述", "conflict_point": "冲突点"}}
+      {{"name": "角色姓名", "gender": "男/女/其他", "role_type": "反派类型", "personality": "性格描述", "conflict_point": "冲突点"}}
     ]
   }},
   "plot_structure": {{
@@ -60,13 +66,27 @@ _PROMPT = """你是一个富有创造力的小说设定助手。
       "climax": "高潮",
       "resolution": "解决",
       "denouement": "结局"
+    }},
+    "disasters": {{
+      "first_disaster": "约 25% 处发生的第一次灾难事件，迫使主角在生死中成长",
+      "second_disaster": "约 50% 处发生的第二次灾难事件，主角遭遇重大挫折或身份危机",
+      "third_disaster": "约 75% 处发生的第三次灾难事件，主角必须直面远超自身的威胁"
     }}
   }},
   "style_guide": {{
     "tone": "整体基调描述",
-    "pacing": "节奏描述"
+    "pacing": "节奏描述",
+    "description_focus": [
+      "第一个描写侧重点，例如：战斗场面、招式神通的力量感",
+      "第二个描写侧重点，例如：世界观奇观、神秘氛围的营造",
+      "第三个描写侧重点，例如：主角的成长与反思、配角群像的刻画"
+    ]
   }}
-}}"""
+}}
+
+注意事项：
+- description_focus 必须包含至少 3 条，每条 30~80 字，且聚焦不同维度（战斗 / 世界观 / 人物 / 情感 / 权谋等）。
+- supporting_roles 与 antagonists 的数量必须严格匹配上述要求；女性角色比例尽量接近 {female_pct}%。"""
 
 
 class WritingGuideWorker(QThread):
@@ -76,7 +96,9 @@ class WritingGuideWorker(QThread):
     finished_result = Signal(bool, object)
 
     def __init__(self, env_path: str, story_idea: str, title: str,
-                 novel_type: str, theme: str, style: str, parent=None):
+                 novel_type: str, theme: str, style: str,
+                 n_supporting: int = 6, n_antagonists: int = 4,
+                 female_ratio: float = 0.3, parent=None):
         super().__init__(parent)
         self._env_path = env_path
         self._story_idea = story_idea
@@ -84,6 +106,9 @@ class WritingGuideWorker(QThread):
         self._novel_type = novel_type
         self._theme = theme
         self._style = style
+        self._n_supporting = max(0, int(n_supporting))
+        self._n_antagonists = max(0, int(n_antagonists))
+        self._female_ratio = max(0.0, min(1.0, float(female_ratio)))
 
     def run(self):
         try:
@@ -106,6 +131,9 @@ class WritingGuideWorker(QThread):
                 novel_type=self._novel_type,
                 theme=self._theme,
                 style=self._style,
+                n_supporting=self._n_supporting,
+                n_antagonists=self._n_antagonists,
+                female_pct=int(round(self._female_ratio * 100)),
             )
 
             # 调用 API

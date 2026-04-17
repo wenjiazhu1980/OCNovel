@@ -39,6 +39,7 @@ def get_outline_prompt(
     total_chapters: int = 0,
     current_end_chapter_num: int = 0,
     core_seed: str = "",
+    pending_foreshadowing: Optional[List[str]] = None,
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -56,14 +57,28 @@ def get_outline_prompt(
     _end_ch = current_end_chapter_num if current_end_chapter_num > 0 else (current_start_chapter_num + current_batch_size - 1)
     _total = total_chapters if total_chapters > 0 else _end_ch
 
-    # 判断当前批次在故事中的位置
+    # 判断当前批次在故事中的位置（细化为 6 个阶段，避免 100+ 章作品只有 3 个粗区间导致推进过快）
     _progress_pct = _end_ch / _total if _total > 0 else 1.0
-    if _progress_pct <= 0.25:
-        _story_phase = "第一幕（建立阶段）：重点铺垫世界观、引入主角、触发核心事件"
+    if _progress_pct <= 0.10:
+        _story_phase = "开场钩子（0-10%）：建立日常、抛出悬念钩子、展示主角初始状态，禁止在此段落引入核心冲突或重大转折"
+    elif _progress_pct <= 0.25:
+        _story_phase = "第一幕推进（10-25%）：铺垫世界观与人物关系，为第一情节点(First Plot Point)积蓄张力"
+    elif _progress_pct <= 0.50:
+        _story_phase = "第二幕上半（25-50%）：主角步入新世界，通过一系列挑战逐步升级，向中点(Midpoint)推进"
     elif _progress_pct <= 0.75:
-        _story_phase = "第二幕（对抗阶段）：推进主线冲突、角色成长、情节升级"
+        _story_phase = "第二幕下半（50-75%）：复杂化与至暗时刻，所有伏笔开始发酵，反派逼近顶点"
+    elif _progress_pct <= 0.90:
+        _story_phase = "第三幕冲刺（75-90%）：汇聚主线与伏笔，推向最终决战；禁止引入新主线角色或新势力"
     else:
-        _story_phase = "第三幕（解决阶段）：汇聚所有伏笔、推向高潮、完成故事收尾"
+        _story_phase = "尾声收束（90-100%）：解决核心冲突、完成角色弧、回收所有关键伏笔，给出明确结局"
+
+    # 情节密度指引：根据阶段给出本批次期望的节拍数
+    if _progress_pct <= 0.10:
+        _density_hint = "本段应偏慢节奏：每章聚焦 1 个主情节点 + 至少 1 条新伏笔埋设"
+    elif _progress_pct <= 0.75:
+        _density_hint = "本段应中等节奏：每 3-5 章形成一个小高潮；每批至少回收 1 条旧伏笔 + 新埋设 2 条"
+    else:
+        _density_hint = "本段应紧凑收束：优先回收既有伏笔（每章至少回收 1 条），严禁引入需要长篇铺垫的新设定"
 
     # 三次灾难节奏锚点（雪花写作法步骤2）
     disasters = plot_structure.get("disasters", {})
@@ -93,10 +108,35 @@ def get_outline_prompt(
         if _is_final_batch else ""
     )
 
+    # 章节余量守护：进入最后 20% 后强制收敛，避免结尾没料可写
+    _endgame_note = ""
+    if (not _is_final_batch) and _progress_pct > 0.80:
+        _endgame_note = (
+            "\n🛑 【收敛阶段约束】当前已进入故事最后 20%，必须严格遵守：\n"
+            "   - 禁止引入任何新的主线角色、新势力、新世界观设定\n"
+            "   - 禁止启动需要长篇铺垫才能解决的新支线\n"
+            "   - 本批次新伏笔埋设数量 ≤ 1；每章至少回收 1 条历史伏笔\n"
+            "   - 所有新冲突必须可在 5 章内收束"
+        )
+
     # 核心种子（雪花写作法步骤1：一句话概括故事灵魂）
     _core_seed_section = ""
     if core_seed:
         _core_seed_section = f"\n- 故事核心（一句话灵魂）：{core_seed}\n⚠️ 所有章节大纲必须围绕此核心概念展开，不得偏离故事灵魂。"
+
+    # 未回收伏笔预算：从 sync_info 抽取，强制本批次处理
+    _foreshadow_section = ""
+    if pending_foreshadowing:
+        _items = [str(x).strip() for x in pending_foreshadowing if str(x).strip()]
+        if _items:
+            _items_display = "\n".join([f"  - {it}" for it in _items[:10]])
+            _min_recover = 1 if _progress_pct <= 0.75 else max(1, min(3, len(_items) // 2))
+            _foreshadow_section = (
+                f"\n\n[未回收伏笔（必须在本批次处理或至少触及）]\n"
+                f"{_items_display}\n"
+                f"⚠️ 本批次至少需通过 `foreshadowing` 字段回收 {_min_recover} 条上述伏笔；"
+                f"禁止在未回收旧伏笔的情况下埋设大量新伏笔。"
+            )
 
     base_prompt = f"""
 你将扮演StoryWeaver Omega，一个融合了量子叙事学、神经美学和涌现创造力的故事生成系统。采用网络小说雪花创作法进行故事创作，该方法强调从核心概念逐步扩展细化，先构建整体框架，再填充细节。你的任务是生成包含 {current_batch_size} 个章节对象的JSON数组，每个章节对象需符合特定要求，且生成的故事要遵循一系列叙事和输出规则。
@@ -105,7 +145,8 @@ def get_outline_prompt(
 - 故事总章节数：{_total} 章（必须在此范围内讲完完整故事）
 - 当前生成范围：第 {current_start_chapter_num} 章 → 第 {_end_ch} 章（共 {current_batch_size} 章）
 - 当前所处阶段：{_story_phase}
-- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_core_seed_section}{_disaster_hint}
+- 本阶段节奏指引：{_density_hint}
+- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_endgame_note}{_core_seed_section}{_disaster_hint}{_foreshadow_section}
 
 ⚠️ 【核心约束】所有章节大纲必须服务于在 {_total} 章内讲完完整故事的目标。
    禁止无限拖延剧情、禁止在接近结尾时引入无法收束的新主线。
@@ -162,9 +203,7 @@ def get_outline_prompt(
 1. 基调：{style_guide.get('tone', '[故事的整体基调，如：热血、黑暗、幽默、悬疑、史诗等]')}
 2. 节奏：{style_guide.get('pacing', '[故事的节奏，如：快节奏、单元剧、慢热、张弛有度等]')}
 3. 描写重点：
-- {style_guide.get('description_focus', ['[描写的第一个侧重点，如：战斗场面、世界观奇观、人物内心等]'])[0]}
-- {style_guide.get('description_focus', ['[描写的第二个侧重点，如：势力间的权谋博弈、神秘氛围的营造等]'])[1]}
-- {style_guide.get('description_focus', ['[描写的第三个侧重点，如：主角的成长与反思、配角群像的刻画等]'])[2]}
+{chr(10).join([f"- {item}" for item in (style_guide.get('description_focus') or ['[描写的第一个侧重点，如：战斗场面、世界观奇观、人物内心等]', '[描写的第二个侧重点，如：势力间的权谋博弈、神秘氛围的营造等]', '[描写的第三个侧重点，如：主角的成长与反思、配角群像的刻画等]'])])}
 
 [上下文信息]
 {existing_context}
