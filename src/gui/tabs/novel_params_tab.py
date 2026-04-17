@@ -539,12 +539,26 @@ class NovelParamsTab(QWidget):
             item.setText(str(display))
 
     def _load_roles(self, data_attr: str, raw):
-        """将 raw(list[dict]) 装载到数据模型中，并刷新 UI"""
+        """将 raw(list[dict]) 装载到数据模型中，并刷新 UI
+
+        兼容旧配置：若 dict 缺少 name 字段，尝试从 personality 中
+        提取冒号前的名字（如 "司婆婆：残老村的裁缝..." → name="司婆婆"）。
+        """
         normalized: list[dict] = []
         if isinstance(raw, list):
             for it in raw:
                 if isinstance(it, dict):
-                    normalized.append(dict(it))
+                    d = dict(it)
+                    # 旧配置兼容：从 personality 提取角色名
+                    if not d.get("name"):
+                        personality = str(d.get("personality", ""))
+                        for sep in ("：", ":"):
+                            if sep in personality:
+                                candidate = personality.split(sep, 1)[0].strip()
+                                if 1 <= len(candidate) <= 10:
+                                    d["name"] = candidate
+                                break
+                    normalized.append(d)
                 elif isinstance(it, str):
                     normalized.append({"name": it})
         setattr(self, data_attr, normalized)
