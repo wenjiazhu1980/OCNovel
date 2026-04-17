@@ -52,7 +52,7 @@ class AIConfig:
                 },
                 "content": {
                     "name": os.getenv("OPENAI_CONTENT_MODEL", "Qwen/Qwen2.5-7B-Instruct"),
-                    "temperature": 0.7,
+                    "temperature": 1.0,
                     "api_key": os.getenv("OPENAI_CONTENT_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_CONTENT_API_BASE", "https://api.siliconflow.cn/v1"),
                     "api_mode": os.getenv("OPENAI_CONTENT_API_MODE", os.getenv("OPENAI_API_MODE", "auto")).lower(),
@@ -89,7 +89,7 @@ class AIConfig:
                 },
                 "content": {
                     "name": os.getenv("CLAUDE_CONTENT_MODEL", "claude-3-5-sonnet-20241022"),
-                    "temperature": 0.7
+                    "temperature": 1.0
                 }
             }
         }
@@ -120,7 +120,7 @@ class AIConfig:
                 },
                 "content": {
                     "name": os.getenv("GEMINI_CONTENT_MODEL", "gemini-2.5-flash"),
-                    "temperature": 0.7
+                    "temperature": 1.0
                 }
             }
         }

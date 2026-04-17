@@ -40,6 +40,7 @@ def get_outline_prompt(
     current_end_chapter_num: int = 0,
     core_seed: str = "",
     pending_foreshadowing: Optional[List[str]] = None,
+    arc_config: Optional[Dict] = None,
 ) -> str:
     """生成用于创建小说大纲的提示词"""
     
@@ -79,6 +80,73 @@ def get_outline_prompt(
         _density_hint = "本段应中等节奏：每 3-5 章形成一个小高潮；每批至少回收 1 条旧伏笔 + 新埋设 2 条"
     else:
         _density_hint = "本段应紧凑收束：优先回收既有伏笔（每章至少回收 1 条），严禁引入需要长篇铺垫的新设定"
+
+    # 卷内情绪阶段（螺旋上升情绪卡点模型）
+    _emotion_phase_hint = ""
+    _arc = arc_config or effective_novel_config.get("arc_config", {})
+    _chapters_per_arc = int(_arc.get("chapters_per_arc", 0))
+    if _chapters_per_arc > 0:
+        _arc_pos = ((current_start_chapter_num - 1) % _chapters_per_arc) + 1
+        _arc_num = ((current_start_chapter_num - 1) // _chapters_per_arc) + 1
+        _arc_pct = _arc_pos / _chapters_per_arc
+
+        _arc_end_pos = ((_end_ch - 1) % _chapters_per_arc) + 1
+        _arc_end_pct = _arc_end_pos / _chapters_per_arc
+
+        _PHASES = [
+            (0.23, "成长", "享受红利，高歌猛进",
+             "爽感、期待感、安全感",
+             "主角获得新能力/资源/盟友，连续取得小胜利，读者跟着爽。",
+             "禁止在此阶段安排重大挫折或失败，保持上升势头。"),
+            (0.40, "挫折", "遭遇反噬，信念动摇",
+             "揪心、不安、替主角着急",
+             "之前的顺利埋下的隐患开始爆发，主角遭遇意料之外的挫折。",
+             "挫折必须源于前文伏笔，禁止无中生有的突然打击。"),
+            (0.55, "绝境", "跌入谷底，绝处逢生",
+             "绝望中的一丝希望、屏息以待",
+             "主角失去重要的人/物/能力，被逼到绝境，必须做出艰难抉择。",
+             "禁止轻易化解危机，必须让主角付出真实代价。"),
+            (0.72, "爆发", "触底反弹，超越极限",
+             "热血沸腾、酣畅淋漓的爽感",
+             "主角在绝境中领悟/突破，以超出预期的方式逆转局面。",
+             "爆发必须建立在前面的铺垫之上，禁止无根据的突然变强。"),
+            (0.93, "跌落", "升维打击，格局撕裂",
+             "倒吸一口凉气、格局突然打开的震撼",
+             "虽然打赢了这场仗，却暴露在更恐怖的视线中，发现引以为傲的实力在更高维度只是蝼蚁。",
+             "绝对禁止削弱主角的核心能力或没收金手指！跌落是'环境升维'而非'主角降级'。"),
+            (1.00, "新局", "消化收益，开启新篇",
+             "重燃斗志、对下一卷的强烈期待",
+             "在跌落的低谷中清点爆发阶段获得的战利品，确立下一个更大、更疯狂的目标。",
+             "必须给读者一个明确的'下一卷会更精彩'的信号，同时完成本卷的情绪闭环。"),
+        ]
+
+        _phase_name = ""
+        _phase_desc = ""
+        _reader_emotion = ""
+        _narrative_guide = ""
+        _phase_taboo = ""
+        for threshold, name, desc, emotion, guide, taboo in _PHASES:
+            if _arc_pct <= threshold:
+                _phase_name = name
+                _phase_desc = desc
+                _reader_emotion = emotion
+                _narrative_guide = guide
+                _phase_taboo = taboo
+                break
+
+        _cross_phase_note = ""
+        if _arc_end_pct > _arc_pct:
+            for threshold, name, _, _, _, _ in _PHASES:
+                if _arc_pct <= threshold < _arc_end_pct and name != _phase_name:
+                    _cross_phase_note = f"\n⚠️ 本批次跨越情绪阶段转换，需在批次中安排从「{_phase_name}」到「{name}」的自然过渡。"
+                    break
+
+        _emotion_phase_hint = f"""
+【卷内情绪节奏】（螺旋上升模型 · 第{_arc_num}卷 · 卷内第{_arc_pos}章起）
+- 当前情绪阶段：🎭 {_phase_name}（{_phase_desc}）
+- 读者情绪目标：{_reader_emotion}
+- 叙事指导：{_narrative_guide}
+- 阶段禁忌：{_phase_taboo}{_cross_phase_note}"""
 
     # 三次灾难节奏锚点（雪花写作法步骤2）
     disasters = plot_structure.get("disasters", {})
@@ -146,7 +214,7 @@ def get_outline_prompt(
 - 当前生成范围：第 {current_start_chapter_num} 章 → 第 {_end_ch} 章（共 {current_batch_size} 章）
 - 当前所处阶段：{_story_phase}
 - 本阶段节奏指引：{_density_hint}
-- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_endgame_note}{_core_seed_section}{_disaster_hint}{_foreshadow_section}
+- 整体进度：{_end_ch}/{_total}（{int(_progress_pct * 100)}%）{_final_batch_note}{_endgame_note}{_core_seed_section}{_disaster_hint}{_emotion_phase_hint}{_foreshadow_section}
 
 ⚠️ 【核心约束】所有章节大纲必须服务于在 {_total} 章内讲完完整故事的目标。
    禁止无限拖延剧情、禁止在接近结尾时引入无法收束的新主线。

@@ -292,6 +292,7 @@ class OutlineGenerator:
             current_end_chapter_num=batch_end_num,
             core_seed=core_seed,
             pending_foreshadowing=pending_foreshadowing,
+            arc_config=self.config.novel_config.get("arc_config"),
         )
 
         # 新增：打印大纲生成提示词长度
