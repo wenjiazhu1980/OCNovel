@@ -4,6 +4,19 @@
 
 一个基于 Python 的 AI 小说自动生成系统，支持东方玄幻、仙侠、武侠等多种类型的小说创作。系统采用模块化设计，集成多种 AI 模型接口，提供从大纲生成到章节内容创作的全流程自动化。同时提供 PySide6 可视化界面，降低使用门槛。
 
+## 下载
+
+**[前往最新版 Release 下载 →](https://github.com/wenjiazhu/OCNovel/releases/latest)**
+
+无需配置 Python 环境，下载对应平台的压缩包，解压后即可直接运行 GUI：
+
+| 平台 | 下载链接 | 当前最新 |
+|------|----------|----------|
+| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.11 |
+| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.11 |
+
+> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu/OCNovel/releases)  ·  本次发布：[v1.0.11](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.11)
+
 ## 作者与项目说明
 
 OCNovel 由 @wenjiazhu 个人发起并持续维护，是一个面向长篇小说创作场景的开源项目。项目目标是帮助用户更高效地完成长文本生成、内容规划和多轮迭代，并欢迎社区提出 issue、建议和 PR 共同完善。

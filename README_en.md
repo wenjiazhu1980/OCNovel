@@ -4,6 +4,19 @@ English | [简体中文](README.md)
 
 An AI-driven automatic novel generation system based on Python, supporting the creation of various genres such as Eastern Fantasy, Xianxia, Wuxia, and more. The system adopts a modular design, integrates multiple AI model interfaces, and provides full-process automation from outline generation to chapter content creation. It also offers a PySide6 visual interface to lower the usage barrier.
 
+## Download
+
+**[Go to the latest release →](https://github.com/wenjiazhu/OCNovel/releases/latest)**
+
+No Python environment required — download the archive for your platform, unzip and launch the GUI directly:
+
+| Platform | Download | Latest |
+|----------|----------|--------|
+| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.11 |
+| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.11 |
+
+> All historical versions & changelog: [Releases page](https://github.com/wenjiazhu/OCNovel/releases)  ·  This release: [v1.0.11](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.11)
+
 ## Author and Project Description
 
 OCNovel was initiated and is continuously maintained by @wenjiazhu. It is an open-source project designed for long-form novel creation. The goal is to help users efficiently complete long-text generation, content planning, and multi-round iterations. We welcome issues, suggestions, and PRs from the community to improve it together.
