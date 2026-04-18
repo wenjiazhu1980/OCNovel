@@ -159,6 +159,11 @@
         "description_simplification": true,
         "emotion_enhancement": true,
         "enable_humanizer_zh": true
+      },
+      "character_generation": {
+        "supporting_count": 6,
+        "antagonist_count": 4,
+        "female_ratio": 0.3
       }
     },
     "output_config": {

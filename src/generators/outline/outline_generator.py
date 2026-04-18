@@ -258,20 +258,34 @@ class OutlineGenerator:
         # 抽取未回收伏笔，注入 prompt 以强制本批次处理
         pending_foreshadowing: List[str] = []
         try:
-            raw_fs = (
-                self.sync_info.get("剧情发展", {}).get("悬念伏笔", [])
-                if isinstance(self.sync_info, dict) else []
+            plot_dev = (
+                self.sync_info.get("剧情发展", {})
+                if isinstance(self.sync_info, dict) else {}
             )
-            for item in raw_fs:
+            raw_fs = plot_dev.get("悬念伏笔", []) if isinstance(plot_dev, dict) else []
+            raw_resolved = plot_dev.get("已回收伏笔", []) if isinstance(plot_dev, dict) else []
+
+            def _to_text(item) -> str:
                 if isinstance(item, str):
-                    pending_foreshadowing.append(item)
-                elif isinstance(item, dict):
-                    # 兼容 dict 结构：取名称 / 内容 / 描述字段
-                    text = (
+                    return item
+                if isinstance(item, dict):
+                    return str(
                         item.get("内容") or item.get("描述") or item.get("名称")
-                        or item.get("content") or item.get("desc") or str(item)
+                        or item.get("content") or item.get("desc") or item
                     )
-                    pending_foreshadowing.append(str(text))
+                return str(item)
+
+            # 构建已回收集合用于差集过滤，避免把历史已回收伏笔再次当作未回收注入
+            resolved_set = {_to_text(r) for r in raw_resolved if r}
+
+            seen = set()
+            for item in raw_fs:
+                text = _to_text(item).strip()
+                if not text or text in resolved_set or text in seen:
+                    continue
+                seen.add(text)
+                pending_foreshadowing.append(text)
+
             # 取最早埋设的若干条，避免 prompt 过长
             pending_foreshadowing = pending_foreshadowing[:10]
         except Exception as e:
@@ -480,6 +494,7 @@ class OutlineGenerator:
                 "主线梗概": "",
                 "重要事件": [],
                 "悬念伏笔": [],
+                "已回收伏笔": [],
                 "已解决冲突": [],
                 "进行中冲突": []
             },
@@ -493,7 +508,13 @@ class OutlineGenerator:
         try:
             if os.path.exists(self.sync_info_file):
                 with open(self.sync_info_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
+                    data = json.load(f)
+                # 向后兼容：旧文件缺失 已回收伏笔 字段时补齐
+                if isinstance(data, dict):
+                    plot = data.setdefault("剧情发展", {})
+                    if isinstance(plot, dict) and "已回收伏笔" not in plot:
+                        plot["已回收伏笔"] = []
+                return data
             return self._get_default_sync_info()
         except Exception as e:
             logging.error(f"加载同步信息文件时出错: {str(e)}", exc_info=True)
@@ -615,7 +636,7 @@ class OutlineGenerator:
                 if plot_updates.get("主线梗概"): # Check if it's not None or empty string
                     self.sync_info["剧情发展"]["主线梗概"] = plot_updates["主线梗概"]
                 
-                for key in ["重要事件", "悬念伏笔", "已解决冲突", "进行中冲突"]:
+                for key in ["重要事件", "悬念伏笔", "已回收伏笔", "已解决冲突", "进行中冲突"]:
                     if key in plot_updates and isinstance(plot_updates[key], list):
                         self._merge_list_unique(self.sync_info["剧情发展"].setdefault(key, []), plot_updates[key])
             

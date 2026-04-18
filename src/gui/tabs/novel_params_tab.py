@@ -1146,11 +1146,28 @@ class NovelParamsTab(QWidget):
         ant = _g(wg, "character_guide", "antagonists", default=[])
         self._load_roles("_sup_data", sr)
         self._load_roles("_ant_data", ant)
-        # 同步角色数量旋钮为当前实际数量
-        if isinstance(sr, list) and sr:
-            self._sp_gen_supporting.setValue(len(sr))
-        if isinstance(ant, list) and ant:
-            self._sp_gen_antagonists.setValue(len(ant))
+        # 角色生成参数：优先从 generation_config.character_generation 读取，
+        # 缺失时回退到按现有角色列表长度推断（向后兼容旧配置）
+        char_gen = gc.get("character_generation") if isinstance(gc, dict) else None
+        if isinstance(char_gen, dict):
+            sup_cnt = char_gen.get("supporting_count")
+            if isinstance(sup_cnt, (int, float)):
+                self._sp_gen_supporting.setValue(int(sup_cnt))
+            elif isinstance(sr, list) and sr:
+                self._sp_gen_supporting.setValue(len(sr))
+            ant_cnt = char_gen.get("antagonist_count")
+            if isinstance(ant_cnt, (int, float)):
+                self._sp_gen_antagonists.setValue(int(ant_cnt))
+            elif isinstance(ant, list) and ant:
+                self._sp_gen_antagonists.setValue(len(ant))
+            fr = char_gen.get("female_ratio")
+            if isinstance(fr, (int, float)):
+                self._dsb_gen_female_ratio.setValue(float(fr))
+        else:
+            if isinstance(sr, list) and sr:
+                self._sp_gen_supporting.setValue(len(sr))
+            if isinstance(ant, list) and ant:
+                self._sp_gen_antagonists.setValue(len(ant))
 
         # --- 写作指南：剧情结构 ---
         a1 = _g(wg, "plot_structure", "act_one", default={})
@@ -1360,6 +1377,12 @@ class NovelParamsTab(QWidget):
             "emotion_enhancement": self._cb_emotion.isChecked(),
             "enable_humanizer_zh": self._cb_humanizer_zh.isChecked(),
         })
+        # 持久化角色生成参数（配角数 / 反派数 / 女性比例），否则重开界面会回退
+        gc["character_generation"] = {
+            "supporting_count": self._sp_gen_supporting.value(),
+            "antagonist_count": self._sp_gen_antagonists.value(),
+            "female_ratio": self._dsb_gen_female_ratio.value(),
+        }
 
         # --- 组装 knowledge_base_config ---
         kb = cfg.setdefault("knowledge_base_config", {})
