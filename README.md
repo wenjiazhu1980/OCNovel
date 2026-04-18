@@ -12,10 +12,10 @@
 
 | 平台 | 下载链接 | 当前最新 |
 |------|----------|----------|
-| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.11 |
-| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.11 |
+| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.12 |
+| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.12 |
 
-> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu/OCNovel/releases)  ·  本次发布：[v1.0.11](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.11)
+> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu/OCNovel/releases)  ·  本次发布：[v1.0.12](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.12)
 
 > **macOS 用户首次启动**：因应用未经 Apple 公证（Apple Developer Program 收费 $99/年），
 > 解压后请在终端执行一次以下命令清除 quarantine 标记：
