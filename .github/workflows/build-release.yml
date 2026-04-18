@@ -33,6 +33,14 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller ocnovel.spec --clean --noconfirm
 
+      - name: Ad-hoc sign macOS app
+        # 免费的 ad-hoc 签名（无需 Apple Developer 账号）。
+        # 主要解决 PyInstaller 打包后双击报"已损坏"的问题；用户首次启动仍需
+        # 执行 `xattr -cr OCNovel.app` 清除 quarantine 标记（README 已说明）。
+        run: |
+          codesign --deep --force --sign - --options runtime dist/OCNovel.app
+          codesign --verify --verbose dist/OCNovel.app
+
       - name: Package macOS app
         run: |
           cd dist

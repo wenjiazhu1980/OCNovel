@@ -17,6 +17,15 @@
 
 > 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu/OCNovel/releases)  ·  本次发布：[v1.0.11](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.11)
 
+> **macOS 用户首次启动**：因应用未经 Apple 公证（Apple Developer Program 收费 $99/年），
+> 解压后请在终端执行一次以下命令清除 quarantine 标记：
+>
+> ```bash
+> xattr -cr ~/Downloads/OCNovel.app   # 若已拖入 /Applications/，请改成对应路径
+> ```
+>
+> 之后双击即可正常启动。该命令仅清除下载隔离属性，不修改应用本身。
+
 ## 作者与项目说明
 
 OCNovel 由 @wenjiazhu 个人发起并持续维护，是一个面向长篇小说创作场景的开源项目。项目目标是帮助用户更高效地完成长文本生成、内容规划和多轮迭代，并欢迎社区提出 issue、建议和 PR 共同完善。

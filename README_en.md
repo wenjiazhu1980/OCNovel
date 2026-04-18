@@ -1,286 +1,206 @@
-# OCNovel - AI Novel Generation System
+# OCNovel
 
 English | [简体中文](README.md)
 
-An AI-driven automatic novel generation system based on Python, supporting the creation of various genres such as Eastern Fantasy, Xianxia, Wuxia, and more. The system adopts a modular design, integrates multiple AI model interfaces, and provides full-process automation from outline generation to chapter content creation. It also offers a PySide6 visual interface to lower the usage barrier.
+### Agent-based Long-form Content Generation System for Narrative Coherence
 
-## Download
+OCNovel is an open-source, agent-based system for **long-form content generation**, designed to address one of the core limitations of modern large language models: **maintaining narrative coherence across extended contexts**.
 
-**[Go to the latest release →](https://github.com/wenjiazhu/OCNovel/releases/latest)**
+It provides a full pipeline from **high-level planning to chapter-level generation and finalization**, integrating multi-model orchestration, retrieval-augmented memory, and consistency validation.
 
-No Python environment required — download the archive for your platform, unzip and launch the GUI directly:
+------
 
-| Platform | Download | Latest |
-|----------|----------|--------|
-| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.11 |
-| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.11 |
+## Why OCNovel
 
-> All historical versions & changelog: [Releases page](https://github.com/wenjiazhu/OCNovel/releases)  ·  This release: [v1.0.11](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.11)
+Long-form generation (e.g. novels, scripts, multi-chapter content) presents several unsolved challenges:
 
-## Author and Project Description
+- Context fragmentation across long sequences
+- Character and plot inconsistency
+- Lack of structured planning before generation
+- Weak integration between retrieval and generation
 
-OCNovel was initiated and is continuously maintained by @wenjiazhu. It is an open-source project designed for long-form novel creation. The goal is to help users efficiently complete long-text generation, content planning, and multi-round iterations. We welcome issues, suggestions, and PRs from the community to improve it together.
+OCNovel addresses these issues through a **multi-stage generation pipeline with persistent memory and validation loops**.
 
-## Project Structure
+------
 
-```text
-OCNovel/
-├── main.py                    # CLI Entry
-├── gui_main.py                # GUI Entry
-├── ocnovel.spec               # PyInstaller macOS packaging configuration
-├── ocnovel_win.spec           # PyInstaller Windows packaging configuration
-├── config.json.example        # Configuration file template
-├── .env.example               # Environment variables template
-├── requirements.txt           # Python dependencies
-├── assets/                    # App icons and other resources
-│
-├── src/
-│   ├── config/                # Configuration Management
-│   │   ├── ai_config.py       # AI model configuration (Claude/Gemini/OpenAI)
-│   │   └── config.py          # General configuration management
-│   │
-│   ├── generators/            # Content Generators
-│   │   ├── common/            # Common tools and data structures
-│   │   ├── content/           # Chapter content generation + consistency check + validation
-│   │   ├── outline/           # Outline generation
-│   │   ├── finalizer/         # Finalize processing
-│   │   ├── prompts.py         # Prompt templates
-│   │   ├── humanization_prompts.py
-│   │   └── title_generator.py
-│   │
-│   ├── models/                # AI Model Interfaces
-│   │   ├── base_model.py      # Base model abstract class
-│   │   ├── claude_model.py    # Anthropic Claude implementation
-│   │   ├── gemini_model.py    # Google Gemini implementation
-│   │   └── openai_model.py    # OpenAI compatible implementation
-│   │
-│   ├── knowledge_base/        # Knowledge Base (Vector retrieval + Reranker)
-│   │   └── knowledge_base.py
-│   │
-│   ├── gui/                   # PySide6 Visual Interface
-│   │   ├── app.py             # QApplication factory + global styles
-│   │   ├── main_window.py     # Main window (3 Tabs)
-│   │   ├── theme.py           # Theme color constants
-│   │   ├── i18n/              # Internationalization translation files
-│   │   │   ├── translator.py  # Translation manager
-│   │   │   ├── zh_CN.ts       # Chinese translation source file
-│   │   │   ├── en_US.ts       # English translation source file
-│   │   │   ├── zh_CN.qm       # Compiled Chinese translation
-│   │   │   └── en_US.qm       # Compiled English translation
-│   │   ├── tabs/
-│   │   │   ├── model_config_tab.py   # Model configuration
-│   │   │   ├── novel_params_tab.py   # Novel parameters
-│   │   │   └── progress_tab.py       # Creation progress
-│   │   ├── workers/
-│   │   │   ├── pipeline_worker.py    # Background generation pipeline
-│   │   │   ├── connection_tester.py  # Model connection test
-│   │   │   ├── marketing_worker.py   # Marketing content generation
-│   │   │   └── writing_guide_worker.py # AI generated writing guide
-│   │   ├── widgets/
-│   │   │   ├── log_viewer.py         # Real-time log viewer
-│   │   │   └── chapter_list.py       # Chapter status list
-│   │   └── utils/
-│   │       ├── config_io.py          # .env / config.json read/write
-│   │       ├── log_handler.py        # logging → Qt Signal bridging
-│   │       ├── resource_path.py      # PyInstaller path compatibility
-│   │       ├── platform_utils.py     # Cross-platform utilities (open directory, etc.)
-│   │       └── fonts.py              # Cross-platform font constants
-│   │
-│   └── tools/                 # Auxiliary Tools
-│       ├── generate_config.py
-│       ├── generate_marketing.py
-│       └── ai_density_checker.py
-│
-└── data/                      # Runtime Data (gitignored)
-    ├── cache/
-    ├── logs/
-    ├── output/
-    ├── reference/
-    └── style_sources/
+## Core Capabilities
+
+### 1. Multi-stage Generation Pipeline
+
+The system decomposes long-form writing into structured stages:
+
+- Outline Planning (global structure)
+- Chapter Generation (localized reasoning)
+- Consistency Validation (cross-context alignment)
+- Finalization (style + quality refinement)
+
+This reduces hallucination and improves global coherence.
+
+------
+
+### 2. Agent-like Orchestration
+
+OCNovel simulates an **agent workflow**:
+
+- Planner → Writer → Reviewer → Refiner
+- Each stage uses specialized prompts and constraints
+- Supports iterative regeneration and correction
+
+------
+
+### 3. Long-context Consistency Management
+
+Key mechanisms include:
+
+- Structured outline as global memory anchor
+- Chapter-level dependency tracking
+- Consistency checking between generated segments
+
+This enables stable narrative progression across long outputs.
+
+------
+
+### 4. Retrieval-Augmented Memory (RAG)
+
+The system integrates a memory layer:
+
+- Text chunking → Embedding → FAISS retrieval
+- Reranker for relevance refinement
+- External reference injection into generation
+
+This improves factual grounding and stylistic alignment.
+
+------
+
+### 5. Multi-model Abstraction Layer
+
+OCNovel provides a unified interface for multiple LLM providers:
+
+- OpenAI-compatible models
+- Anthropic Claude
+- Google Gemini
+
+The architecture allows dynamic switching, fallback, and hybrid usage.
+
+------
+
+## System Architecture
+
+```
+User Input
+   ↓
+[Outline Generator]
+   ↓
+[Memory Layer (RAG)]
+   ↓
+[Chapter Generator]
+   ↓
+[Consistency Validator]
+   ↓
+[Finalizer]
 ```
 
-## Quick Start
+Key layers:
 
-### 1. Install Dependencies
+- Model Layer (LLM abstraction)
+- Pipeline Layer (generation workflow)
+- Memory Layer (retrieval + embedding)
+- Interface Layer (CLI + GUI)
 
-```bash
-pip install -r requirements.txt
+![OCNovel System Architecture](https://pic.2rmz.com/1776517432835.png)
+
+------
+
+## OpenAI Integration
+
+OCNovel is designed to work seamlessly with OpenAI-compatible models:
+
+- Embedding-based retrieval (RAG memory)
+- Structured prompt pipelines optimized for reasoning models
+- Long-context generation workflows
+
+Recommended usage:
+
+- Outline generation: reasoning-capable models
+- Content generation: balanced cost-performance models
+- Embedding: OpenAI-compatible embedding APIs
+
+------
+
+## Example Use Cases
+
+- Long-form fiction generation (novels, web fiction)
+- Script and narrative design
+- Multi-step content generation pipelines
+- Research into long-context coherence in LLMs
+
+------
+
+## Research Relevance
+
+OCNovel can serve as a practical testbed for:
+
+- Long-context reasoning
+- Narrative consistency in LLM outputs
+- Multi-stage generation strategies
+- Retrieval-augmented generation pipelines
+
+------
+
+## Project Structure (Simplified)
+
+```
+src/
+ ├── models/          # LLM abstraction layer
+ ├── generators/      # multi-stage generation pipeline
+ ├── knowledge_base/  # RAG memory system
+ ├── gui/             # user interface
 ```
 
-### 2. Configuration
+------
 
-```bash
-cp config.json.example config.json
-cp .env.example .env
-```
+## Key Design Principles
 
-Edit `.env` and fill in the API keys:
+- Decomposition over monolithic prompting
+- Memory-augmented generation
+- Iterative refinement loops
+- Model-agnostic architecture
 
-```bash
-# Option 1: Use Claude models (Recommended for high-quality creation)
-CLAUDE_API_KEY=your_claude_key
-CLAUDE_OUTLINE_MODEL=claude-3-5-sonnet-20241022
-CLAUDE_CONTENT_MODEL=claude-3-5-sonnet-20241022
+------
 
-# Embedding model (Required, Claude doesn't support embeddings)
-OPENAI_EMBEDDING_API_KEY=your_key
-OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
+## Roadmap
 
-# Option 2: Use OpenAI compatible models (Recommended for development/testing)
-OPENAI_EMBEDDING_API_KEY=your_key
-OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
-OPENAI_OUTLINE_API_KEY=your_key
-OPENAI_OUTLINE_API_BASE=https://api.siliconflow.cn/v1
-OPENAI_CONTENT_API_KEY=your_key
-OPENAI_CONTENT_API_BASE=https://api.siliconflow.cn/v1
+-  Advanced agent coordination (multi-agent planning)
+-  Long-term memory persistence across projects
+-  Evaluation benchmarks for narrative consistency
+-  OpenAI-native optimization (reasoning + tool use)
 
-# Option 3: Use Gemini models
-GEMINI_API_KEY=your_gemini_key
-GEMINI_OUTLINE_MODEL=gemini-2.5-pro
-GEMINI_CONTENT_MODEL=gemini-2.5-flash
-```
+------
 
-### 3. Start
+## Contribution
 
-**GUI Mode (Recommended):**
+OCNovel is actively maintained and open to contributions:
 
-```bash
-python gui_main.py
-```
+- Prompt engineering improvements
+- Long-context optimization strategies
+- Model integration
+- Evaluation and benchmarking
 
-**CLI Mode:**
+------
 
-```bash
-# Automatically execute the full process (Outline + Content + Finalize)
-python main.py auto
+## License
 
-# Generate outline
-python main.py outline --start 1 --end 10
+MIT License
 
-# Continue writing from a specific chapter
-python main.py content --start-chapter 3
+------
 
-# Regenerate a specific chapter
-python main.py content --target-chapter 5
+## Summary
 
-# Finalize processing
-python main.py finalize --chapter 8
+OCNovel is not just a writing tool, but a **structured system for long-form generation**, focusing on:
 
-# Force regenerate outline
-python main.py auto --force-outline
+- coherence
+- memory
+- multi-stage reasoning
 
-# Imitation writing
-python main.py imitate --style-source sample.txt --input-file original.txt --output-file output.txt
-```
+It aims to explore how LLMs can move beyond short outputs toward **stable, large-scale content generation**.
 
-## GUI Features
-
-After starting `python gui_main.py`, three Tab pages are provided:
-
-- **Model Configuration** — Manage API keys, Base URLs, and model names for Claude / Gemini / OpenAI / Fallback / Reranker, and support one-click connection testing.
-- **Novel Parameters** — Edit novel settings, writing guides, generation parameters (support for Temperature, Top_P, Humanizer-zh validation, etc.), imitation configuration, knowledge base, and output directory in `config.json`; supports AI automatic generation of writing guides, and creating/backing up configurations.
-- **Creation Progress** — One-click start/stop of the generation pipeline, real-time viewing of the chapter status list and colorful logs, progress bar indicating current progress, and support for breakpoint continuation.
-
-### Internationalization
-
-The GUI supports both **Chinese** and **English**:
-
-- **Auto-detection**: Chinese systems default to the Chinese interface; non-Chinese systems default to English.
-- **Manual switching**: Switch language at any time via the menu bar `Language / 语言`.
-- **Persistence**: Language preference is saved automatically and preserved across restarts.
-- **Coverage**: All buttons, labels, menus, message boxes, and tooltips are translated (242 strings, 91.7% translated).
-
-> Note: Technical logs from core generation modules remain in English for easier debugging and issue tracking.
-
-### Package as Desktop App
-
-**macOS:**
-
-```bash
-pyinstaller ocnovel.spec --clean
-# Output dist/OCNovel.app
-```
-
-**Windows:**
-
-```bash
-pyinstaller ocnovel_win.spec --clean
-# Output dist/OCNovel/OCNovel.exe
-```
-
-> Note: PyInstaller does not support cross-compilation. macOS builds must be performed on macOS, and Windows builds must be performed on Windows. See [Build Guide](BUILD.md) for details.
-
-## Core Architecture
-
-- **Model Abstraction** — `BaseModel` ABC → `ClaudeModel` / `GeminiModel` / `OpenAIModel`
-- **Configuration Layering** — `config.json` (Novel parameters) + `.env` (API keys) + `AIConfig` (Model default values).
-- **Generation Pipeline** — outline → content → finalize, connected via the `auto` command.
-- **Knowledge Base** — Text chunking → Embedding vector → FAISS retrieval → Reranker API fine ranking.
-- **Retry/Fallback** — tenacity retries + automatic backup model switching.
-
-## Supported AI Models
-
-### Claude (Anthropic)
-
-- **Advantages**: Powerful reasoning capabilities, 200K tokens long context, suitable for complex creation
-- **Recommended Model**: `claude-3-5-sonnet-20241022`
-- **Note**: Does not support embedding functionality, must be used with OpenAI-compatible embedding models
-- **Documentation**: [Claude Integration Guide](docs/claude_integration.md)
-
-### Gemini (Google)
-
-- **Advantages**: Stable official API, supports long context
-- **Recommended Models**: `gemini-2.5-pro` (outline) / `gemini-2.5-flash` (content)
-- **Note**: Only supports Google official API
-
-### OpenAI Compatible
-
-- **Advantages**: Rich ecosystem, supports various third-party APIs (e.g., SiliconFlow)
-- **Recommended Model**: `Qwen/Qwen2.5-7B-Instruct` (open-source, free)
-- **Use Cases**: Development/testing, cost-sensitive scenarios
-
-## Configuration Details
-
-| Configuration Block      | Description                                                                                                                   |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `novel_config`           | Basic novel information, writing guide (Worldview / Characters / Plot / Style).                                               |
-| `generation_config`      | Retry strategy, model selection, validation switches, humanization parameters (Humanizer-zh), sampling parameters (Temperature/Top_P). |
-| `knowledge_base_config`  | Reference file list, chunk size/overlap, cache directory.                                                                     |
-| `output_config`          | Output format, encoding, output directory.                                                                                    |
-| `imitation_config`       | Imitation script toggle, style source lists, quality control parameters.                                                     |
-
-## Requirements
-
-- Python 3.9+
-- macOS / Linux / Windows
-- At least one set of AI model API keys configured (Claude / Gemini / OpenAI compatible)
-- If using Claude, additional embedding model configuration required (OpenAI compatible)
-
-## FAQ
-
-### 1. How to download and run the Mac App?
-
-1. Download the latest Mac App zip archive from the project releases.
-2. Unzip it and place `OCNovel.app` in your Applications folder (or any directory you prefer).
-3. If macOS displays a warning that the app is "damaged and can't be opened" or "from an unidentified developer" when you first open it, open Terminal and run the following command to remove the quarantine attributes:
-
-   ```bash
-   sudo xattr -rd com.apple.quarantine /path/to/OCNovel.app
-   ```
-
-   *(Please replace `/path/to/OCNovel.app` with the actual path to your App)*, and then try to launch the application again.
-
-### 2. How to download and run the Windows version?
-
-1. Download the latest Windows zip archive from the project releases.
-2. Extract and run `OCNovel.exe`.
-3. On first launch, the app will automatically create `%USERPROFILE%\OCNovel\` and initialize configuration files.
-4. Edit `%USERPROFILE%\OCNovel\.env` to fill in your API keys, then you're ready to go.
-
-### 3. Notes on the SiliconFlow referral link
-
-In our documentation, we may provide a SiliconFlow registration link with an invitation code (aff):
-
-- Registering via this invitation link usually grants you a free trial API quota as a new user, while we also receive a certain percentage of coupons/computing rewards.
-- The rewards earned through these promotional links will be entirely invested in the subsequent AI model API testing and the development of new features for this project.
-- This is entirely optional. You are perfectly free to register directly on their official website without any affiliate links. Thank you very much for your support and understanding!
