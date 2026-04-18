@@ -34,7 +34,6 @@ class AIConfig:
             "models": {
                 "embedding": {
                     "name": os.getenv("OPENAI_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B"),
-                    "temperature": 0.7,
                     "dimension": 1024,
                     "api_key": os.getenv("OPENAI_EMBEDDING_API_KEY", ""),
                     "base_url": os.getenv("OPENAI_EMBEDDING_API_BASE", "https://api.siliconflow.cn/v1"),
@@ -245,7 +244,7 @@ class AIConfig:
             "base_url": model_config["base_url"],
             "model_name": model_config["name"],
             "api_mode": model_config.get("api_mode", "auto"),
-            "temperature": model_config["temperature"],
+            "temperature": model_config.get("temperature", 1.0),
             "dimension": model_config.get("dimension", 1024),
             "retry_delay": self.openai_config["retry_delay"],
             "timeout": model_config.get("timeout", 60),

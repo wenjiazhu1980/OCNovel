@@ -14,6 +14,10 @@ class ClaudeModel(BaseModel):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self._validate_config()
+        # 从 config 读取默认采样参数：generate(**kwargs) 未传 temperature 时回退此值，
+        # 避免被硬编码兜底覆盖掉 AIConfig / config.json 中配置的温度。兜底统一为 1.0。
+        self.temperature = config.get("temperature", 1.0)
+        self.top_p = config.get("top_p", None)
         self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self._init_client(config)
 
@@ -192,7 +196,7 @@ class ClaudeModel(BaseModel):
             max_tokens: 最大生成token数
             **kwargs: 额外参数，如 temperature 等
         """
-        temperature = kwargs.get("temperature", 0.7)
+        temperature = kwargs.get("temperature", self.temperature)
         logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}, temperature: {temperature}")
 
         try:

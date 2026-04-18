@@ -29,7 +29,7 @@ class GeminiModel(BaseModel):
         super().__init__(config)
         self._validate_config()
         self.model_name = config.get('model_name', 'gemini-2.5-flash')
-        self.temperature = config.get('temperature', 0.7)
+        self.temperature = config.get('temperature', 1.0)
         self.timeout = config.get('timeout', 60)
         self.retry_delay = config.get('retry_delay', 30)
         self.max_retries = config.get('max_retries', 5)

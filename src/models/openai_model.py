@@ -28,6 +28,11 @@ class OpenAIModel(BaseModel):
         self._validate_config()
         self.api_mode = "auto"
         self.reasoning_enabled = config.get("reasoning_enabled", False)
+        # 从 config 读取默认采样参数：未来 generate(**kwargs) 会优先使用 kwargs，
+        # 否则回退到这里的实例默认值（最终才是硬编码兜底 1.0）。这样 AIConfig 或
+        # config.json 中配置的 temperature 才能生效，不会被旧的 0.7 默认值覆盖。
+        self.temperature = config.get("temperature", 1.0)
+        self.top_p = config.get("top_p", None)
         self.cancel_checker = None  # 可选：外部注入的取消检查回调
         self._init_standard_client(config)
             
@@ -355,7 +360,7 @@ class OpenAIModel(BaseModel):
         model_name: str,
         prompt: str,
         max_tokens: Optional[int] = None,
-        temperature: float = 0.7,
+        temperature: float = 1.0,
         api_mode: Optional[str] = None,
         top_p: Optional[float] = None
     ) -> str:
@@ -395,7 +400,7 @@ class OpenAIModel(BaseModel):
             )
         return None
     
-    def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 0.7, top_p: Optional[float] = None) -> str:
+    def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 1.0, top_p: Optional[float] = None) -> str:
         """使用网络管理客户端进行文本生成"""
         try:
             # 如果提示词太长，进行截断
@@ -567,9 +572,9 @@ class OpenAIModel(BaseModel):
             max_tokens: 最大生成token数
             **kwargs: 额外参数，如 temperature, top_p 等
         """
-        # 从 kwargs 中提取采样参数，未指定则使用默认值
-        temperature = kwargs.get("temperature", 0.7)
-        top_p = kwargs.get("top_p", None)
+        # 从 kwargs 中提取采样参数，未指定则使用实例默认值（由 __init__ 从 config 读取）
+        temperature = kwargs.get("temperature", self.temperature)
+        top_p = kwargs.get("top_p", self.top_p)
         # 对推理模型自动清理不支持的采样参数
         temperature, top_p = self._sanitize_sampling_params(self.model_name, temperature, top_p)
         logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}, temperature: {temperature}, top_p: {top_p}")
