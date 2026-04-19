@@ -328,6 +328,21 @@ class ProgressTab(QWidget):
         self.btn_stop.setEnabled(False)
         self.log_viewer.append_log(self.tr("已发送停止信号，等待当前操作完成后停止…"), "WARNING")
 
+    def shutdown_workers(self, wait_ms: int = 8000):
+        """请求停止并等待所有后台 worker 完成（主窗口关闭时调用）"""
+        for w in (self._worker, self._outline_worker, self._merge_worker, self._marketing_worker):
+            if w is None:
+                continue
+            try:
+                stop_fn = getattr(w, "stop", None)
+                if callable(stop_fn):
+                    stop_fn()
+                if w.isRunning():
+                    w.wait(wait_ms)
+            except RuntimeError:
+                # QThread 已被销毁
+                pass
+
     def _on_selection_changed(self):
         """章节列表选择变化时，更新重新生成按钮状态"""
         selected = self.chapter_list.get_selected_chapter_numbers()

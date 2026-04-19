@@ -366,3 +366,17 @@ class ModelConfigTab(QWidget):
             widget.setEnabled(enabled)
         self._outline_provider.setEnabled(enabled)
         self._content_provider.setEnabled(enabled)
+
+    # ── 关闭清理 ─────────────────────────────────────────
+
+    def shutdown_workers(self, wait_ms: int = 3000):
+        """停止并等待所有测试线程结束（主窗口关闭时调用）"""
+        for tester in list(self._testers):
+            try:
+                if tester.isRunning():
+                    tester.quit()
+                    tester.wait(wait_ms)
+            except RuntimeError:
+                # QThread 已被销毁，跳过
+                pass
+        self._testers.clear()

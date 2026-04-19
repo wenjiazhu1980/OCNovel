@@ -178,3 +178,36 @@ class MainWindow(QMainWindow):
         self.model_tab.set_editing_enabled(not running)
         self.novel_tab.set_editing_enabled(not running)
         self._status_label.setText(self.tr("生成中…") if running else self.tr("就绪"))
+
+    # ------------------------------------------------------------------
+    # 生命周期：窗口关闭时统一停止后台线程
+    # ------------------------------------------------------------------
+    def closeEvent(self, event):
+        """关闭窗口前停止并等待所有 worker，避免 'QThread destroyed while running'"""
+        # 若有长任务在跑，提示用户确认
+        try:
+            if self.progress_tab.has_running_task():
+                reply = QMessageBox.question(
+                    self, self.tr("确认退出"),
+                    self.tr("有任务正在运行，确定要退出吗？\n将发送停止信号并等待任务结束。"),
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply != QMessageBox.Yes:
+                    event.ignore()
+                    return
+        except Exception:
+            # has_running_task 失败不阻塞关闭
+            pass
+
+        # 统一 shutdown
+        for tab in (self.progress_tab, self.novel_tab, self.model_tab):
+            shutdown = getattr(tab, "shutdown_workers", None)
+            if callable(shutdown):
+                try:
+                    shutdown()
+                except Exception:
+                    # 容忍单个 tab 清理失败，不阻塞主窗口关闭
+                    pass
+
+        super().closeEvent(event)

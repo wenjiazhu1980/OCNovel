@@ -1102,6 +1102,25 @@ class NovelParamsTab(QWidget):
     def reload(self):
         self._load_from_file()
 
+    def shutdown_workers(self, wait_ms: int = 5000):
+        """停止并等待写作指南 worker 结束（主窗口关闭时调用）"""
+        w = self._guide_worker
+        if w is None:
+            return
+        try:
+            # WritingGuideWorker 本身没有 stop()，尝试通用方式让 QThread 退出
+            stop_fn = getattr(w, "stop", None)
+            if callable(stop_fn):
+                stop_fn()
+            w.requestInterruption()
+            if w.isRunning():
+                w.quit()
+                w.wait(wait_ms)
+        except RuntimeError:
+            # QThread 已被销毁
+            pass
+        self._guide_worker = None
+
     # ======================================================================
     # 加载配置
     # ======================================================================
