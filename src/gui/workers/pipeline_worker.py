@@ -72,12 +72,18 @@ class PipelineWorker(QThread):
         handler: SignalLogHandler | None = None
 
         try:
-            # ---- 1. 加载配置 ----
+            # ---- 1. 加载配置（env + Config 串行化，避免并发 worker 互相污染 os.environ）----
+            from ._env_lock import ENV_CONFIG_LOCK
             from dotenv import load_dotenv
-            load_dotenv(self._env_path, override=True)
-
             from src.config.config import Config
-            config = Config(self._config_path)
+            from src.config.ai_config import AIConfig
+
+            with ENV_CONFIG_LOCK:
+                load_dotenv(self._env_path, override=True)
+                config = Config(self._config_path)
+                # 在锁内一次性取出 reranker 配置，避免后续再读 os.environ
+                ai_config_snapshot = AIConfig()
+                reranker_config = ai_config_snapshot.get_openai_config("reranker")
 
             # ---- 2. 初始化日志（会清除所有已有 handler） ----
             from src.generators.common.utils import setup_logging
@@ -99,9 +105,6 @@ class PipelineWorker(QThread):
 
             # ---- 5. 创建知识库（含 Reranker 配置） ----
             from src.knowledge_base.knowledge_base import KnowledgeBase
-            from src.config.ai_config import AIConfig
-            ai_config = AIConfig()
-            reranker_config = ai_config.get_openai_config("reranker")
             knowledge_base = KnowledgeBase(
                 config.knowledge_base_config, embedding_model,
                 reranker_config=reranker_config

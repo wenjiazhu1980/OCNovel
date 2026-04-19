@@ -50,13 +50,14 @@ class MarketingWorker(QThread):
         handler: SignalLogHandler | None = None
 
         try:
-            # ---- 1. 加载环境变量 ----
+            # ---- 1-2. 加载环境变量 + 配置（串行化，避免并发 worker 污染 os.environ）----
+            from ._env_lock import ENV_CONFIG_LOCK
             from dotenv import load_dotenv
-            load_dotenv(self._env_path, override=True)
-
-            # ---- 2. 加载配置 ----
             from src.config.config import Config
-            config = Config(self._config_path)
+
+            with ENV_CONFIG_LOCK:
+                load_dotenv(self._env_path, override=True)
+                config = Config(self._config_path)
 
             # ---- 3. 安装日志桥接 Handler ----
             handler = SignalLogHandler()

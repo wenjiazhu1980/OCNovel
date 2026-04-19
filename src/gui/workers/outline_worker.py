@@ -62,12 +62,17 @@ class OutlineWorker(QThread):
         handler: SignalLogHandler | None = None
 
         try:
-            # ---- 1. 加载配置 ----
+            # ---- 1. 加载配置（env + Config 串行化，避免并发 worker 污染 os.environ）----
+            from ._env_lock import ENV_CONFIG_LOCK
             from dotenv import load_dotenv
-            load_dotenv(self._env_path, override=True)
-
             from src.config.config import Config
-            config = Config(self._config_path)
+            from src.config.ai_config import AIConfig
+
+            with ENV_CONFIG_LOCK:
+                load_dotenv(self._env_path, override=True)
+                config = Config(self._config_path)
+                ai_config_snapshot = AIConfig()
+                reranker_config = ai_config_snapshot.get_openai_config("reranker")
 
             # ---- 2. 初始化日志 ----
             from src.generators.common.utils import setup_logging
@@ -87,9 +92,6 @@ class OutlineWorker(QThread):
 
             # ---- 5. 创建知识库 ----
             from src.knowledge_base.knowledge_base import KnowledgeBase
-            from src.config.ai_config import AIConfig
-            ai_config = AIConfig()
-            reranker_config = ai_config.get_openai_config("reranker")
             knowledge_base = KnowledgeBase(
                 config.knowledge_base_config, embedding_model,
                 reranker_config=reranker_config,
