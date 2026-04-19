@@ -178,7 +178,11 @@ class OutlineGenerator:
     def generate_outline(self, novel_type: str, theme: str, style: str,
                         mode: str = 'replace', replace_range: Tuple[int, int] = None, 
                         extra_prompt: Optional[str] = None) -> bool:
-        """生成指定范围的章节大纲"""
+        """生成指定范围的章节大纲
+        
+        当批次生成失败时，会自动重试。重试次数由配置项
+        outline_batch_max_retries 控制，默认 3 次。
+        """
         try:
             if mode != 'replace' or not replace_range:
                 logging.error(f"不支持的生成模式 '{mode}' 或缺少章节范围 'replace_range'")
@@ -197,6 +201,8 @@ class OutlineGenerator:
                 logging.info(f"扩展大纲列表以容纳目标章节 {end_chapter}")
 
             batch_size = self.config.generation_config.get("outline_batch_size", 100)  # 主批次大小，支持超长大纲
+            batch_max_retries = self.config.generation_config.get("outline_batch_max_retries", 3)  # 批次失败自动重试次数
+            batch_retry_delay = self.config.generation_config.get("outline_batch_retry_delay", 5)  # 重试间隔（秒）
             successful_outlines_in_run = [] # 存储本次运行成功生成的
 
             num_batches = (total_chapters_to_generate + batch_size - 1) // batch_size
@@ -212,30 +218,48 @@ class OutlineGenerator:
                 # 确保批次结束不超过总的结束章节
                 batch_end_num = min(batch_start_num + batch_size - 1, end_chapter)
                 
-                batch_success = self._generate_batch(batch_start_num, batch_end_num,
-                                                    novel_type, theme, style, extra_prompt, successful_outlines_in_run)
-                
-                if batch_success:
-                    logging.info(f"批次 {batch_idx + 1} (章节 {batch_start_num}-{batch_end_num}) 生成成功，正在保存当前大纲...")
-                    if not self._save_outline():
-                         logging.error(f"在批次 {batch_idx + 1} 后保存大纲失败。")
-                         # 即使保存失败，也可能决定继续生成下一批次，或者停止
-                         # all_batches_successful = False # 标记失败
-                         # break # 如果希望保存失败时停止，则取消注释此行
-                else:
-                    logging.error(f"批次 {batch_idx + 1} (章节 {batch_start_num}-{batch_end_num}) 生成失败，终止大纲生成。")
+                batch_success = False
+                last_error_msg = ""
+                for attempt in range(batch_max_retries):
+                    # 重试前检查取消信号
+                    if self.cancel_checker and self.cancel_checker():
+                        logging.info("大纲批次重试前收到取消信号，中止。")
+                        self._save_outline()
+                        raise InterruptedError("用户取消大纲生成")
+
+                    batch_success = self._generate_batch(batch_start_num, batch_end_num,
+                                                        novel_type, theme, style, extra_prompt, successful_outlines_in_run)
+                    
+                    if batch_success:
+                        logging.info(f"批次 {batch_idx + 1} (章节 {batch_start_num}-{batch_end_num}) 生成成功，正在保存当前大纲...")
+                        if not self._save_outline():
+                             logging.error(f"在批次 {batch_idx + 1} 后保存大纲失败。")
+                        break  # 批次成功，跳出重试循环
+                    else:
+                        last_error_msg = f"批次 {batch_idx + 1} (章节 {batch_start_num}-{batch_end_num}) 生成失败"
+                        if attempt < batch_max_retries - 1:
+                            retry_num = attempt + 2
+                            logging.warning(
+                                f"{last_error_msg}，将在 {batch_retry_delay} 秒后自动重试 "
+                                f"(第 {retry_num}/{batch_max_retries} 次)..."
+                            )
+                            time.sleep(batch_retry_delay)
+                        else:
+                            logging.error(
+                                f"{last_error_msg}，已重试 {batch_max_retries} 次仍不成功，终止大纲生成。"
+                            )
+
+                if not batch_success:
                     # 保存部分成功的结果
-                    self._save_outline() # 保留之前的保存逻辑，以防万一
+                    self._save_outline()
                     all_batches_successful = False
-                    break # 生成失败则停止
+                    break  # 重试耗尽后停止
 
             logging.info(f"所有批次的大纲生成尝试完成，本次运行共生成 {len(successful_outlines_in_run)} 章")
-            # 不再需要在此处调用 _save_outline()，因为每次成功后都已保存
-            # return self._save_outline()
-            return all_batches_successful # 返回整体是否成功
+            return all_batches_successful
 
         except Exception as e:
-            logging.error(f"生成大纲主流程发生未预期错误：{str(e)}", exc_info=True) # 添加 exc_info
+            logging.error(f"生成大纲主流程发生未预期错误：{str(e)}", exc_info=True)
             return False
 
     def _generate_batch(self, batch_start_num: int, batch_end_num: int, 
@@ -341,6 +365,7 @@ class OutlineGenerator:
 
             new_outlines_batch = []
             valid_count = 0
+            none_count = 0
             
             for i, chapter_data in enumerate(outline_data):
                 expected_chapter_num = batch_start_num + i
@@ -361,11 +386,23 @@ class OutlineGenerator:
                     else:
                         logging.warning(f"第 {expected_chapter_num} 章大纲未通过一致性检查")
                         new_outlines_batch.append(None)
+                        none_count += 1
                         
                 except Exception as e:
                     logging.error(f"处理章节 {expected_chapter_num} 大纲时出错: {str(e)}")
                     new_outlines_batch.append(None)
-            
+                    none_count += 1
+
+            # 检测模型返回章节数不足的情况，补充 None 占位
+            missing_count = current_batch_size - len(new_outlines_batch)
+            if missing_count > 0:
+                logging.warning(
+                    f"模型仅返回 {len(new_outlines_batch)}/{current_batch_size} 个章节大纲，"
+                    f"缺少 {missing_count} 章，缺失章节将用 None 占位。"
+                )
+                new_outlines_batch.extend([None] * missing_count)
+                none_count += missing_count
+
             start_index = batch_start_num - 1
             end_index = batch_end_num
             self.chapter_outlines[start_index:end_index] = new_outlines_batch
@@ -379,10 +416,21 @@ class OutlineGenerator:
 
             if valid_count < current_batch_size:
                 logging.warning(
-                    f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过一致性验证，"
-                    f"未通过的章节已保留（一致性检查为软警告，不影响流程）。"
+                    f"批次生成的大纲中只有 {valid_count}/{current_batch_size} 个通过验证"
+                    f"（含 {none_count} 个空位），"
                     f"如需提高质量，可尝试减小每批生成章节数（当前: {current_batch_size}）。"
                 )
+
+            # 当有效章节低于阈值时视为批次失败，触发上层重试
+            # 阈值：有效章节低于批次大小的 50%，说明生成质量不佳应重试
+            effective_threshold = max(1, current_batch_size // 2)
+            if valid_count < effective_threshold:
+                logging.warning(
+                    f"有效大纲数 ({valid_count}) 低于阈值 ({effective_threshold})，"
+                    f"视为批次失败以触发自动重试。"
+                )
+                return False
+
             return True
 
         except Exception as e:
