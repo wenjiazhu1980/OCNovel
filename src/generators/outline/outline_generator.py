@@ -201,7 +201,7 @@ class OutlineGenerator:
         """生成指定范围的章节大纲
         
         当批次生成失败时，会自动重试。重试次数由配置项
-        outline_batch_max_retries 控制，表示额外重试次数，默认 3 次。
+        outline_batch_max_retries 控制，表示总共最多尝试次数，默认 3 次。
         """
         try:
             if mode != 'replace' or not replace_range:
@@ -221,16 +221,16 @@ class OutlineGenerator:
                 logging.info(f"扩展大纲列表以容纳目标章节 {end_chapter}")
 
             batch_size = self.config.generation_config.get("outline_batch_size", 100)  # 主批次大小，支持超长大纲
-            raw_extra_retries = self.config.generation_config.get("outline_batch_max_retries", 3)
+            raw_total_attempts = self.config.generation_config.get("outline_batch_max_retries", 3)
             raw_retry_delay = self.config.generation_config.get("outline_batch_retry_delay", 5)
 
             try:
-                extra_retries = max(0, int(raw_extra_retries))
+                total_attempts = max(1, int(raw_total_attempts))
             except (TypeError, ValueError):
                 logging.warning(
-                    f"无效的 outline_batch_max_retries 配置: {raw_extra_retries}，将回退到默认值 3。"
+                    f"无效的 outline_batch_max_retries 配置: {raw_total_attempts}，将回退到默认值 3。"
                 )
-                extra_retries = 3
+                total_attempts = 3
 
             try:
                 batch_retry_delay = max(0.0, float(raw_retry_delay))
@@ -240,7 +240,6 @@ class OutlineGenerator:
                 )
                 batch_retry_delay = 5.0
 
-            total_attempts = extra_retries + 1
             successful_outlines_in_run = [] # 存储本次运行成功生成的
 
             num_batches = (total_chapters_to_generate + batch_size - 1) // batch_size
@@ -292,7 +291,7 @@ class OutlineGenerator:
                     else:
                         logging.error(
                             f"批次 {batch_idx + 1} (章节 {batch_start_num}-{batch_end_num}) "
-                            f"在 {total_attempts} 次尝试后仍不成功（额外重试 {extra_retries} 次），终止大纲生成。"
+                            f"在 {total_attempts} 次尝试后仍不成功，终止大纲生成。"
                         )
 
                 if not batch_success:

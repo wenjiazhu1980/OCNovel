@@ -221,7 +221,27 @@ class ContentGenerator:
         if self.cancel_checker and self.cancel_checker():
             raise InterruptedError("用户取消生成")
 
-    def _process_single_chapter(self, chapter_num: int, external_prompt: Optional[str] = None, max_retries: int = 3, style_name: Optional[str] = None, is_target_chapter: bool = False) -> bool:
+    def _get_chapter_retry_settings(self, max_retries: Optional[int] = None) -> tuple[int, float]:
+        """获取单章生成的重试配置，支持显式覆盖默认值"""
+        generation_config = getattr(self.config, "generation_config", {}) or {}
+        raw_max_retries = generation_config.get("max_retries", 3) if max_retries is None else max_retries
+        raw_retry_delay = generation_config.get("retry_delay", 10)
+
+        try:
+            effective_max_retries = max(1, int(raw_max_retries))
+        except (TypeError, ValueError):
+            logger.warning(f"无效的章节重试次数配置: {raw_max_retries}，将回退到默认值 3。")
+            effective_max_retries = 3
+
+        try:
+            effective_retry_delay = max(0.0, float(raw_retry_delay))
+        except (TypeError, ValueError):
+            logger.warning(f"无效的章节重试间隔配置: {raw_retry_delay}，将回退到默认值 10 秒。")
+            effective_retry_delay = 10.0
+
+        return effective_max_retries, effective_retry_delay
+
+    def _process_single_chapter(self, chapter_num: int, external_prompt: Optional[str] = None, max_retries: Optional[int] = None, style_name: Optional[str] = None, is_target_chapter: bool = False) -> bool:
         """
         处理单个章节的生成、验证、保存和定稿，支持风格名
         Args:
@@ -239,6 +259,7 @@ class ContentGenerator:
             )
             return False
         logger.info(f"[Chapter {chapter_num}] 开始处理章节: {chapter_outline.title}")
+        max_retries, retry_delay = self._get_chapter_retry_settings(max_retries)
         success = False
         length_hint = ""  # 字数约束提示，重试时追加到 prompt
         pending_adjustment = None  # 待调整的内容 (content, actual, target)
@@ -380,7 +401,7 @@ class ContentGenerator:
                 if attempt >= max_retries - 1:
                     logger.error(f"[Chapter {chapter_num}] 达到最大重试次数")
                     return False
-                time.sleep(self.config.generation_config.get("retry_delay", 10))
+                time.sleep(retry_delay)
         return success
 
     def _load_adjacent_chapter(self, chapter_num: int) -> str:

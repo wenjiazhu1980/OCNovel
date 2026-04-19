@@ -1070,6 +1070,7 @@ class NovelParamsTab(QWidget):
                 },
                 "generation_config": {
                     "max_retries": 3, "retry_delay": 30,
+                    "outline_batch_max_retries": 3, "outline_batch_retry_delay": 5,
                     "model_selection": {
                         "outline": {"provider": "openai", "model_type": "outline"},
                         "content": {"provider": "openai", "model_type": "content"}
