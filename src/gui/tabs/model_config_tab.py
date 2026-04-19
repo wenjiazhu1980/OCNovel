@@ -378,13 +378,30 @@ class ModelConfigTab(QWidget):
 
     # ── 关闭清理 ─────────────────────────────────────────
 
-    def shutdown_workers(self, wait_ms: int = 3000):
-        """停止并等待所有测试线程结束（主窗口关闭时调用）"""
+    def shutdown_workers(self, wait_ms: int | None = None):
+        """停止并等待所有测试线程结束（主窗口关闭时调用）
+
+        Args:
+            wait_ms: 显式等待上限（毫秒）；为 None 时根据各 tester 的 timeout
+                     配置自适应为 (timeout + 2) * 1000，避免 3s 强退导致
+                     QThread destroyed while running。
+        """
         for tester in list(self._testers):
             try:
+                # 先发送协作取消信号（供未来分段调用感知）
+                stop_fn = getattr(tester, "stop", None)
+                if callable(stop_fn):
+                    stop_fn()
                 if tester.isRunning():
-                    tester.quit()
-                    tester.wait(wait_ms)
+                    if wait_ms is None:
+                        try:
+                            t = int(tester.config.get("timeout", 30))
+                        except (TypeError, ValueError):
+                            t = 30
+                        effective = (t + 2) * 1000
+                    else:
+                        effective = wait_ms
+                    tester.wait(effective)
             except RuntimeError:
                 # QThread 已被销毁，跳过
                 pass

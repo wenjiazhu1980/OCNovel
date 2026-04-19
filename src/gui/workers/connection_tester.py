@@ -1,4 +1,6 @@
 """模型连接测试后台线程"""
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
 from PySide6.QtCore import QThread, Signal
 
 
@@ -18,6 +20,15 @@ class ConnectionTesterWorker(QThread):
         super().__init__(parent)
         self.provider = provider
         self.config = config
+
+    def stop(self):
+        """协作取消：设置中断标志。
+
+        注意：各 _test_* 内部的阻塞 HTTP 调用通过 SDK 的 timeout 参数或
+        ThreadPoolExecutor.result(timeout=...) 限制阻塞时长；当 shutdown
+        触发本方法后，后续逻辑（以及未来可能的分段调用）将尽早退出。
+        """
+        self.requestInterruption()
 
     def run(self):
         try:
@@ -45,8 +56,19 @@ class ConnectionTesterWorker(QThread):
         try:
             genai.configure(api_key=api_key, transport="rest")
 
-            # 尝试列出模型以验证连接
-            models = list(genai.list_models())
+            # google-generativeai SDK 不直接暴露 timeout 参数，故用线程池
+            # 包裹 list_models 以精确限制阻塞时长（修复 C2: timeout 未生效）
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                try:
+                    models = pool.submit(lambda: list(genai.list_models())).result(
+                        timeout=timeout
+                    )
+                except FuturesTimeout:
+                    self.test_result.emit(
+                        self.provider, False, f"连接超时 ({timeout}s)"
+                    )
+                    return
+
             if models:
                 self.test_result.emit(
                     self.provider, True,

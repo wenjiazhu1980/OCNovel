@@ -116,7 +116,12 @@ class WritingGuideWorker(QThread):
         self._target_chapters = max(1, int(target_chapters))
         self._chapter_length = max(500, int(chapter_length))
 
+    def stop(self):
+        """协作取消：run() 内 stream 循环会在下一个 chunk 感知并立即退出。"""
+        self.requestInterruption()
+
     def run(self):
+        stream = None
         try:
             import openai
 
@@ -145,16 +150,28 @@ class WritingGuideWorker(QThread):
                 total_words_wan=f"{total_words / 10000:.0f}",
             )
 
-            # 调用 API
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            response = client.chat.completions.create(
+            # 调用 API - 使用 stream 模式以支持协作取消
+            # （每个 chunk 之间检查 isInterruptionRequested()，关窗时可秒级退出）
+            client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=120)
+            stream = client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=1.0,
-                timeout=120,
+                stream=True,
             )
 
-            text = response.choices[0].message.content.strip()
+            chunks: list[str] = []
+            for chunk in stream:
+                if self.isInterruptionRequested():
+                    self.finished_result.emit(False, "已取消")
+                    return
+                try:
+                    delta = chunk.choices[0].delta.content
+                except (AttributeError, IndexError):
+                    delta = None
+                if delta:
+                    chunks.append(delta)
+            text = "".join(chunks).strip()
 
             # 去除可能的 markdown 代码块标记
             if text.startswith("```"):
@@ -174,3 +191,10 @@ class WritingGuideWorker(QThread):
         except Exception as e:
             logger.error(f"生成写作指南失败: {e}", exc_info=True)
             self.finished_result.emit(False, str(e))
+        finally:
+            # 显式关闭 stream，确保底层 HTTP 连接不泄漏
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
