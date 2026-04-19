@@ -63,6 +63,24 @@ class PipelineWorker(QThread):
         """请求停止流水线（当前章节完成后生效）"""
         self._stop_event.set()
 
+    def _get_requested_target_chapters(self, end_chapter: int) -> list[int]:
+        """返回指定章节模式下有效的目标章节列表"""
+        if not self._target_chapters_list:
+            return []
+        return [
+            ch for ch in self._target_chapters_list
+            if 1 <= ch <= end_chapter
+        ]
+
+    def _get_required_outline_chapters(self, end_chapter: int) -> int:
+        """返回当前模式下所需的大纲最小章节数"""
+        requested_targets = self._get_requested_target_chapters(end_chapter)
+        if requested_targets:
+            return max(requested_targets)
+        if self._target_chapters_list:
+            return 0
+        return end_chapter
+
     # ------------------------------------------------------------------
     # 核心执行逻辑
     # ------------------------------------------------------------------
@@ -168,10 +186,24 @@ class PipelineWorker(QThread):
 
             # 确保 content_generator 加载最新大纲
             content_generator._load_outline()
-            if len(content_generator.chapter_outlines) < end_chapter:
+            required_outline_chapters = self._get_required_outline_chapters(end_chapter)
+            outline_count = len(content_generator.chapter_outlines)
+            if outline_count < required_outline_chapters:
+                if self._target_chapters_list:
+                    requested_targets = self._get_requested_target_chapters(end_chapter)
+                    raise RuntimeError(
+                        QCoreApplication.translate(
+                            "PipelineWorker",
+                            "大纲章节数 ({0}) 小于所选章节上限 ({1})，无法重新生成指定章节: {2}",
+                        ).format(
+                            outline_count,
+                            required_outline_chapters,
+                            requested_targets,
+                        )
+                    )
                 raise RuntimeError(
                     QCoreApplication.translate("PipelineWorker", "大纲章节数 ({0}) 小于目标章节数 ({1})").format(
-                        len(content_generator.chapter_outlines), end_chapter
+                        outline_count, end_chapter
                     )
                 )
 
@@ -202,10 +234,7 @@ class PipelineWorker(QThread):
             # 确定要生成的章节列表
             if self._target_chapters_list:
                 # 指定章节模式：仅生成指定章节（用于重新生成失败章节）
-                chapters_to_generate = [
-                    ch for ch in self._target_chapters_list
-                    if 1 <= ch <= end_chapter
-                ]
+                chapters_to_generate = self._get_requested_target_chapters(end_chapter)
                 logger.info(QCoreApplication.translate("PipelineWorker", "指定章节模式:将生成 {0} 章: {1}").format(len(chapters_to_generate), chapters_to_generate))
             else:
                 # 连续模式:从断点续写
