@@ -320,13 +320,28 @@ class ProgressTab(QWidget):
         self._worker.start()
 
     def _on_stop(self):
-        """请求停止流水线或大纲生成"""
-        if self._worker is not None:
-            self._worker.stop()
-        if self._outline_worker is not None:
-            self._outline_worker.stop()
-        self.btn_stop.setEnabled(False)
-        self.log_viewer.append_log(self.tr("已发送停止信号，等待当前操作完成后停止…"), "WARNING")
+        """请求停止所有长任务（流水线 / 大纲 / 合并 / 营销）"""
+        stopped_any = False
+        for w in (self._worker, self._outline_worker, self._merge_worker, self._marketing_worker):
+            if w is None:
+                continue
+            stop_fn = getattr(w, "stop", None)
+            if callable(stop_fn):
+                try:
+                    stop_fn()
+                    stopped_any = True
+                except Exception as e:
+                    logging.warning(f"停止 worker 失败: {e}")
+        if stopped_any:
+            self.btn_stop.setEnabled(False)
+            self.log_viewer.append_log(self.tr("已发送停止信号，等待当前操作完成后停止…"), "WARNING")
+
+    def has_running_task(self) -> bool:
+        """是否有任一长任务正在运行"""
+        return any(w is not None for w in (
+            self._worker, self._outline_worker,
+            self._merge_worker, self._marketing_worker,
+        ))
 
     def shutdown_workers(self, wait_ms: int = 8000):
         """请求停止并等待所有后台 worker 完成（主窗口关闭时调用）"""
@@ -375,17 +390,10 @@ class ProgressTab(QWidget):
 
     def _on_generate_outline(self):
         """仅生成大纲"""
-        if self._worker is not None:
+        if self.has_running_task():
             QMessageBox.warning(
                 self, self.tr("提示"),
-                self.tr("流水线正在运行中，请等待完成后再生成大纲。"),
-            )
-            return
-
-        if self._outline_worker is not None:
-            QMessageBox.warning(
-                self, self.tr("提示"),
-                self.tr("大纲生成正在进行中，请稍候..."),
+                self.tr("有任务正在运行中，请等待完成后再生成大纲。"),
             )
             return
 
@@ -441,19 +449,11 @@ class ProgressTab(QWidget):
 
     def _on_generate_marketing(self):
         """生成营销内容"""
-        # 检查是否有流水线正在运行
-        if self._worker is not None:
+        # 统一互斥：任一长任务运行中都不允许启动新任务
+        if self.has_running_task():
             QMessageBox.warning(
                 self, self.tr("提示"),
-                self.tr("流水线正在运行中，请等待完成后再生成营销内容。")
-            )
-            return
-
-        # 检查是否有营销内容生成正在运行
-        if self._marketing_worker is not None:
-            QMessageBox.warning(
-                self, self.tr("提示"),
-                self.tr("营销内容生成正在进行中，请稍候...")
+                self.tr("有任务正在运行中，请等待完成后再生成营销内容。")
             )
             return
 
@@ -495,28 +495,24 @@ class ProgressTab(QWidget):
         self._marketing_worker.generation_finished.connect(self._on_marketing_finished)
         self._marketing_worker.log_message.connect(self.log_viewer.append_log)
 
-        # 禁用按钮
+        # 禁用按钮 + 广播全局 busy 状态（锁定其它 tab）
         self.btn_marketing.setEnabled(False)
         self.btn_marketing.setText(self.tr("⏳  生成中..."))
+        self.btn_merge.setEnabled(False)
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.pipeline_running_changed.emit(True)
 
         self.log_viewer.append_log(self.tr("开始生成营销内容..."), "INFO")
         self._marketing_worker.start()
 
     def _on_merge(self):
         """合并所有章节"""
-        # 检查是否有流水线正在运行
-        if self._worker is not None:
+        # 统一互斥：任一长任务运行中都不允许启动新任务
+        if self.has_running_task():
             QMessageBox.warning(
                 self, self.tr("提示"),
-                self.tr("流水线正在运行中，请等待完成后再合并章节。")
-            )
-            return
-
-        # 检查是否有合并正在运行
-        if self._merge_worker is not None:
-            QMessageBox.warning(
-                self, self.tr("提示"),
-                self.tr("章节合并正在进行中，请稍候...")
+                self.tr("有任务正在运行中，请等待完成后再合并章节。")
             )
             return
 
@@ -554,9 +550,13 @@ class ProgressTab(QWidget):
         self._merge_worker.merge_finished.connect(self._on_merge_finished)
         self._merge_worker.log_message.connect(self.log_viewer.append_log)
 
-        # 禁用按钮
+        # 禁用按钮 + 广播全局 busy 状态（锁定其它 tab）
         self.btn_merge.setEnabled(False)
         self.btn_merge.setText(self.tr("⏳  合并中..."))
+        self.btn_marketing.setEnabled(False)
+        self.btn_start.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.pipeline_running_changed.emit(True)
 
         self.log_viewer.append_log(self.tr("开始合并所有章节..."), "INFO")
         self._merge_worker.start()
@@ -609,6 +609,10 @@ class ProgressTab(QWidget):
         """营销内容生成完成"""
         self.btn_marketing.setEnabled(True)
         self.btn_marketing.setText(self.tr("📢  生成营销内容"))
+        self.btn_merge.setEnabled(True)
+        self.btn_start.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self.pipeline_running_changed.emit(False)
 
         if success:
             QMessageBox.information(
@@ -630,6 +634,10 @@ class ProgressTab(QWidget):
         """章节合并完成"""
         self.btn_merge.setEnabled(True)
         self.btn_merge.setText(self.tr("📚  合并所有章节"))
+        self.btn_marketing.setEnabled(True)
+        self.btn_start.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self.pipeline_running_changed.emit(False)
 
         if success:
             QMessageBox.information(

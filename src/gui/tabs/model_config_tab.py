@@ -25,6 +25,8 @@ class ModelConfigTab(QWidget):
         self._config_path = config_path
         self._fields: dict[str, QWidget] = {}  # env_key -> widget
         self._testers: list[ConnectionTesterWorker] = []
+        # 需要在"生成中"状态下一并禁用的关键按钮（加载 / 保存 / 各测试按钮）
+        self._lockable_buttons: list[QPushButton] = []
 
         self._init_ui()
         self._load(silent=True)
@@ -72,14 +74,16 @@ class ModelConfigTab(QWidget):
         btn_bar = QHBoxLayout()
         btn_bar.setContentsMargins(16, 10, 16, 12)
         btn_bar.addStretch()
-        btn_load = QPushButton(self.tr("加载配置"))
-        btn_save = QPushButton(self.tr("保存配置"))
-        btn_save.setProperty("cssClass", "primary")
-        btn_load.clicked.connect(self._load)
-        btn_save.clicked.connect(self._save)
-        btn_bar.addWidget(btn_load)
-        btn_bar.addWidget(btn_save)
+        self._btn_load = QPushButton(self.tr("加载配置"))
+        self._btn_save = QPushButton(self.tr("保存配置"))
+        self._btn_save.setProperty("cssClass", "primary")
+        self._btn_load.clicked.connect(self._load)
+        self._btn_save.clicked.connect(self._save)
+        btn_bar.addWidget(self._btn_load)
+        btn_bar.addWidget(self._btn_save)
         outer.addLayout(btn_bar)
+        # 加入统一锁定列表
+        self._lockable_buttons.extend([self._btn_load, self._btn_save])
 
     # ── 各提供商分组 ────────────────────────────────────
 
@@ -120,6 +124,8 @@ class ModelConfigTab(QWidget):
         btn.setProperty("cssClass", "primary")
         btn.clicked.connect(partial(self._on_test, provider_key))
         form.addRow("", btn)
+        # 加入统一锁定列表，生成过程中应禁止发起测试请求
+        self._lockable_buttons.append(btn)
         return btn
 
     def _build_gemini_group(self):
@@ -361,11 +367,14 @@ class ModelConfigTab(QWidget):
     # ── 编辑锁定（保留滚动） ────────────────────────────
 
     def set_editing_enabled(self, enabled: bool):
-        """启用/禁用所有输入控件，但不影响滚动"""
+        """启用/禁用所有输入控件与关键按钮，但不影响滚动"""
         for widget in self._fields.values():
             widget.setEnabled(enabled)
         self._outline_provider.setEnabled(enabled)
         self._content_provider.setEnabled(enabled)
+        # 锁定加载 / 保存 / 各测试按钮，避免生成过程中改乱磁盘态
+        for btn in self._lockable_buttons:
+            btn.setEnabled(enabled)
 
     # ── 关闭清理 ─────────────────────────────────────────
 
