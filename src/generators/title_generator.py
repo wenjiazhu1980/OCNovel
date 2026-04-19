@@ -315,7 +315,7 @@ class TitleGenerator:
                 line = line.strip()
                 if not line:
                     continue
-                
+
                 # 尝试不同的分隔符
                 if ':' in line:
                     platform, prompt_text = line.split(':', 1)
@@ -323,16 +323,24 @@ class TitleGenerator:
                     platform, prompt_text = line.split('：', 1)
                 else:
                     continue
-                
+
                 platform = platform.strip()
                 prompt_text = prompt_text.strip()
-                
-                # 清理可能的多余字符
-                for char in ['【', '】', '"', '"', '*']:
+
+                # 清理可能的多余字符（兼容 markdown 粗体 / 列表符 / 标题符号）
+                for char in ['【', '】', '"', '"', '*', '#', '`']:
                     prompt_text = prompt_text.replace(char, '')
-                
+
+                # 容错：模型常把平台名用 markdown 渲染，如 "*   **番茄小说**"；
+                # 只要该段文本里能找到某个预期平台名即视为命中，避免 strict equals
+                # 导致五个平台全部解析失败后走兜底默认模板。
+                matched = next((p for p in platforms if p in platform), None)
+                if matched is None:
+                    continue
+                platform = matched
+
                 # 验证提示词是否有效
-                if prompt_text and len(prompt_text.split('、')) >= 6 and platform in platforms:
+                if prompt_text and len(prompt_text.split('、')) >= 6:
                     cover_prompts[platform] = prompt_text
                     logging.info(f"成功解析平台 {platform} 的提示词：{prompt_text}")
             
