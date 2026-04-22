@@ -35,16 +35,45 @@ jobs:
 
       - name: Ad-hoc sign macOS app
         # 免费的 ad-hoc 签名（无需 Apple Developer 账号）。
-        # 主要解决 PyInstaller 打包后双击报"已损坏"的问题；用户首次启动仍需
-        # 执行 `xattr -cr OCNovel.app` 清除 quarantine 标记（README 已说明）。
+        # 重要：
+        # 1) 从内往外签名（inside-out），`--deep` 对嵌套 Framework 不可靠；
+        # 2) 不启用 `--options runtime`（Hardened Runtime）——ad-hoc 签名下
+        #    每个 Mach-O 的 CDHash 各不相同，Hardened Runtime 会触发 library
+        #    validation 报 "different Team IDs" 导致 Python.framework 无法加载。
+        # 用户首次启动仍需执行 `xattr -cr OCNovel.app` 清除 quarantine 标记。
         run: |
-          codesign --deep --force --sign - --options runtime dist/OCNovel.app
-          codesign --verify --verbose dist/OCNovel.app
+          set -euo pipefail
+          APP="dist/OCNovel.app"
+
+          echo "=== 1. 签名所有 .dylib / .so (内层 Mach-O) ==="
+          find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 \
+            | xargs -0 -I{} codesign --force --sign - --timestamp=none "{}"
+
+          echo "=== 2. 签名 Python.framework 主二进制及其 bundle ==="
+          codesign --force --sign - --timestamp=none \
+            "$APP/Contents/Frameworks/Python.framework/Versions/3.11/Python"
+          codesign --force --sign - --timestamp=none \
+            "$APP/Contents/Frameworks/Python.framework"
+
+          echo "=== 3. 签名其他 Framework（若存在） ==="
+          find "$APP" -type d -name "*.framework" -not -path "*Python.framework*" -print0 \
+            | xargs -0 -I{} codesign --force --sign - --timestamp=none "{}" || true
+
+          echo "=== 4. 签名主可执行文件 ==="
+          codesign --force --sign - --timestamp=none "$APP/Contents/MacOS/OCNovel"
+
+          echo "=== 5. 签名 app bundle 根 ==="
+          codesign --force --sign - --timestamp=none "$APP"
+
+          echo "=== 6. 验证 ==="
+          codesign --verify --verbose=2 "$APP"
 
       - name: Package macOS app
+        # 使用 ditto 替代 zip：更好地保留 macOS 元数据、符号链接与扩展属性，
+        # 避免解压后签名失效。
         run: |
           cd dist
-          zip -r -y ../OCNovel-macOS-arm64.zip OCNovel.app
+          ditto -c -k --keepParent --sequesterRsrc OCNovel.app ../OCNovel-macOS-arm64.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
