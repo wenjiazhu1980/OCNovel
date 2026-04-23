@@ -301,6 +301,75 @@ class OutlineGenerator:
                     break  # 重试耗尽后停止
 
             logging.info(f"所有批次的大纲生成尝试完成，本次运行共生成 {len(successful_outlines_in_run)} 章")
+
+            # ---- 缺失章节补生成 ----
+            missing_chapters = [
+                start_chapter + i
+                for i in range(end_chapter - start_chapter + 1)
+                if self.chapter_outlines[start_chapter - 1 + i] is None
+            ]
+
+            if missing_chapters:
+                raw_gap_retries = self.config.generation_config.get("outline_gap_max_retries", 2)
+                raw_gap_delay = self.config.generation_config.get("outline_gap_retry_delay", 3)
+                try:
+                    gap_max_retries = max(1, int(raw_gap_retries))
+                except (TypeError, ValueError):
+                    gap_max_retries = 2
+                try:
+                    gap_retry_delay = max(0.0, float(raw_gap_delay))
+                except (TypeError, ValueError):
+                    gap_retry_delay = 3.0
+
+                logging.info(
+                    f"检测到 {len(missing_chapters)} 个缺失章节: {missing_chapters}，"
+                    f"开始逐章补生成（最多 {gap_max_retries} 轮）"
+                )
+
+                for round_idx in range(gap_max_retries):
+                    if not missing_chapters:
+                        break
+                    if self.cancel_checker and self.cancel_checker():
+                        logging.info("补生成期间收到取消信号，中止。")
+                        self._save_outline()
+                        raise InterruptedError("用户取消大纲生成")
+
+                    round_no = round_idx + 1
+                    logging.info(f"[补生成] 第 {round_no}/{gap_max_retries} 轮，待补章节: {missing_chapters}")
+
+                    for ch_num in list(missing_chapters):
+                        if self.cancel_checker and self.cancel_checker():
+                            logging.info("补生成期间收到取消信号，中止。")
+                            self._save_outline()
+                            raise InterruptedError("用户取消大纲生成")
+
+                        success = self._generate_single_chapter_outline(
+                            ch_num, novel_type, theme, style, extra_prompt
+                        )
+                        if success:
+                            missing_chapters.remove(ch_num)
+                            self._save_outline()
+                        elif gap_retry_delay > 0:
+                            if not self._wait_retry_delay(gap_retry_delay):
+                                self._save_outline()
+                                return False
+
+                    if missing_chapters:
+                        logging.warning(
+                            f"[补生成] 第 {round_no} 轮结束，仍有 {len(missing_chapters)} 个缺失: {missing_chapters}"
+                        )
+
+                if missing_chapters:
+                    logging.warning(
+                        f"补生成结束，仍有 {len(missing_chapters)} 个章节缺失: {missing_chapters}。"
+                        f"已保存当前结果，ContentGenerator 可能会因大纲不连续而拒绝生成。"
+                    )
+                    all_batches_successful = False
+                else:
+                    logging.info("所有缺失章节已补生成完毕！")
+                    if not all_batches_successful:
+                        all_batches_successful = True
+
             return all_batches_successful
 
         except InterruptedError:
@@ -414,7 +483,9 @@ class OutlineGenerator:
             new_outlines_batch = []
             valid_count = 0
             none_count = 0
-            
+            consistency_fail_count = 0
+            construct_fail_count = 0
+
             for i, chapter_data in enumerate(outline_data):
                 expected_chapter_num = batch_start_num + i
                 try:
@@ -426,7 +497,7 @@ class OutlineGenerator:
                         settings=chapter_data.get('settings', []),
                         conflicts=chapter_data.get('conflicts', [])
                     )
-                    
+
                     if self._check_outline_consistency(new_outline, previous_outlines):
                         new_outlines_batch.append(new_outline)
                         valid_count += 1
@@ -435,21 +506,32 @@ class OutlineGenerator:
                         logging.warning(f"第 {expected_chapter_num} 章大纲未通过一致性检查")
                         new_outlines_batch.append(None)
                         none_count += 1
-                        
+                        consistency_fail_count += 1
+
                 except Exception as e:
                     logging.error(f"处理章节 {expected_chapter_num} 大纲时出错: {str(e)}")
                     new_outlines_batch.append(None)
                     none_count += 1
+                    construct_fail_count += 1
 
             # 检测模型返回章节数不足的情况，补充 None 占位
-            missing_count = current_batch_size - len(new_outlines_batch)
-            if missing_count > 0:
+            missing_from_model = current_batch_size - len(new_outlines_batch)
+            if missing_from_model > 0:
                 logging.warning(
                     f"模型仅返回 {len(new_outlines_batch)}/{current_batch_size} 个章节大纲，"
-                    f"缺少 {missing_count} 章，缺失章节将用 None 占位。"
+                    f"缺少 {missing_from_model} 章，缺失章节将用 None 占位。"
                 )
-                new_outlines_batch.extend([None] * missing_count)
-                none_count += missing_count
+                new_outlines_batch.extend([None] * missing_from_model)
+                none_count += missing_from_model
+
+            # 输出详细的失败原因统计
+            if none_count > 0:
+                logging.warning(
+                    f"批次 {batch_start_num}-{batch_end_num} 失败统计: "
+                    f"一致性检查失败={consistency_fail_count}, "
+                    f"数据构造异常={construct_fail_count}, "
+                    f"模型返回不足={missing_from_model}"
+                )
 
             start_index = batch_start_num - 1
             end_index = batch_end_num
@@ -484,6 +566,92 @@ class OutlineGenerator:
         except Exception as e:
             logging.error(f"生成批次大纲时出错: {str(e)}", exc_info=True)
             self._save_outline()
+            return False
+
+    def _generate_single_chapter_outline(
+        self,
+        chapter_num: int,
+        novel_type: str,
+        theme: str,
+        style: str,
+        extra_prompt: Optional[str] = None,
+    ) -> bool:
+        """为单个缺失章节生成大纲（用于批次完成后的补生成）
+
+        成功时将结果填入 self.chapter_outlines[chapter_num-1]，失败则保持 None。
+        """
+        try:
+            if self.cancel_checker and self.cancel_checker():
+                raise InterruptedError("用户取消大纲生成")
+
+            existing_context = self._get_context_for_batch(chapter_num)
+            previous_outlines = [
+                o for o in self.chapter_outlines[:chapter_num - 1]
+                if isinstance(o, ChapterOutline)
+            ]
+
+            core_seed = self._generate_core_seed()
+
+            prompt = get_outline_prompt(
+                novel_type=novel_type,
+                theme=theme,
+                style=style,
+                current_start_chapter_num=chapter_num,
+                current_batch_size=1,
+                existing_context=existing_context,
+                extra_prompt=extra_prompt,
+                novel_config=self.config.novel_config,
+                total_chapters=self.config.generator_config.get("target_chapters", 0),
+                current_end_chapter_num=chapter_num,
+                core_seed=core_seed,
+                arc_config=self.config.novel_config.get("arc_config"),
+            )
+
+            logging.info(f"[补生成] 第 {chapter_num} 章大纲 prompt 长度: {len(prompt)} 字符")
+
+            response = self.outline_model.generate(
+                prompt,
+                max_tokens=self.config.generation_config.get("max_tokens"),
+            )
+            if not response:
+                logging.warning(f"[补生成] 第 {chapter_num} 章模型返回为空")
+                return False
+
+            outline_data = self._parse_model_response(response)
+            if not outline_data:
+                logging.warning(f"[补生成] 第 {chapter_num} 章解析模型响应失败")
+                return False
+
+            # 模型可能返回列表或单个对象
+            if isinstance(outline_data, list):
+                if len(outline_data) == 0:
+                    logging.warning(f"[补生成] 第 {chapter_num} 章模型返回空列表")
+                    return False
+                chapter_data = outline_data[0]
+            else:
+                chapter_data = outline_data
+
+            new_outline = ChapterOutline(
+                chapter_number=chapter_num,
+                title=chapter_data.get("title", f"第{chapter_num}章"),
+                key_points=chapter_data.get("key_points", []),
+                characters=chapter_data.get("characters", []),
+                settings=chapter_data.get("settings", []),
+                conflicts=chapter_data.get("conflicts", []),
+            )
+
+            if not self._check_outline_consistency(new_outline, previous_outlines):
+                logging.warning(f"[补生成] 第 {chapter_num} 章大纲未通过一致性检查")
+                return False
+
+            self.chapter_outlines[chapter_num - 1] = new_outline
+            logging.info(f"[补生成] 第 {chapter_num} 章大纲生成成功: {new_outline.title}")
+            return True
+
+        except InterruptedError:
+            raise
+        except Exception as e:
+            logging.error(f"[补生成] 第 {chapter_num} 章大纲生成异常: {e}", exc_info=True)
             return False
 
     def _parse_model_response(self, response: str):
@@ -899,16 +1067,24 @@ class OutlineGenerator:
                     logging.warning(f"第 {new_outline.chapter_number} 章与前一章没有共同场景")
                     # return False # 可以考虑在这里返回 False，如果希望严格强制场景延续性
 
-                # 新增：检查与所有前文大纲的标题和关键点重复性
+                # 标题：与全部前文比较（标题应全局唯一）
                 for prev_outline in previous_outlines:
                     if new_outline.title == prev_outline.title:
-                        logging.warning(f"第 {new_outline.chapter_number} 章标题 '{new_outline.title}' 与第 {prev_outline.chapter_number} 章重复。")
+                        logging.warning(
+                            f"[一致性] 第 {new_outline.chapter_number} 章标题 '{new_outline.title}' "
+                            f"与第 {prev_outline.chapter_number} 章完全重复 → 拒绝"
+                        )
                         return False
-                    
-                    # 检查关键点重复性（例如，超过50%的关键点相同）
+
+                # 关键点：仅与最近 100 章比较（超长篇中远距离关键点重合属正常叙事回环）
+                recent_outlines = previous_outlines[-100:]
+                for prev_outline in recent_outlines:
                     common_key_points = set(new_outline.key_points) & set(prev_outline.key_points)
-                    if len(common_key_points) / len(new_outline.key_points) > 0.5 and len(new_outline.key_points) > 0:
-                        logging.warning(f"第 {new_outline.chapter_number} 章关键点与第 {prev_outline.chapter_number} 章有大量重复。")
+                    if len(new_outline.key_points) > 0 and len(common_key_points) / len(new_outline.key_points) > 0.5:
+                        logging.warning(
+                            f"[一致性] 第 {new_outline.chapter_number} 章关键点与第 {prev_outline.chapter_number} 章"
+                            f"重复率 {len(common_key_points)}/{len(new_outline.key_points)} > 50% → 拒绝"
+                        )
                         return False
 
             # 2. 检查与同步信息的一致性，仅添加新内容
