@@ -252,9 +252,9 @@ class AIConfig:
         }
 
         # 添加备用模型配置（使用独立的 FALLBACK_* 环境变量）
-        fallback_enabled = os.getenv("GEMINI_FALLBACK_ENABLED", "True") == "True"
+        fallback_enabled = os.getenv("OPENAI_FALLBACK_ENABLED", "True") == "True"
         if fallback_enabled and os.getenv("FALLBACK_API_KEY"):
-            fallback_timeout_str = os.getenv("GEMINI_FALLBACK_TIMEOUT", "120")
+            fallback_timeout_str = os.getenv("OPENAI_FALLBACK_TIMEOUT", "120")
             try:
                 fallback_timeout = int(fallback_timeout_str) if fallback_timeout_str.strip() else 120
             except (ValueError, AttributeError):

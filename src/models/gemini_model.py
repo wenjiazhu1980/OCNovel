@@ -56,12 +56,6 @@ class GeminiModel(BaseModel):
                     genai.configure(api_key=self.api_key)
                     GeminiModel._configured_api_key = self.api_key
                     logging.debug("genai.configure() 已更新 API Key")
-                if GeminiModel._configured_api_key and GeminiModel._configured_api_key != self.api_key:
-                    logging.warning(
-                        "检测到多个 GeminiModel 实例使用不同的 API Key，"
-                        "genai.configure() 为全局状态，后创建的实例会覆盖先前的配置。"
-                        "如果需要同时使用多个 API Key，请考虑使用 OpenAI 兼容 API 模式。"
-                    )
             
             # 导入安全配置管理器
             from .gemini_safety_config import GeminiSafetyConfig

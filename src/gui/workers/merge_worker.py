@@ -5,22 +5,7 @@ import threading
 from PySide6.QtCore import QThread, Signal, QCoreApplication
 
 from src.gui.utils.log_handler import SignalLogHandler
-
-
-def create_model(model_config: dict):
-    """根据配置创建 AI 模型实例"""
-    model_type = model_config["type"]
-    if model_type == "gemini":
-        from src.models.gemini_model import GeminiModel
-        return GeminiModel(model_config)
-    elif model_type in ("openai",):
-        from src.models.openai_model import OpenAIModel
-        return OpenAIModel(model_config)
-    elif model_type == "claude":
-        from src.models.claude_model import ClaudeModel
-        return ClaudeModel(model_config)
-    else:
-        raise ValueError(QCoreApplication.translate("MergeWorker", "不支持的模型类型: {0}").format(model_type))
+from src.gui.workers.model_factory import create_model
 
 
 class MergeWorker(QThread):

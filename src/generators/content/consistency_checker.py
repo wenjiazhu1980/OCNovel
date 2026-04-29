@@ -84,11 +84,8 @@ class ConsistencyChecker:
                 val = revision_match.group(1).strip().strip('""\'\'')
                 needs_revision = val == "需要修改"
             else:
-                # 降级处理：防止仅仅是因为包含了 "需要修改: 否" 导致的误判
-                needs_revision = ("需要修改" in check_result and 
-                                 "无需" not in check_result and 
-                                 "需要修改: 否" not in check_result and
-                                 "不需要修改" not in check_result)
+                # 降级处理：无法解析结构化字段时，保守假设需要修改
+                needs_revision = True
             
             # 提取分数
             score_match = re.search(r'\[总体评分\]\s*:\s*(\d+)', check_result)

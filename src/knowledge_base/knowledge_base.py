@@ -1,4 +1,5 @@
 import os
+import re
 import pickle
 import hashlib
 import logging
@@ -71,17 +72,17 @@ class KnowledgeBase:
         overlap = self.config["chunk_overlap"]
         chunks = []
         
-        # 按章节分割文本
-        chapters = text.split("第")
+        # 按章节分割文本（使用正则匹配 "第X章" 格式，避免 "第" 字出现在正文中导致误分割）
+        chapters = re.split(r'(?=第\d+章)', text)
+        # 过滤空分片
+        chapters = [c for c in chapters if c.strip()]
         logging.info(f"文本分割为 {len(chapters)} 个章节")
-        
+
         # 如果没有找到章节标记，将整个文本作为一个章节处理
         if len(chapters) <= 1:
             chapters = [text]
             start_idx = 0
         else:
-            # 如果找到了章节标记，跳过第一个空分片
-            chapters = [f"第{chapter}" for chapter in chapters[1:]]
             start_idx = 1
             
         for chapter_idx, chapter_content in enumerate(chapters, start_idx):

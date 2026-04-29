@@ -295,7 +295,7 @@ class ContentGenerator:
                         raise Exception("原始内容生成失败，返回为空。")
 
                 # 1.5. 字数检测
-                target_length = self.config.generator_config.get("chapter_length", 0) if hasattr(self.config, 'generator_config') else 0
+                target_length = self.config.generator_config.get("chapter_length", 0)
                 if target_length > 0:
                     actual_length = len(raw_content)
                     deviation = abs(actual_length - target_length) / target_length
@@ -517,7 +517,7 @@ class ContentGenerator:
 
             # 使用 prompts.py 中的方法
             humanization_config = self.config.generation_config.get("humanization", {}) if hasattr(self.config, 'generation_config') else {}
-            chapter_length = self.config.generator_config.get("chapter_length", 0) if hasattr(self.config, 'generator_config') else 0
+            chapter_length = self.config.generator_config.get("chapter_length", 0)
             prompt = get_chapter_prompt(
                 outline=chapter_outline.__dict__,
                 references=references,
