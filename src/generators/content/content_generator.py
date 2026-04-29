@@ -854,27 +854,31 @@ class ContentGenerator:
             logger.info(f"最后更新章节 {chapter_num} 不需要更新缓存，距离上次更新已经处理了 {self.chapters_since_last_cache} 章。")
 
     def _update_content_cache(self) -> None:
-        """更新正文知识库缓存"""
+        """更新正文知识库缓存（流式构建合并文本，避免同时持有所有章节内容）"""
         try:
-            # 获取所有已完成章节的内容（包括最后更新章节）
-            chapter_contents = []
-            # 修改这里，使用 self.current_chapter + 1 确保包含最后更新章节
+            # 直接流式拼接，避免 list + combined_text 双倍内存峰值
+            combined_text = ""
+            chapter_count = 0
             for chapter_num in range(1, self.current_chapter + 1):
                 filename = f"第{chapter_num}章_{self._clean_filename(self.chapter_outlines[chapter_num-1].title)}.txt"
                 filepath = os.path.join(self.output_dir, filename)
                 if os.path.exists(filepath):
                     with open(filepath, 'r', encoding='utf-8') as f:
                         content = f.read()
-                        chapter_contents.append(content)
-                        logger.debug(f"已读取第 {chapter_num} 章内容，长度: {len(content)}")
+                    combined_text += f"第{chapter_num}章\n{content}\n\n"
+                    chapter_count += 1
+                    logger.debug(f"已读取第 {chapter_num} 章内容，长度: {len(content)}")
 
-            if chapter_contents:
-                # 使用嵌入模型对内容进行向量化
-                self.knowledge_base.build_from_texts(
-                    texts=chapter_contents,
-                    cache_dir=self.content_kb_dir
-                )
-                logger.info(f"正文知识库缓存更新完成，共处理 {len(chapter_contents)} 章内容")
+            if chapter_count > 0:
+                # 直接调用 build()，跳过 build_from_texts 的额外拼接
+                old_cache_dir = self.knowledge_base.cache_dir
+                self.knowledge_base.cache_dir = self.content_kb_dir
+                os.makedirs(self.content_kb_dir, exist_ok=True)
+                try:
+                    self.knowledge_base.build(combined_text)
+                finally:
+                    self.knowledge_base.cache_dir = old_cache_dir
+                logger.info(f"正文知识库缓存更新完成，共处理 {chapter_count} 章内容")
             else:
                 logger.warning("未找到任何已完成的章节内容")
 
