@@ -235,38 +235,45 @@ class KnowledgeBase:
             self.chunks = self._chunk_text(text)
         
         logging.info(f"创建了 {len(self.chunks)} 个文本块")
-        
+
         # 分批获取嵌入向量
+        # 使用 valid_chunks 同步收集有效 chunk 和向量，保证索引与 chunks 严格对齐
         batch_size = 100  # 每批处理100个文本块
-        
-        for i in range(start_idx, len(self.chunks), batch_size):
+        valid_chunks = []
+        total = len(self.chunks)
+
+        for i in range(start_idx, total, batch_size):
             batch_chunks = self.chunks[i:i+batch_size]
-            batch_vectors = []
-            
+
             for j, chunk in enumerate(batch_chunks):
                 try:
                     vector = self.embedding_model.embed(chunk.content)
                     if vector is None or len(vector) == 0:
-                        logging.error(f"文本块 {i+j} 返回空向量")
+                        logging.warning(f"文本块 {i+j} 返回空向量，跳过")
                         continue
-                    batch_vectors.append(vector)
+                    valid_chunks.append(chunk)
+                    vectors.append(vector)
                     logging.info(f"生成文本块 {i+j} 的向量，维度: {len(vector)}")
                 except Exception as e:
-                    logging.error(f"生成文本块 {i+j} 的向量时出错: {e}")
+                    logging.warning(f"生成文本块 {i+j} 的向量时出错: {e}，跳过")
                     continue
-            
-            vectors.extend(batch_vectors)
-            
-            # 定期保存中间结果
+
+            # 定期保存中间结果（使用 valid_chunks 保证对齐）
             if i % 1000 == 0 and i > 0:
                 temp_cache_path = cache_path + f".temp_{i}"
                 with open(temp_cache_path, 'wb') as f:
                     pickle.dump({
-                        'chunks': self.chunks[:i+batch_size],
+                        'chunks': valid_chunks,
                         'vectors': vectors
                     }, f)
                 logging.info(f"保存临时进度到 {temp_cache_path}")
-        
+
+        # 用有效子集替换 self.chunks，保证 chunks 与 vectors 严格对齐
+        self.chunks = valid_chunks
+        skipped = total - len(valid_chunks)
+        if skipped > 0:
+            logging.warning(f"嵌入过程中跳过了 {skipped}/{total} 个文本块")
+
         if not vectors:
             raise ValueError("没有生成有效的向量")
         
