@@ -11,9 +11,9 @@ import faiss
 _root.setLevel(_orig_level)
 import numpy as np
 import jieba
+import httpx
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-import openai
 
 @dataclass
 class TextChunk:
@@ -50,11 +50,12 @@ class KnowledgeBase:
             return
         try:
             self.reranker = {
-                "client": openai.OpenAI(api_key=api_key, base_url=base_url),
+                "base_url": base_url,
+                "api_key": api_key,
                 "model_name": model_name,
                 "timeout": self.reranker_config.get("timeout", 60),
             }
-            logging.info(f"Reranker API 客户端初始化成功: {model_name}")
+            logging.info(f"Reranker API 配置初始化成功: {model_name}")
         except Exception as e:
             logging.warning(f"Reranker 初始化失败（将回退到纯向量检索）: {e}")
             self.reranker = None
@@ -339,25 +340,28 @@ class KnowledgeBase:
 
     def _rerank_via_api(self, query: str, documents: List[str]) -> List[float]:
         """通过 API 调用 Reranker 模型进行精排，返回每个文档的相关性分数"""
-        client: openai.OpenAI = self.reranker["client"]
+        base_url = self.reranker["base_url"].rstrip("/")
+        api_key = self.reranker["api_key"]
         model_name = self.reranker["model_name"]
         timeout = self.reranker.get("timeout", 60)
 
         # SiliconFlow / Jina 兼容的 /rerank 端点
-        response = client.post(
-            "/rerank",
-            body={
+        response = httpx.post(
+            f"{base_url}/rerank",
+            json={
                 "model": model_name,
                 "query": query,
                 "documents": documents,
                 "return_documents": False,
             },
-            cast_to=object,
-            options={"timeout": timeout},
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=timeout,
         )
+        response.raise_for_status()
+        data = response.json()
 
         # 响应格式: {"results": [{"index": 0, "relevance_score": 0.95}, ...]}
-        results = response.get("results", []) if isinstance(response, dict) else []
+        results = data.get("results", [])
         # 按原始文档顺序排列分数
         score_map = {item["index"]: item["relevance_score"] for item in results}
         return [score_map.get(i, 0.0) for i in range(len(documents))]
