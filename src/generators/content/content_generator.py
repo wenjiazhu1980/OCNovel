@@ -1516,7 +1516,13 @@ if __name__ == "__main__":
             consistency_report = self.model.generate(check_prompt)
             logger.info(f"[MockConsistencyChecker] Received report:\n{consistency_report}")
 
-            needs_revision = "需要修改" in consistency_report
+            # 使用正则提取 [修改必要性] 结构化字段，精确匹配，避免子串误判
+            revision_match = re.search(r'\[修改必要性\]\s*[：:]\s*(.+?)(?:\n|$)', consistency_report)
+            if revision_match:
+                val = revision_match.group(1).strip().strip('""\'\'')
+                needs_revision = val == "需要修改"
+            else:
+                needs_revision = True
             score_match = re.search(r'\[总体评分\]\s*:\s*(\d+)', consistency_report)
             score = int(score_match.group(1)) if score_match else 0
 
@@ -1557,7 +1563,13 @@ if __name__ == "__main__":
             # Simulate check
             check_prompt = f"模拟逻辑检查提示 for content: {content[:50]}"
             report = self.model.generate(check_prompt)
-            needs_revision = "需要修改" in report
+            # 使用正则提取 [修改必要性] 结构化字段，精确匹配，避免子串误判
+            revision_match = re.search(r'\[修改必要性\]\s*[：:]\s*(.+?)(?:\n|$)', report)
+            if revision_match:
+                val = revision_match.group(1).strip().strip('""\'\'')
+                needs_revision = val == "需要修改"
+            else:
+                needs_revision = True
             logger.info(f"[MockLogicValidator] Logic check report generated. Needs revision: {needs_revision}")
             return report, needs_revision
     # --- Mock 类定义结束 ---

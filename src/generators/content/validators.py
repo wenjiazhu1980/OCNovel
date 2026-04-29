@@ -42,7 +42,15 @@ class LogicValidator:
         
         try:
             check_result = self.content_model.generate(prompt)
-            needs_revision = "需要修改" in check_result
+            # 使用正则提取 [修改必要性] 结构化字段，精确匹配，避免子串误判
+            # "无需修改" 包含 "需要修改" 子串，直接 in 匹配会产生假阳性
+            revision_match = re.search(r'\[修改必要性\]\s*[：:]\s*(.+?)(?:\n|$)', check_result)
+            if revision_match:
+                val = revision_match.group(1).strip().strip('""\'\'')
+                needs_revision = val == "需要修改"
+            else:
+                # 降级：无法解析时保守处理，假设需要修改
+                needs_revision = True
             return check_result, needs_revision
         except Exception as e:
             logging.error(f"逻辑验证失败: {str(e)}")

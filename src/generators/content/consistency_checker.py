@@ -79,10 +79,10 @@ class ConsistencyChecker:
             
             # 解析检查结果 - 更严谨的判断逻辑
             # 首先尝试使用正则精准匹配提示词要求输出的 [修改必要性]
-            revision_match = re.search(r'\[修改必要性\]\s*:\s*([\s\S]+?)(?=\n|$)', check_result)
+            revision_match = re.search(r'\[修改必要性\]\s*[：:]\s*(.+?)(?:\n|$)', check_result)
             if revision_match:
-                val = revision_match.group(1).replace('"', '').replace("'", '').strip()
-                needs_revision = ("需要" in val and "无需" not in val and "否" not in val)
+                val = revision_match.group(1).strip().strip('""\'\'')
+                needs_revision = val == "需要修改"
             else:
                 # 降级处理：防止仅仅是因为包含了 "需要修改: 否" 导致的误判
                 needs_revision = ("需要修改" in check_result and 
