@@ -7,6 +7,7 @@ import threading
 from typing import Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_exponential
 from .base_model import BaseModel
+from .openai_compat_mixin import OpenAICompatMixin
 
 # 导入网络管理相关模块
 try:
@@ -18,7 +19,7 @@ except ImportError:
     NETWORK_AVAILABLE = False
     # 使用标准HTTP客户端
 
-class GeminiModel(BaseModel):
+class GeminiModel(OpenAICompatMixin, BaseModel):
     """Gemini模型实现，支持官方和OpenAI兼容API分流"""
 
     # 类级别的锁，保护 genai.configure() 全局状态
@@ -111,72 +112,6 @@ class GeminiModel(BaseModel):
         truncated = prompt[:keep_start] + "\n\n[内容过长，已截断中间部分...]\n\n" + prompt[-keep_end:]
         logging.info(f"截断后长度: {len(truncated)}")
         return truncated
-
-    def _supports_responses_api(self, client: Any) -> bool:
-        responses_attr = getattr(client, "responses", None)
-        return responses_attr is not None and hasattr(responses_attr, "create")
-
-    def _extract_chat_content(self, response: Any) -> Optional[str]:
-        content = response.choices[0].message.content
-        if isinstance(content, str):
-            return content
-
-        if isinstance(content, list):
-            parts = []
-            for item in content:
-                if isinstance(item, str):
-                    parts.append(item)
-                    continue
-                if isinstance(item, dict):
-                    text = item.get("text")
-                    if isinstance(text, str) and text:
-                        parts.append(text)
-                    continue
-                text = getattr(item, "text", None)
-                if isinstance(text, str) and text:
-                    parts.append(text)
-
-            merged = "".join(parts).strip()
-            return merged or None
-
-        return None
-
-    def _extract_responses_content(self, response: Any) -> Optional[str]:
-        output_text = getattr(response, "output_text", None)
-        if isinstance(output_text, str):
-            cleaned = output_text.strip()
-            if cleaned:
-                return cleaned
-
-        output_items = getattr(response, "output", None)
-        if not output_items:
-            return None
-
-        chunks = []
-        for item in output_items:
-            content_blocks = getattr(item, "content", None)
-            if content_blocks is None and isinstance(item, dict):
-                content_blocks = item.get("content")
-            if not content_blocks:
-                continue
-
-            for block in content_blocks:
-                text = getattr(block, "text", None)
-                if text is None and isinstance(block, dict):
-                    text = block.get("text")
-
-                if isinstance(text, str) and text:
-                    chunks.append(text)
-                    continue
-
-                nested_text = getattr(text, "value", None)
-                if nested_text is None and isinstance(text, dict):
-                    nested_text = text.get("value")
-                if isinstance(nested_text, str) and nested_text:
-                    chunks.append(nested_text)
-
-        merged = "".join(chunks).strip()
-        return merged or None
 
     def _generate_with_chat_api(
         self,
