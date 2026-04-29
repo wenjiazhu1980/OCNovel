@@ -257,33 +257,46 @@ def generate_config_from_theme(theme_input, template_path="config.json.example",
         print(f"生成配置文件时发生未知错误: {e}")
 
 if __name__ == "__main__":
+    import argparse
+    import logging
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logger = logging.getLogger(__name__)
+
+    parser = argparse.ArgumentParser(description="AI 小说配置生成工具")
+    parser.add_argument("--theme", type=str, help="小说主题（不指定则进入交互模式）")
+    parser.add_argument("--template", type=str, help="模板文件路径（默认 config.json.example）")
+    parser.add_argument("--output", type=str, help="输出文件路径（默认 config.json）")
+    args = parser.parse_args()
+
     # 相对于项目根目录定位文件更稳健
     project_root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    default_template_file = os.path.join(project_root_dir, "config.json.example")
-    default_output_file = os.path.join(project_root_dir, "config.json")
+    default_template_file = args.template or os.path.join(project_root_dir, "config.json.example")
+    default_output_file = args.output or os.path.join(project_root_dir, "config.json")
 
     # 检查模板文件是否存在
     if not os.path.exists(default_template_file):
-         print(f"错误: 模板文件 '{default_template_file}' 未找到。")
-         print("请确保 'config.json.example' 文件位于项目根目录下。")
-         sys.exit(1)
+        logger.error(f"模板文件 '{default_template_file}' 未找到")
+        logger.error("请确保 'config.json.example' 文件位于项目根目录下")
+        sys.exit(1)
 
-    # 检查 .env 文件是否存在并包含 GEMINI_API_KEY (由 AIConfig 内部处理，这里仅作提示)
+    # 检查 .env 文件
     env_path = os.path.join(project_root_dir, ".env")
     if not os.path.exists(env_path):
-        print("警告: 未找到 .env 文件。请确保已创建 .env 文件并设置了所需的 API 密钥。")
+        logger.warning("未找到 .env 文件，请确保已创建并设置了所需的 API 密钥")
     else:
-        # 简单检查下 .env 是否包含 GEMINI_API_KEY
         with open(env_path, 'r') as f:
             if 'GEMINI_API_KEY' not in f.read():
-                 print("警告: .env 文件中缺少必要的API密钥配置。请确保已正确设置。")
+                logger.warning(".env 文件中缺少必要的 API 密钥配置")
 
+    logger.info(f"使用模板 '{os.path.basename(default_template_file)}' 生成 '{os.path.basename(default_output_file)}'")
 
-    print(f"将使用模板 '{os.path.basename(default_template_file)}' 和 AIConfig 中的 Gemini 模型生成 '{os.path.basename(default_output_file)}'。")
-    user_theme = input("请输入您的小说主题: ")
+    # 命令行参数优先，否则进入交互模式
+    user_theme = args.theme
+    if not user_theme:
+        user_theme = input("请输入您的小说主题: ")
 
     if user_theme:
-        # 传递绝对路径给函数
         generate_config_from_theme(user_theme, default_template_file, default_output_file)
     else:
-        print("未输入主题，操作已取消。")
+        logger.warning("未输入主题，操作已取消")
