@@ -138,13 +138,7 @@ class KnowledgeBase:
                             }
                         )
                         chunks.append(chunk)
-                
-                # 定期清理内存
-                if chapter_idx % 10 == 0:
-                    del sentences
-                    import gc
-                    gc.collect()
-                    
+
             except Exception as e:
                 logging.error(f"处理第 {chapter_idx} 章时出错: {str(e)}")
                 continue
