@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QComboBox, QPushButton, QScrollArea, QListWidget, QFileDialog, QMessageBox,
     QLabel,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QEvent
 
 from ..utils.config_io import load_config, save_config
 from ..workers.writing_guide_worker import WritingGuideWorker
@@ -1587,3 +1587,9 @@ class NovelParamsTab(QWidget):
             child.setEnabled(enabled)
         for child in self.findChildren(QPushButton):
             child.setEnabled(enabled)
+
+    def changeEvent(self, event):
+        """语言切换时传播事件到子组件"""
+        if event.type() == QEvent.Type.LanguageChange:
+            pass  # 子组件通过 findChildren 自动接收事件
+        super().changeEvent(event)

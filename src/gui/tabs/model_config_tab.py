@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QGroupBox, QLineEdit, QComboBox, QCheckBox, QLabel,
     QPushButton, QScrollArea, QMessageBox,
 )
+from PySide6.QtCore import QEvent
 
 from ..utils.config_io import load_env, save_env, load_config, save_config
 from ..workers.connection_tester import ConnectionTesterWorker
@@ -27,6 +28,7 @@ class ModelConfigTab(QWidget):
         self._testers: list[ConnectionTesterWorker] = []
         # 需要在"生成中"状态下一并禁用的关键按钮（加载 / 保存 / 各测试按钮）
         self._lockable_buttons: list[QPushButton] = []
+        self._group_boxes: list[QGroupBox] = []
 
         self._init_ui()
         self._load(silent=True)
@@ -111,6 +113,7 @@ class ModelConfigTab(QWidget):
     def _make_group(self, title: str, provider_key: str | None = None):
         """创建 QGroupBox + QFormLayout，可选附带测试按钮"""
         group = QGroupBox(title)
+        self._group_boxes.append(group)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         group.setLayout(form)
@@ -406,3 +409,10 @@ class ModelConfigTab(QWidget):
                 # QThread 已被销毁，跳过
                 pass
         self._testers.clear()
+
+    def changeEvent(self, event):
+        """语言切换时更新按钮和分组标题"""
+        if event.type() == QEvent.Type.LanguageChange:
+            self._btn_load.setText(self.tr("加载配置"))
+            self._btn_save.setText(self.tr("保存配置"))
+        super().changeEvent(event)

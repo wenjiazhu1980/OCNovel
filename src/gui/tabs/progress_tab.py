@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QCheckBox, QLineEdit, QSplitter, QProgressBar, QMessageBox,
     QLabel, QSpinBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QEvent
 
 from src.gui.widgets.log_viewer import LogViewer
 from src.gui.widgets.chapter_list import ChapterListWidget
@@ -667,3 +667,19 @@ class ProgressTab(QWidget):
             output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
         if not open_directory(output_dir):
             QMessageBox.warning(self, self.tr("目录不存在"), self.tr("输出目录不存在:\n{0}").format(output_dir))
+
+    def changeEvent(self, event):
+        """语言切换时更新按钮文本"""
+        if event.type() == QEvent.Type.LanguageChange:
+            self._retranslate_buttons()
+        super().changeEvent(event)
+
+    def _retranslate_buttons(self):
+        """重新设置按钮文本（根据当前运行状态）"""
+        is_running = self._worker is not None and self._worker.isRunning()
+        if is_running:
+            self.btn_start.setText(self.tr("⏹  停止"))
+        else:
+            self.btn_start.setText(self.tr("▶  启动"))
+        self.btn_regen.setText(self.tr("🔄  重新生成选中章节"))
+        self.btn_open_output.setText(self.tr("打开输出目录"))

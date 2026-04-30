@@ -4,14 +4,14 @@ from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QStatusBar, QLabel,
     QMenuBar, QFileDialog, QMessageBox,
 )
-from PySide6.QtCore import Qt, QDir
+from PySide6.QtCore import Qt, QDir, QEvent
 from PySide6.QtGui import QFont, QAction
 
 from .tabs.model_config_tab import ModelConfigTab
 from .tabs.novel_params_tab import NovelParamsTab
 from .tabs.progress_tab import ProgressTab
 from .utils.resource_path import get_project_root
-from .i18n.translator import save_language, get_current_language, SUPPORTED_LANGUAGES
+from .i18n.translator import save_language, get_current_language, switch_language, SUPPORTED_LANGUAGES
 
 
 class MainWindow(QMainWindow):
@@ -37,25 +37,27 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
     def _init_menu(self):
         menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu(self.tr("文件"))
 
-        act_open_config = QAction(self.tr("打开配置文件…"), self)
-        act_open_config.setShortcut("Ctrl+O")
-        act_open_config.triggered.connect(self._open_config_file)
-        file_menu.addAction(act_open_config)
+        # 保存引用以便 retranslateUi 更新
+        self._file_menu = menu_bar.addMenu(self.tr("文件"))
 
-        act_open_env = QAction(self.tr("打开 .env 文件…"), self)
-        act_open_env.triggered.connect(self._open_env_file)
-        file_menu.addAction(act_open_env)
+        self._act_open_config = QAction(self.tr("打开配置文件…"), self)
+        self._act_open_config.setShortcut("Ctrl+O")
+        self._act_open_config.triggered.connect(self._open_config_file)
+        self._file_menu.addAction(self._act_open_config)
 
-        file_menu.addSeparator()
+        self._act_open_env = QAction(self.tr("打开 .env 文件…"), self)
+        self._act_open_env.triggered.connect(self._open_env_file)
+        self._file_menu.addAction(self._act_open_env)
 
-        act_open_dir = QAction(self.tr("打开配置目录"), self)
-        act_open_dir.triggered.connect(self._open_config_dir)
-        file_menu.addAction(act_open_dir)
+        self._file_menu.addSeparator()
+
+        self._act_open_dir = QAction(self.tr("打开配置目录"), self)
+        self._act_open_dir.triggered.connect(self._open_config_dir)
+        self._file_menu.addAction(self._act_open_dir)
 
         # 语言菜单
-        language_menu = menu_bar.addMenu(self.tr("语言"))
+        self._language_menu = menu_bar.addMenu(self.tr("语言"))
         self._language_actions = {}
         current_language = get_current_language()
 
@@ -64,7 +66,7 @@ class MainWindow(QMainWindow):
             action.setCheckable(True)
             action.setChecked(lang_code == current_language)
             action.triggered.connect(lambda checked, code=lang_code: self._change_language(code))
-            language_menu.addAction(action)
+            self._language_menu.addAction(action)
             self._language_actions[lang_code] = action
 
     def _open_config_file(self):
@@ -111,7 +113,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, self.tr("目录不存在"), self.tr("目录不存在: {0}").format(config_dir))
 
     def _change_language(self, language: str):
-        """切换界面语言"""
+        """热切换界面语言（无需重启）"""
         current_language = get_current_language()
         if language == current_language:
             return
@@ -123,12 +125,33 @@ class MainWindow(QMainWindow):
         for lang_code, action in self._language_actions.items():
             action.setChecked(lang_code == language)
 
-        # 提示需要重启
-        QMessageBox.information(
-            self,
-            self.tr("语言已更改"),
-            self.tr("语言设置已保存。\n请重启应用以应用新的语言设置。")
-        )
+        # 热切换翻译器（Qt 会自动发送 LanguageChange 事件）
+        from PySide6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app:
+            switch_language(app, language)
+
+    def changeEvent(self, event):
+        """语言切换时自动更新 UI 文本"""
+        if event.type() == QEvent.Type.LanguageChange:
+            self.retranslateUi()
+        super().changeEvent(event)
+
+    def retranslateUi(self):
+        """重新应用所有可翻译文本"""
+        self._update_title()
+        # 菜单
+        self._file_menu.setTitle(self.tr("文件"))
+        self._act_open_config.setText(self.tr("打开配置文件…"))
+        self._act_open_env.setText(self.tr("打开 .env 文件…"))
+        self._act_open_dir.setText(self.tr("打开配置目录"))
+        self._language_menu.setTitle(self.tr("语言"))
+        # Tab 标题
+        self.tabs.setTabText(0, self.tr("  模型配置  "))
+        self.tabs.setTabText(1, self.tr("  小说参数  "))
+        self.tabs.setTabText(2, self.tr("  创作进度  "))
+        # 状态栏
+        self._status_label.setText(self.tr("就绪"))
 
     def _update_title(self):
         config_name = os.path.basename(self._config_path)

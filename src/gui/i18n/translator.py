@@ -133,6 +133,27 @@ def load_translation(app: QApplication, language: str) -> bool:
         return False
 
 
+def switch_language(app: QApplication, language: str) -> bool:
+    """热切换语言（移除旧翻译器，安装新翻译器）
+
+    调用后 Qt 会自动向所有顶层窗口发送 LanguageChange 事件。
+
+    Args:
+        app: QApplication 实例
+        language: 目标语言代码
+
+    Returns:
+        是否成功切换
+    """
+    # 移除旧翻译器
+    for t in getattr(app, '_translators', []):
+        app.removeTranslator(t)
+    app._translators.clear()
+
+    # 安装新翻译器（zh_CN 为源语言，不需要翻译器）
+    return load_translation(app, language)
+
+
 def initialize_translation(app: QApplication) -> str:
     """初始化翻译系统，自动检测或加载保存的语言
 
