@@ -96,9 +96,9 @@ class PipelineWorker(QThread):
             root_logger.addHandler(handler)
 
             # ---- 4. 创建模型实例 ----
-            outline_model = create_model(config.get_model_config("outline_model"))
-            content_model = create_model(config.get_model_config("content_model"))
-            embedding_model = create_model(config.get_model_config("embedding_model"))
+            outline_model = create_model(config.get_model_config("outline_model"), context="PipelineWorker")
+            content_model = create_model(config.get_model_config("content_model"), context="PipelineWorker")
+            embedding_model = create_model(config.get_model_config("embedding_model"), context="PipelineWorker")
             # 注入取消检查到模型层，使 API 调用重试间隙可响应停止
             outline_model.cancel_checker = self._stop_event.is_set
             content_model.cancel_checker = self._stop_event.is_set

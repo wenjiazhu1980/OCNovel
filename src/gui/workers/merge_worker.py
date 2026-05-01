@@ -53,8 +53,8 @@ class MergeWorker(QThread):
             root_logger.addHandler(handler)
 
             # ---- 4. 创建模型实例 ----
-            content_model = create_model(config.get_model_config("content_model"))
-            embedding_model = create_model(config.get_model_config("embedding_model"))
+            content_model = create_model(config.get_model_config("content_model"), context="MergeWorker")
+            embedding_model = create_model(config.get_model_config("embedding_model"), context="MergeWorker")
 
             # ---- 5. 创建知识库 ----
             from src.knowledge_base.knowledge_base import KnowledgeBase

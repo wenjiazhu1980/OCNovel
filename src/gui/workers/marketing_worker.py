@@ -53,7 +53,7 @@ class MarketingWorker(QThread):
             logger.info(QCoreApplication.translate("MarketingWorker", "开始生成营销内容..."))
 
             # ---- 4. 创建内容生成模型 ----
-            content_model = create_model(config.get_model_config("content_model"))
+            content_model = create_model(config.get_model_config("content_model"), context="MarketingWorker")
             logger.info(QCoreApplication.translate("MarketingWorker", "AI模型初始化完成"))
 
             # ---- 5. 创建标题生成器 ----

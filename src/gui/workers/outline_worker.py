@@ -66,9 +66,9 @@ class OutlineWorker(QThread):
             root_logger.addHandler(handler)
 
             # ---- 4. 创建模型实例 ----
-            outline_model = create_model(config.get_model_config("outline_model"))
-            content_model = create_model(config.get_model_config("content_model"))
-            embedding_model = create_model(config.get_model_config("embedding_model"))
+            outline_model = create_model(config.get_model_config("outline_model"), context="OutlineWorker")
+            content_model = create_model(config.get_model_config("content_model"), context="OutlineWorker")
+            embedding_model = create_model(config.get_model_config("embedding_model"), context="OutlineWorker")
             outline_model.cancel_checker = self._stop_event.is_set
 
             # ---- 5. 创建知识库 ----
