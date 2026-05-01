@@ -211,30 +211,39 @@ class KnowledgeBase:
                 force_rebuild = True
         
         # 检查是否有临时文件可以恢复
+        # 状态变量统一在恢复决策前初始化，避免后续覆盖丢失已恢复内容
         temp_file_info = None if force_rebuild else self._find_latest_temp_file(cache_path)
         start_idx = 0
-        vectors = []
-        
+        vectors: List = []
+        valid_chunks: List[TextChunk] = []  # 已成功嵌入的 chunk，与 vectors 严格对齐
+
         if temp_file_info:
             temp_file, progress = temp_file_info
             logging.info(f"发现临时文件，尝试从进度 {progress} 恢复...")
-            self.chunks, vectors = self._load_from_temp(temp_file)
-            if self.chunks and vectors:
+            restored_chunks, restored_vectors = self._load_from_temp(temp_file)
+            if restored_chunks and restored_vectors:
+                # 重新分块以获得完整的待处理 chunk 列表（temp 仅含已成功的子集）
+                self.chunks = self._chunk_text(text)
+                # 将已处理的有效状态注入 valid_chunks/vectors，保证后续追加可对齐
+                valid_chunks = list(restored_chunks)
+                vectors = list(restored_vectors)
                 start_idx = progress
-                logging.info(f"成功恢复到进度 {progress}，继续处理剩余内容")
+                logging.info(
+                    f"成功恢复到进度 {progress}，已注入 {len(valid_chunks)} 个有效 chunk，"
+                    f"继续处理剩余内容"
+                )
             else:
                 logging.warning("临时文件加载失败，将从头开始处理")
                 self.chunks = self._chunk_text(text)
         else:
             # 分块
             self.chunks = self._chunk_text(text)
-        
+
         logging.info(f"创建了 {len(self.chunks)} 个文本块")
 
         # 分批获取嵌入向量
-        # 使用 valid_chunks 同步收集有效 chunk 和向量，保证索引与 chunks 严格对齐
+        # valid_chunks/vectors 在上方已根据是否从临时文件恢复初始化完毕
         batch_size = 100  # 每批处理100个文本块
-        valid_chunks = []
         total = len(self.chunks)
 
         for i in range(start_idx, total, batch_size):
@@ -254,14 +263,17 @@ class KnowledgeBase:
                     continue
 
             # 定期保存中间结果（使用 valid_chunks 保证对齐）
+            # 文件后缀使用 i + batch_size，即下次恢复时的起点 chunk 索引，
+            # 避免重启时重复处理已完成批次导致 valid_chunks 出现重复条目
             if i % 1000 == 0 and i > 0:
-                temp_cache_path = cache_path + f".temp_{i}"
+                next_idx = i + batch_size
+                temp_cache_path = cache_path + f".temp_{next_idx}"
                 with open(temp_cache_path, 'wb') as f:
                     pickle.dump({
                         'chunks': valid_chunks,
                         'vectors': vectors
                     }, f)
-                logging.info(f"保存临时进度到 {temp_cache_path}")
+                logging.info(f"保存临时进度到 {temp_cache_path}（下次从 chunk 索引 {next_idx} 继续）")
 
         # 用有效子集替换 self.chunks，保证 chunks 与 vectors 严格对齐
         self.chunks = valid_chunks
