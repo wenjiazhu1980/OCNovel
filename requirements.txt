@@ -18,6 +18,7 @@ tenacity>=8.2.0
 numpy>=1.24.0
 pydantic>=2.0.0
 beautifulsoup4
+httpx>=0.24.0
 
 # GUI框架
 PySide6>=6.5.0
