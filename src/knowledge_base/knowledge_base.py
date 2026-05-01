@@ -83,6 +83,10 @@ class KnowledgeBase:
             chapters = [text]
             start_idx = 0
         else:
+            # 若首段不是 "第N章" 开头（前言/版权/目录等），丢弃以避免被错标为第 1 章
+            if not re.match(r'\s*第\d+章', chapters[0]):
+                logging.info("跳过首段非章节内容（如前言/目录），从第 1 章开始计数")
+                chapters = chapters[1:]
             start_idx = 1
             
         for chapter_idx, chapter_content in enumerate(chapters, start_idx):
