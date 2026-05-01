@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Dict, Any
 from dotenv import load_dotenv
 
@@ -252,9 +253,27 @@ class AIConfig:
         }
 
         # 添加备用模型配置（使用独立的 FALLBACK_* 环境变量）
-        fallback_enabled = os.getenv("OPENAI_FALLBACK_ENABLED", "True") == "True"
+        # 9bd232f 起 OpenAI 兜底使用 OPENAI_FALLBACK_*；
+        # 旧用户可能设过 GEMINI_FALLBACK_ENABLED=False 来关闭，这里做兼容并提示
+        if os.getenv("OPENAI_FALLBACK_ENABLED") is None and os.getenv("GEMINI_FALLBACK_ENABLED") is not None:
+            logging.warning(
+                "GEMINI_FALLBACK_ENABLED 已弃用于 OpenAI 兜底配置，请改用 "
+                "OPENAI_FALLBACK_ENABLED；本次回退读取旧变量值"
+            )
+            fallback_enabled_raw = os.getenv("GEMINI_FALLBACK_ENABLED", "True")
+        else:
+            fallback_enabled_raw = os.getenv("OPENAI_FALLBACK_ENABLED", "True")
+        fallback_enabled = fallback_enabled_raw == "True"
+
         if fallback_enabled and os.getenv("FALLBACK_API_KEY"):
-            fallback_timeout_str = os.getenv("OPENAI_FALLBACK_TIMEOUT", "120")
+            if os.getenv("OPENAI_FALLBACK_TIMEOUT") is None and os.getenv("GEMINI_FALLBACK_TIMEOUT") is not None:
+                logging.warning(
+                    "GEMINI_FALLBACK_TIMEOUT 已弃用于 OpenAI 兜底配置，请改用 "
+                    "OPENAI_FALLBACK_TIMEOUT；本次回退读取旧变量值"
+                )
+                fallback_timeout_str = os.getenv("GEMINI_FALLBACK_TIMEOUT", "120")
+            else:
+                fallback_timeout_str = os.getenv("OPENAI_FALLBACK_TIMEOUT", "120")
             try:
                 fallback_timeout = int(fallback_timeout_str) if fallback_timeout_str.strip() else 120
             except (ValueError, AttributeError):
