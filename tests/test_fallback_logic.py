@@ -378,7 +378,7 @@ class TestAIConfigFallbackPropagation:
         """get_openai_config 应包含 fallback 配置"""
         with patch.dict(os.environ, {
             "GEMINI_API_KEY": "gk",
-            "GEMINI_FALLBACK_ENABLED": "True",
+            "OPENAI_FALLBACK_ENABLED": "True",
             "FALLBACK_API_KEY": "fb-key",
             "OPENAI_OUTLINE_API_KEY": "ok",
             "OPENAI_OUTLINE_API_BASE": "https://api.test.com",
