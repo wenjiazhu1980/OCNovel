@@ -248,14 +248,23 @@ def main():
             else:
                 # 如果指定了起始章节，则设置当前章节索引
                 if args.start_chapter is not None:
-                    # Validate start_chapter against loaded outline length if possible?
-                    # For now, trust the input or let ContentGenerator handle invalid index later.
-                    if args.start_chapter > 0 :
-                       generator.current_chapter = args.start_chapter - 1
-                       # Save the potentially updated starting point?
-                       # generator._save_progress() # Optional: save if you want '--start-chapter' to persist
-                    else:
-                       logging.warning(f"指定的起始章节 ({args.start_chapter}) 无效，将从上次进度开始。")
+                    # 加载大纲以获得章节总数，再校验 1 <= start_chapter <= len(outlines)
+                    # （ContentGenerator.__init__ 仅加载进度，不加载大纲）
+                    generator._load_outline()
+                    outline_len = len(generator.chapter_outlines)
+                    if outline_len == 0:
+                        logging.error(
+                            "无法校验起始章节：大纲未加载或为空，请先生成大纲。"
+                        )
+                        sys.exit(1)
+                    if not (1 <= args.start_chapter <= outline_len):
+                        logging.error(
+                            f"指定的起始章节 ({args.start_chapter}) 超出大纲范围 1-{outline_len}，已中止。"
+                        )
+                        sys.exit(1)
+                    generator.current_chapter = args.start_chapter - 1
+                    # Save the potentially updated starting point?
+                    # generator._save_progress() # Optional: save if you want '--start-chapter' to persist
             
             # 调用内容生成方法 (removed update_sync_info)
             success = generator.generate_content(
