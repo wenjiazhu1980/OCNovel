@@ -206,7 +206,12 @@ class ContentGenerator:
         try:
             if target_chapter is not None:
                 if 1 <= target_chapter <= len(self.chapter_outlines):
-                    return self._process_single_chapter(target_chapter, external_prompt, style_name=style_name)
+                    return self._process_single_chapter(
+                        target_chapter,
+                        external_prompt,
+                        style_name=style_name,
+                        is_target_chapter=True,
+                    )
                 else:
                     logger.error(f"目标章节 {target_chapter} 超出大纲范围 (1-{len(self.chapter_outlines)})。")
                     return False
@@ -367,9 +372,11 @@ class ContentGenerator:
                     # 7. 调用 Finalizer (如果提供了)
                     if self.finalizer:
                         logger.info(f"[Chapter {chapter_num}] 开始调用 Finalizer 进行定稿...")
+                        # 重新生成单章（is_target_chapter=True）时跳过 summary 更新，
+                        # 避免覆盖既有上下文摘要导致与 sync_info 不一致。
                         finalize_success = self.finalizer.finalize_chapter(
                             chapter_num=chapter_num,
-                            update_summary=True
+                            update_summary=not is_target_chapter,
                         )
                         if finalize_success:
                             logger.info(f"[Chapter {chapter_num}] 定稿成功")
@@ -380,7 +387,8 @@ class ContentGenerator:
                         logger.warning(f"[Chapter {chapter_num}] Finalizer 未提供，跳过定稿步骤。")
                         self.current_chapter = chapter_num
                     
-                    # content模式不触发同步信息更新，只有auto模式和finalize模式才更新
+                    # content模式不触发同步信息更新，只有auto模式和finalize模式才更新；
+                    # 此外 target_chapter（重生成单章）模式额外不刷新 summary。
                     logger.info(f"[Chapter {chapter_num}] content模式不触发同步信息更新，仅保存章节内容")
                     success = True
                     break
