@@ -506,11 +506,6 @@ class ContentGenerator:
             logger.error(f"合并章节时出错: {str(e)}", exc_info=True)
             return None
 
-    def _regenerate_specific_chapter(self, chapter_num: int, external_prompt: Optional[str] = None) -> bool:
-         """重新生成指定章节的入口"""
-         logger.info(f"请求重新生成第 {chapter_num} 章...")
-         return self._process_single_chapter(chapter_num, external_prompt)
-
     def _generate_chapter_content(self, chapter_outline: ChapterOutline, extra_prompt: Optional[str] = None) -> Optional[str]:
         """生成单章的原始内容"""
         try:
