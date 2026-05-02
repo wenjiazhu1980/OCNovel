@@ -41,9 +41,6 @@ backup/
 backup/
 # tests/ 目录下默认忽略本地草稿与数据，但跟踪测试代码本体
 tests/*
-!tests/test_*.py
-!tests/conftest.py
-!tests/__init__.py
 docs/
 examples/
 scripts/
