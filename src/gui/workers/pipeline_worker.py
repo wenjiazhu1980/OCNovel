@@ -189,22 +189,12 @@ class PipelineWorker(QThread):
                     )
                 )
 
-            # ---- 9. 从 summary.json 获取起始章节（仅连续模式使用） ----
+            # ---- 9. 由 ContentGenerator._load_progress 决定起始章节（仅连续模式使用） ----
+            # 旧逻辑直接读 summary.json max+1，会忽略"正文已落盘但 finalize 失败"的章节，
+            # 导致这些章节被反复覆盖生成。改为信任 ContentGenerator 的进度（综合磁盘扫描）。
             start_chapter = 1
             if not self._target_chapters_list:
-                base_output_dir = config.output_config.get("output_dir", "data/output")
-                summary_file = os.path.join(base_output_dir, "summary.json")
-                if os.path.exists(summary_file):
-                    try:
-                        with open(summary_file, "r", encoding="utf-8") as f:
-                            summary_data = json.load(f)
-                        chapter_numbers = [
-                            int(k) for k in summary_data.keys() if k.isdigit()
-                        ]
-                        if chapter_numbers:
-                            start_chapter = max(chapter_numbers) + 1
-                    except (json.JSONDecodeError, ValueError, TypeError) as exc:
-                        logger.warning(QCoreApplication.translate("PipelineWorker", "读取 summary.json 失败: {0},将从第 1 章开始。").format(exc))
+                start_chapter = content_generator.current_chapter + 1
 
                 if start_chapter > end_chapter:
                     logger.info(QCoreApplication.translate("PipelineWorker", "所有章节均已完成,无需生成。"))
@@ -236,6 +226,53 @@ class PipelineWorker(QThread):
                     return
 
                 self.chapter_started.emit(chapter_num)
+
+                # 连续模式下：跳过已完成章节、为已存在但缺摘要的章节补 finalize
+                # （指定章节重生成模式 self._target_chapters_list 仍按用户意图覆盖）
+                if not self._target_chapters_list:
+                    try:
+                        existing_path = content_generator._chapter_content_exists(chapter_num)
+                    except Exception:
+                        existing_path = None
+                    in_summary = chapter_num in getattr(
+                        content_generator, "_chapters_in_summary", set()
+                    )
+                    if existing_path and in_summary:
+                        title = self._get_chapter_title(content_generator, chapter_num)
+                        logger.info(QCoreApplication.translate("PipelineWorker", "第 {0} 章已完成,跳过。").format(chapter_num))
+                        content_generator.current_chapter = chapter_num
+                        self.chapter_completed.emit(chapter_num, title)
+                        self.progress_updated.emit(idx + 1, total_to_generate)
+                        continue
+                    if existing_path and not in_summary:
+                        logger.warning(QCoreApplication.translate(
+                            "PipelineWorker", "第 {0} 章正文已存在但缺摘要,补跑 finalize。"
+                        ).format(chapter_num))
+                        finalize_ok = False
+                        try:
+                            finalize_ok = finalizer.finalize_chapter(
+                                chapter_num=chapter_num, update_summary=True
+                            )
+                        except Exception as fe:
+                            logger.error(
+                                QCoreApplication.translate("PipelineWorker", "第 {0} 章补 finalize 异常: {1}").format(chapter_num, fe),
+                                exc_info=True,
+                            )
+                        if finalize_ok:
+                            content_generator._chapters_in_summary.add(chapter_num)
+                            content_generator.current_chapter = chapter_num
+                            title = self._get_chapter_title(content_generator, chapter_num)
+                            self.chapter_completed.emit(chapter_num, title)
+                            self.progress_updated.emit(idx + 1, total_to_generate)
+                            continue
+                        # finalize 失败则按错误流程处理
+                        self.chapter_failed.emit(
+                            chapter_num,
+                            QCoreApplication.translate("PipelineWorker", "补 finalize 失败"),
+                        )
+                        self.progress_updated.emit(idx + 1, total_to_generate)
+                        continue
+
                 try:
                     # 设置 content_generator 的当前章节索引
                     content_generator.current_chapter = chapter_num - 1

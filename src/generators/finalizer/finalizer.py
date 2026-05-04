@@ -82,19 +82,15 @@ class NovelFinalizer:
             # Generate/update summary
             if update_summary:
                 logger.info(f"开始更新第 {chapter_num} 章摘要...")
-                
-                # 先尝试重新生成指定章节的摘要文件（使用已有摘要）
+
+                # _regenerate_chapter_summary_file 已同时写"摘要文件 + summary.json"，
+                # 仅在它失败时退化到 _update_summary 兜底（旧逻辑会重复生成摘要）。
                 if not self._regenerate_chapter_summary_file(chapter_num, content):
-                    logger.warning(f"重新生成第 {chapter_num} 章摘要文件失败")
-                    
-                    # 如果摘要文件生成失败，再尝试更新summary.json
+                    logger.warning(f"重新生成第 {chapter_num} 章摘要文件失败，退化到 _update_summary 兜底")
                     if not self._update_summary(chapter_num, content):
                         logger.error(f"更新第 {chapter_num} 章摘要失败")
                         return False
-                else:
-                    # 摘要文件生成成功，确保summary.json也是最新的
-                    self._update_summary(chapter_num, content)
-                
+
                 logger.info(f"第 {chapter_num} 章摘要更新成功。")
             
             logging.info(f"第 {chapter_num} 章定稿完成")
@@ -366,31 +362,32 @@ class NovelFinalizer:
             return False
 
     def _regenerate_chapter_summary_file(self, chapter_num: int, content: str) -> bool:
-        """重新生成指定章节的摘要文件"""
+        """重新生成指定章节的摘要文件，并同步写入 summary.json。
+
+        过去这里只写独立的 `第NNN章_摘要.txt`，随后 finalize_chapter 还会再调
+        `_update_summary` 重新生成一次摘要写入 summary.json，导致每章触发 2 次 LLM
+        摘要调用。修复后：本函数负责"摘要文件 + summary.json"双写，
+        finalize_chapter 不再二次调用 `_update_summary`。
+        """
         try:
             # 从summary.json中获取已生成的摘要，避免重复生成
             summary_file = os.path.join(self.output_dir, "summary.json")
+            summaries = {}
             if os.path.exists(summary_file):
                 summaries = load_json_file(summary_file, default_value={})
-                chapter_key = str(chapter_num)
-                
-                if chapter_key in summaries:
-                    # 使用已生成的摘要
-                    summary_content = summaries[chapter_key]
-                    logger.info(f"使用已生成的第 {chapter_num} 章摘要")
-                else:
-                    # 如果summary.json中没有，则重新生成
-                    max_content_for_summary = self.config.generation_config.get("summary_max_content_length", 4000)
-                    prompt = prompts.get_summary_prompt(content[:max_content_for_summary])
-                    new_summary = self.content_model.generate(prompt)
+                if not isinstance(summaries, dict):
+                    logger.warning(f"摘要文件 {summary_file} 内容不是字典，将重新创建。")
+                    summaries = {}
 
-                    if not new_summary or not new_summary.strip():
-                        logger.error(f"模型未能为第 {chapter_num} 章生成有效摘要。")
-                        return False
+            chapter_key = str(chapter_num)
+            need_write_summary_json = False
 
-                    summary_content = self._clean_summary(new_summary)
+            if chapter_key in summaries and summaries[chapter_key]:
+                # 复用已存的 summary.json 摘要，不调 LLM
+                summary_content = summaries[chapter_key]
+                logger.info(f"使用已生成的第 {chapter_num} 章摘要")
             else:
-                # 如果summary.json不存在，则生成新摘要
+                # 没有则调用一次 LLM 生成
                 max_content_for_summary = self.config.generation_config.get("summary_max_content_length", 4000)
                 prompt = prompts.get_summary_prompt(content[:max_content_for_summary])
                 new_summary = self.content_model.generate(prompt)
@@ -400,17 +397,26 @@ class NovelFinalizer:
                     return False
 
                 summary_content = self._clean_summary(new_summary)
-            
+                summaries[chapter_key] = summary_content
+                need_write_summary_json = True
+
             # 保存到单独的摘要文件
             summary_filename = f"第{chapter_num}章_摘要.txt"
             summary_file_path = os.path.join(self.output_dir, summary_filename)
-            
+
             with open(summary_file_path, 'w', encoding='utf-8') as f:
                 f.write(summary_content)
-            
+
+            # 仅在生成了新摘要时写回 summary.json，避免无意义 IO
+            if need_write_summary_json:
+                if not save_json_file(summary_file, summaries):
+                    logger.error(f"保存 summary.json 失败: {summary_file}")
+                    # 摘要文件已写，但 summary.json 没写成功——返回 False 让上层走兜底
+                    return False
+
             logger.info(f"已重新生成第 {chapter_num} 章摘要文件: {summary_file_path}")
             return True
-            
+
         except Exception as e:
             logger.error(f"重新生成第 {chapter_num} 章摘要文件时出错: {str(e)}", exc_info=True)
             return False

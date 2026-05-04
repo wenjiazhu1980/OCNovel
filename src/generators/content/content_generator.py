@@ -122,21 +122,89 @@ class ContentGenerator:
             self.chapter_outlines = []
 
     def _load_progress(self):
-        """从 summary.json 加载生成进度"""
+        """加载生成进度：综合 summary.json 与磁盘上已存在的章节正文文件。
+
+        过去仅看 summary.json 的最大键，但当 finalize 失败时，正文已落盘却未进入
+        summary.json，导致重启后误判这些章节"未生成"并从头覆盖生成。
+        现在改为：
+          - 同时扫描 output_dir 下 `第NNN章_*.txt`（排除 `_imitated`、`_摘要` 后缀）；
+          - 取 summary.json 键集合与磁盘章节集合的并集；
+          - 进度=并集中的最大章节号；
+          - 同时记录"正文已存在但缺 summary.json 条目"的章节，
+            供 _generate_remaining_chapters 在循环时单独补 finalize。
+        """
+        # ── 1. 读取 summary.json ──
+        summary_keys: set = set()
         summary_file = os.path.join(self.output_dir, "summary.json")
         try:
             if os.path.exists(summary_file):
                 with open(summary_file, 'r', encoding='utf-8') as f:
                     summary_data = json.load(f)
-                    # 获取最大的章节号作为当前进度
-                    chapter_numbers = [int(k) for k in summary_data.keys() if k.isdigit()]
-                    self.current_chapter = max(chapter_numbers) if chapter_numbers else 0
-            else:
-                self.current_chapter = 0
-            logger.info(f"Loaded progress from summary.json, next chapter index to process: {self.current_chapter}")
+                    if isinstance(summary_data, dict):
+                        summary_keys = {
+                            int(k) for k in summary_data.keys() if str(k).isdigit()
+                        }
         except Exception as e:
-            logger.error(f"Error loading progress: {str(e)}")
-            self.current_chapter = 0
+            logger.error(f"读取 summary.json 失败: {e}")
+            summary_keys = set()
+
+        # ── 2. 扫描磁盘正文文件 ──
+        disk_keys: set = set()
+        try:
+            if os.path.isdir(self.output_dir):
+                # 匹配形如 "第123章_xxx.txt" 的正文，排除 "_imitated" / "_摘要"
+                content_pattern = re.compile(r'^第(\d+)章_')
+                for name in os.listdir(self.output_dir):
+                    if not name.endswith('.txt'):
+                        continue
+                    if '_摘要' in name or '_imitated' in name:
+                        continue
+                    m = content_pattern.match(name)
+                    if m:
+                        disk_keys.add(int(m.group(1)))
+        except Exception as e:
+            logger.error(f"扫描磁盘章节文件失败: {e}")
+            disk_keys = set()
+
+        summary_max = max(summary_keys) if summary_keys else 0
+        disk_max = max(disk_keys) if disk_keys else 0
+
+        # ── 3. 进度指针 = 最长连续前缀 N（1..N 都已存在于并集中）──
+        # 这样后续循环会从第一个"洞"开始扫，逐章决定生成 / 补 finalize / 跳过。
+        union_keys = summary_keys | disk_keys
+        consecutive_prefix = 0
+        while (consecutive_prefix + 1) in union_keys:
+            consecutive_prefix += 1
+        self.current_chapter = consecutive_prefix
+
+        # ── 4. 记录差异，供 _generate_remaining_chapters 补 finalize ──
+        self._chapters_in_summary = summary_keys
+        self._chapters_on_disk = disk_keys
+        self._chapters_pending_finalize = sorted(disk_keys - summary_keys)
+        self._chapters_missing_content = sorted(
+            n for n in range(1, max(summary_max, disk_max) + 1)
+            if n not in disk_keys
+        )
+
+        if self._chapters_pending_finalize:
+            preview = self._chapters_pending_finalize[:20]
+            ellipsis = ' ...' if len(self._chapters_pending_finalize) > 20 else ''
+            logger.warning(
+                f"发现 {len(self._chapters_pending_finalize)} 个章节正文已存在但缺 summary.json 条目: "
+                f"{preview}{ellipsis}（生成循环将自动补 finalize）"
+            )
+        if self._chapters_missing_content:
+            preview = self._chapters_missing_content[:20]
+            ellipsis = ' ...' if len(self._chapters_missing_content) > 20 else ''
+            logger.warning(
+                f"检测到 {len(self._chapters_missing_content)} 个"
+                f"章节号洞（无正文）: {preview}{ellipsis}（将在生成循环到达时重新生成）"
+            )
+
+        logger.info(
+            f"Loaded progress: summary_max={summary_max}, disk_max={disk_max}, "
+            f"consecutive_prefix={consecutive_prefix}, current_chapter={self.current_chapter}"
+        )
 
     def _save_progress(self):
         """保存生成进度到 summary.json"""
@@ -381,12 +449,21 @@ class ContentGenerator:
                         if finalize_success:
                             logger.info(f"[Chapter {chapter_num}] 定稿成功")
                             self.current_chapter = chapter_num
+                            # 同步更新内存中的"已 finalize 集合"
+                            if hasattr(self, '_chapters_in_summary'):
+                                self._chapters_in_summary.add(chapter_num)
+                            if hasattr(self, '_chapters_on_disk'):
+                                self._chapters_on_disk.add(chapter_num)
                         else:
-                            logger.error(f"[Chapter {chapter_num}] 定稿失败")
+                            # 定稿失败时不能将 success 置 True，否则上层会把进度推到下一章，
+                            # 导致 summary.json 与磁盘脱节。抛异常以触发 except 分支的重试。
+                            raise Exception(f"第 {chapter_num} 章 finalize 失败")
                     else:
                         logger.warning(f"[Chapter {chapter_num}] Finalizer 未提供，跳过定稿步骤。")
                         self.current_chapter = chapter_num
-                    
+                        if hasattr(self, '_chapters_on_disk'):
+                            self._chapters_on_disk.add(chapter_num)
+
                     # content模式不触发同步信息更新，只有auto模式和finalize模式才更新；
                     # 此外 target_chapter（重生成单章）模式额外不刷新 summary。
                     logger.info(f"[Chapter {chapter_num}] content模式不触发同步信息更新，仅保存章节内容")
@@ -425,14 +502,98 @@ class ContentGenerator:
             logger.warning(f"加载第 {chapter_num} 章内容失败: {str(e)}")
         return ""
 
+    def _chapter_content_exists(self, chapter_num: int) -> Optional[str]:
+        """检测第 chapter_num 章的正文文件是否存在，返回路径或 None。
+
+        优先按当前 outline 的标题构造预期路径；找不到时回退到模糊扫描，
+        匹配 `第{chapter_num}章_*.txt`（排除 `_imitated` / `_摘要` 后缀），
+        以容忍历史改名。
+        """
+        if not (1 <= chapter_num <= len(self.chapter_outlines)):
+            return None
+        try:
+            cleaned_title = self._clean_filename(self.chapter_outlines[chapter_num - 1].title)
+            expected = os.path.join(self.output_dir, f"第{chapter_num}章_{cleaned_title}.txt")
+            if os.path.exists(expected):
+                return expected
+        except Exception:
+            pass
+        # 后备：扫描目录
+        try:
+            prefix = f"第{chapter_num}章_"
+            for name in os.listdir(self.output_dir):
+                if not name.endswith('.txt'):
+                    continue
+                if '_摘要' in name or '_imitated' in name:
+                    continue
+                if name.startswith(prefix):
+                    return os.path.join(self.output_dir, name)
+        except Exception:
+            pass
+        return None
+
     def _generate_remaining_chapters(self, style_name: Optional[str] = None) -> bool:
         """
-        生成所有剩余章节，支持风格名
+        生成所有剩余章节，支持风格名。
+
+        循环时对每个 current_chapter_num 单独判断：
+          1. 若磁盘已有正文且 summary.json 已含该章 → 跳过、推进进度
+          2. 若磁盘已有正文但缺 summary.json 条目 → 调 finalizer 补摘要
+          3. 若磁盘无正文 → 正常调 _process_single_chapter
         """
-        logger.info(f"开始生成剩余章节，从索引 {self.current_chapter} (即第 {self.current_chapter + 1} 章) 开始...")
+        logger.info(
+            f"开始生成剩余章节，从第 {self.current_chapter + 1} 章开始（"
+            f"对已存在但缺摘要的章节会自动补 finalize）..."
+        )
         initial_start_chapter_index = self.current_chapter
         while self.current_chapter < len(self.chapter_outlines):
             current_chapter_num = self.current_chapter + 1
+
+            # 已存在于磁盘上的章节：跳过或补 finalize
+            existing_path = self._chapter_content_exists(current_chapter_num)
+            if existing_path:
+                in_summary = current_chapter_num in getattr(self, '_chapters_in_summary', set())
+                if in_summary:
+                    logger.info(
+                        f"第 {current_chapter_num} 章正文与摘要均已存在，跳过生成。"
+                    )
+                    self.current_chapter = current_chapter_num
+                    self._save_progress()
+                    continue
+                if self.finalizer:
+                    logger.warning(
+                        f"第 {current_chapter_num} 章正文已存在但缺 summary.json 条目，补跑 finalize..."
+                    )
+                    finalize_ok = False
+                    try:
+                        finalize_ok = self.finalizer.finalize_chapter(
+                            chapter_num=current_chapter_num,
+                            update_summary=True,
+                        )
+                    except Exception as fe:
+                        logger.error(
+                            f"第 {current_chapter_num} 章补 finalize 异常: {fe}",
+                            exc_info=True,
+                        )
+                    if finalize_ok:
+                        if hasattr(self, '_chapters_in_summary'):
+                            self._chapters_in_summary.add(current_chapter_num)
+                        self.current_chapter = current_chapter_num
+                        self._save_progress()
+                        continue
+                    logger.error(
+                        f"第 {current_chapter_num} 章补 finalize 失败，中止剩余章节生成。"
+                    )
+                    return False
+                # 无 finalizer 但正文已存在：仅推进进度
+                logger.warning(
+                    f"第 {current_chapter_num} 章正文已存在但 finalizer 未提供，仅推进进度。"
+                )
+                self.current_chapter = current_chapter_num
+                self._save_progress()
+                continue
+
+            # 无正文：正常生成
             success = self._process_single_chapter(current_chapter_num, style_name=style_name, is_target_chapter=False)
             if not success:
                 logger.error(f"处理第 {current_chapter_num} 章失败，中止剩余章节生成。")

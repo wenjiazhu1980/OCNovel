@@ -309,22 +309,14 @@ def main():
             content_generator = ContentGenerator(config, content_model, knowledge_base, finalizer=finalizer)
             # finalizer is already instantiated
             
-            # 从 summary.json 获取当前章节进度
-            summary_file = os.path.join(base_output_dir, "summary.json")
-            start_chapter_index = 0  # Default to 0 (start from chapter 1)
-            if os.path.exists(summary_file):
-                try:
-                    with open(summary_file, 'r', encoding='utf-8') as f:
-                        summary_data = json.load(f)
-                        # 获取最大的章节号作为当前进度
-                        chapter_numbers = [int(k) for k in summary_data.keys() if k.isdigit()]
-                        start_chapter_index = max(chapter_numbers) if chapter_numbers else 0
-                except (json.JSONDecodeError, ValueError, TypeError) as e:
-                    logging.warning(f"读取或解析摘要文件 {summary_file} 失败: {e}. 将从头开始。")
-                    start_chapter_index = 0  # Reset on error
-            
-            content_generator.current_chapter = start_chapter_index # Set generator's start point
+            # 进度由 ContentGenerator._load_progress 综合 summary.json 与磁盘扫描计算
+            # （已存在但缺摘要的章节会在 _generate_remaining_chapters 中自动补 finalize；
+            # 这里不再单独读 summary.json，避免覆盖磁盘扫描结果）
+            start_chapter_index = content_generator.current_chapter
             actual_start_chapter_num = start_chapter_index + 1
+            logging.info(
+                f"auto 模式起始章节号: {actual_start_chapter_num}（由 ContentGenerator._load_progress 决定）"
+            )
             
             # 从config.json获取目标章节数
             end_chapter = config.novel_config.get("target_chapters")
