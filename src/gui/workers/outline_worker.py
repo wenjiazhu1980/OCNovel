@@ -109,6 +109,9 @@ class OutlineWorker(QThread):
             custom_start = self._start_chapter if self._start_chapter > 0 else 0
             custom_end = self._end_chapter if self._end_chapter > 0 else 0
 
+            # force_regenerate 默认 False；只有"自动补充"分支保持 False，其它显式覆盖分支均为 True
+            force_regen = False
+
             if custom_start > 0 and custom_end > 0:
                 # 自定义范围模式：直接覆盖指定区间
                 if custom_start > custom_end:
@@ -125,6 +128,8 @@ class OutlineWorker(QThread):
                         ).format(custom_end, target_chapters)
                     )
                 start_ch, end_ch = custom_start, custom_end
+                # 自定义范围 = 用户显式覆盖意图
+                force_regen = True
                 logger.info(
                     QCoreApplication.translate(
                         "OutlineWorker", "自定义范围生成大纲 ({0}~{1})"
@@ -133,6 +138,7 @@ class OutlineWorker(QThread):
             elif self._force_outline:
                 # 强制重生成全部
                 start_ch, end_ch = 1, target_chapters
+                force_regen = True
                 logger.info(
                     QCoreApplication.translate(
                         "OutlineWorker", "强制重新生成全部大纲 (1~{0})"
@@ -164,6 +170,7 @@ class OutlineWorker(QThread):
                 mode="replace",
                 replace_range=(start_ch, end_ch),
                 extra_prompt=self._extra_prompt,
+                force_regenerate=force_regen,
             )
 
             if outline_ok:
