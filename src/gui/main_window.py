@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QStatusBar, QLabel,
     QMenuBar, QFileDialog, QMessageBox,
 )
-from PySide6.QtCore import Qt, QDir, QEvent
+from PySide6.QtCore import Qt, QEvent
 from PySide6.QtGui import QFont, QAction
 
 from .tabs.model_config_tab import ModelConfigTab
@@ -46,10 +46,6 @@ class MainWindow(QMainWindow):
         self._act_open_config.triggered.connect(self._open_config_file)
         self._file_menu.addAction(self._act_open_config)
 
-        self._act_open_env = QAction(self.tr("打开 .env 文件…"), self)
-        self._act_open_env.triggered.connect(self._open_env_file)
-        self._file_menu.addAction(self._act_open_env)
-
         self._file_menu.addSeparator()
 
         self._act_open_dir = QAction(self.tr("打开配置目录"), self)
@@ -70,40 +66,25 @@ class MainWindow(QMainWindow):
             self._language_actions[lang_code] = action
 
     def _open_config_file(self):
-        """选择自定义 config.json 路径"""
+        """选择自定义 config.json 路径；同时自动同步 .env 路径到该 config 所在目录"""
         path, _ = QFileDialog.getOpenFileName(
             self, self.tr("选择配置文件"), os.path.dirname(self._config_path),
             self.tr("JSON 文件 (*.json);;所有文件 (*)")
         )
         if path:
             self._config_path = path
+            # 自动派生 .env 路径为新 config 所在目录下的 .env
+            self._env_path = os.path.join(os.path.dirname(path), ".env")
             self._update_title()
             self.model_tab.set_config_path(path)
             self.novel_tab.set_config_path(path)
             self.progress_tab.set_config_path(path)
+            # 同步 .env 路径到所有 tab
+            self.model_tab.set_env_path(self._env_path)
+            self.progress_tab.set_env_path(self._env_path)
             # 自动加载
             self.model_tab.reload()
             self.novel_tab.reload()
-
-    def _open_env_file(self):
-        """选择自定义 .env 路径（macOS 默认隐藏点文件，需特殊处理）"""
-        dlg = QFileDialog(self, self.tr("选择 .env 文件"), os.path.dirname(self._env_path))
-        dlg.setNameFilters([self.tr("Env 文件 (*.env)"), self.tr("所有文件 (*)")])
-        dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
-        # 显示隐藏文件（.env 以点开头）
-        dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dlg.setFilter(QDir.AllEntries | QDir.Hidden | QDir.NoDotAndDotDot)
-        if not dlg.exec():
-            return
-        paths = dlg.selectedFiles()
-        if not paths:
-            return
-        path = paths[0]
-        self._env_path = path
-        self._update_title()
-        self.model_tab.set_env_path(path)
-        self.progress_tab.set_env_path(path)
-        self.model_tab.reload()
 
     def _open_config_dir(self):
         """在系统文件管理器中打开配置文件所在目录"""
@@ -143,7 +124,6 @@ class MainWindow(QMainWindow):
         # 菜单
         self._file_menu.setTitle(self.tr("文件"))
         self._act_open_config.setText(self.tr("打开配置文件…"))
-        self._act_open_env.setText(self.tr("打开 .env 文件…"))
         self._act_open_dir.setText(self.tr("打开配置目录"))
         self._language_menu.setTitle(self.tr("语言"))
         # Tab 标题

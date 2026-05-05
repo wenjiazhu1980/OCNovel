@@ -4,7 +4,7 @@ from functools import partial
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
     QGroupBox, QLineEdit, QComboBox, QCheckBox, QLabel,
-    QPushButton, QScrollArea, QMessageBox,
+    QPushButton, QScrollArea, QMessageBox, QDoubleSpinBox,
 )
 from PySide6.QtCore import QEvent
 
@@ -172,6 +172,19 @@ class ModelConfigTab(QWidget):
         form.addRow(self.tr("精度"), cb)
         self._fields["OPENAI_RERANKER_USE_FP16"] = cb
 
+    def _make_temperature_spin(self, default: float = 1.0) -> QDoubleSpinBox:
+        """创建温度输入控件（范围 0.0-2.0，步长 0.05）"""
+        spin = QDoubleSpinBox()
+        spin.setRange(0.0, 2.0)
+        spin.setSingleStep(0.05)
+        spin.setDecimals(2)
+        spin.setValue(default)
+        spin.setToolTip(self.tr(
+            "采样温度。0 = 完全确定性（适合结构化输出/JSON），1 = 标准创造性，>1 = 高随机。\n"
+            "大纲建议 0.3-0.7（结构稳定），内容建议 0.7-1.0（保留文笔多样性）。"
+        ))
+        return spin
+
     def _build_outline_model_group(self):
         _, form = self._make_group(self.tr("大纲模型"))
         self._add_field(form, self.tr("API Key"), "OPENAI_OUTLINE_API_KEY", echo_password=True)
@@ -182,6 +195,9 @@ class ModelConfigTab(QWidget):
         self._add_field(form, self.tr("模型名称"), "OPENAI_OUTLINE_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_field(form, self.tr("超时 (秒)"), "OPENAI_OUTLINE_TIMEOUT", placeholder="120")
+        # 温度（写入 config.json 的 model_config.outline_model.temperature）
+        self._outline_temperature = self._make_temperature_spin(default=0.5)
+        form.addRow(self.tr("温度 (Temperature)"), self._outline_temperature)
         # 推理（Reasoning）设置
         cb = QCheckBox(self.tr("启用推理（Thinking/Reasoning）"))
         form.addRow("", cb)
@@ -198,6 +214,9 @@ class ModelConfigTab(QWidget):
         self._add_field(form, self.tr("模型名称"), "OPENAI_CONTENT_MODEL",
                         placeholder="Qwen/Qwen2.5-7B-Instruct")
         self._add_field(form, self.tr("超时 (秒)"), "OPENAI_CONTENT_TIMEOUT", placeholder="180")
+        # 温度（写入 config.json 的 model_config.content_model.temperature）
+        self._content_temperature = self._make_temperature_spin(default=0.85)
+        form.addRow(self.tr("温度 (Temperature)"), self._content_temperature)
         # 推理（Reasoning）设置
         cb = QCheckBox(self.tr("启用推理（Thinking/Reasoning）"))
         form.addRow("", cb)
@@ -233,8 +252,14 @@ class ModelConfigTab(QWidget):
 
     # ── 路径切换 + 重新加载 ────────────────────────────
 
+    def _derive_env_path(self) -> str:
+        """根据当前 config_path 目录自动派生 .env 路径。"""
+        return os.path.join(os.path.dirname(self._config_path), ".env")
+
     def set_config_path(self, path: str):
         self._config_path = path
+        # 自动同步 .env 路径到当前 config 所在目录
+        self._env_path = self._derive_env_path()
 
     def set_env_path(self, path: str):
         self._env_path = path
@@ -245,11 +270,15 @@ class ModelConfigTab(QWidget):
     # ── 加载 / 保存 ─────────────────────────────────────
 
     def _load(self, silent: bool = False):
-        """从 .env 和 config.json 加载配置到界面"""
+        """从配置目录下的 .env 和 config.json 加载配置到界面"""
+        # 始终以当前 config_path 所在目录下的 .env 为准
+        self._env_path = self._derive_env_path()
         if not os.path.exists(self._env_path):
             if not silent:
-                QMessageBox.warning(self, self.tr("文件不存在"),
-                                    self.tr(".env 文件不存在:\n{0}\n\n请通过菜单「文件 → 打开 .env 文件」选择正确路径。").format(self._env_path))
+                QMessageBox.warning(
+                    self, self.tr("文件不存在"),
+                    self.tr(".env 文件不存在:\n{0}\n\n请在该目录下创建 .env 文件，或先点击「保存配置」自动生成。").format(self._env_path),
+                )
             return
         env = load_env(self._env_path)
 
@@ -275,9 +304,20 @@ class ModelConfigTab(QWidget):
         if idx >= 0:
             self._content_provider.setCurrentIndex(idx)
 
+        # 温度（从 model_config 覆盖块读取，缺失时保留控件默认值）
+        mc = cfg.get("model_config", {}) or {}
+        outline_temp = mc.get("outline_model", {}).get("temperature")
+        if isinstance(outline_temp, (int, float)):
+            self._outline_temperature.setValue(float(outline_temp))
+        content_temp = mc.get("content_model", {}).get("temperature")
+        if isinstance(content_temp, (int, float)):
+            self._content_temperature.setValue(float(content_temp))
+
     def _save(self):
-        """将界面配置写入 .env 和 config.json"""
-        env = load_env(self._env_path)
+        """将界面配置写入配置目录下的 .env 和 config.json"""
+        # 始终以当前 config_path 所在目录下的 .env 为准（即使文件尚不存在也允许创建）
+        self._env_path = self._derive_env_path()
+        env = load_env(self._env_path) if os.path.exists(self._env_path) else {}
 
         for key, widget in self._fields.items():
             if isinstance(widget, QCheckBox):
@@ -301,6 +341,12 @@ class ModelConfigTab(QWidget):
             "provider": self._content_provider.currentText(),
             "model_type": "content",
         }
+        # 写入温度覆盖到 model_config（深合并由 Config 加载层处理）
+        mc = cfg.setdefault("model_config", {})
+        outline_mc = mc.setdefault("outline_model", {})
+        outline_mc["temperature"] = round(self._outline_temperature.value(), 4)
+        content_mc = mc.setdefault("content_model", {})
+        content_mc["temperature"] = round(self._content_temperature.value(), 4)
         save_config(self._config_path, cfg)
 
         QMessageBox.information(self, self.tr("保存成功"), self.tr("模型配置已保存。"))
@@ -375,6 +421,9 @@ class ModelConfigTab(QWidget):
             widget.setEnabled(enabled)
         self._outline_provider.setEnabled(enabled)
         self._content_provider.setEnabled(enabled)
+        # 温度控件
+        self._outline_temperature.setEnabled(enabled)
+        self._content_temperature.setEnabled(enabled)
         # 锁定加载 / 保存 / 各测试按钮，避免生成过程中改乱磁盘态
         for btn in self._lockable_buttons:
             btn.setEnabled(enabled)

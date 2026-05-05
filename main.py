@@ -217,7 +217,8 @@ def main():
                 style=style,
                 mode='replace',
                 replace_range=(args.start, args.end),
-                extra_prompt=args.extra_prompt
+                extra_prompt=args.extra_prompt,
+                force_regenerate=True,  # outline 子命令显式指定范围 = 用户要求覆盖
             )
             print("大纲生成成功！" if success else "大纲生成失败，请查看日志文件了解详细信息。")
             
@@ -339,7 +340,8 @@ def main():
                         style=config.novel_config.get("style"),
                         mode='replace',
                         replace_range=(1, end_chapter),  # 重新生成全部
-                        extra_prompt=args.extra_prompt
+                        extra_prompt=args.extra_prompt,
+                        force_regenerate=True,
                     )
                 else:
                     outline_success = outline_generator.generate_outline(

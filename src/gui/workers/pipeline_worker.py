@@ -152,6 +152,7 @@ class PipelineWorker(QThread):
                             mode="replace",
                             replace_range=(1, end_chapter),
                             extra_prompt=self._extra_prompt,
+                            force_regenerate=True,
                         )
                     else:
                         outline_ok = outline_generator.generate_outline(

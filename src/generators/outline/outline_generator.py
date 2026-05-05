@@ -196,12 +196,17 @@ class OutlineGenerator:
         return True
 
     def generate_outline(self, novel_type: str, theme: str, style: str,
-                        mode: str = 'replace', replace_range: Tuple[int, int] = None, 
-                        extra_prompt: Optional[str] = None) -> bool:
+                        mode: str = 'replace', replace_range: Tuple[int, int] = None,
+                        extra_prompt: Optional[str] = None,
+                        force_regenerate: bool = False) -> bool:
         """生成指定范围的章节大纲
-        
+
         当批次生成失败时，会自动重试。重试次数由配置项
         outline_batch_max_retries 控制，表示总共最多尝试次数，默认 3 次。
+
+        Args:
+            force_regenerate: 强制重生成。若为 True，会先清空 replace_range 范围内已有大纲，
+                              避免子批次跳过逻辑（修复 2）误以为该范围已成功而跳过。
         """
         try:
             if mode != 'replace' or not replace_range:
@@ -219,6 +224,17 @@ class OutlineGenerator:
             if len(self.chapter_outlines) < end_chapter:
                 self.chapter_outlines.extend([None] * (end_chapter - len(self.chapter_outlines)))
                 logging.info(f"扩展大纲列表以容纳目标章节 {end_chapter}")
+
+            # 强制重生成：清空目标范围的旧大纲，让子批次跳过逻辑（修复 2）失效
+            if force_regenerate:
+                cleared = 0
+                for idx in range(start_chapter - 1, end_chapter):
+                    if self.chapter_outlines[idx] is not None:
+                        self.chapter_outlines[idx] = None
+                        cleared += 1
+                logging.info(
+                    f"强制重生成模式已启用，已清空章节 {start_chapter}-{end_chapter} 范围内 {cleared} 章旧大纲"
+                )
 
             batch_size = self.config.generation_config.get("outline_batch_size", 100)  # 主批次大小，支持超长大纲
             raw_total_attempts = self.config.generation_config.get("outline_batch_max_retries", 3)
@@ -464,9 +480,28 @@ class OutlineGenerator:
                     logging.info("大纲子批次生成收到取消信号，中止。")
                     raise InterruptedError("用户取消大纲生成")
                 sub_batch_end = min(sub_batch_start + batch_size - 1, batch_end_num)
+
+                # ----- 修复 2：跳过已全部生成有效大纲的子批次 -----
+                # 这避免了"整批失败重试导致已成功子批被反复覆盖"的浪费。
+                sub_existing = self.chapter_outlines[sub_batch_start - 1:sub_batch_end]
+                if (len(sub_existing) == (sub_batch_end - sub_batch_start + 1)
+                        and all(isinstance(o, ChapterOutline) for o in sub_existing)):
+                    logging.info(
+                        f"子批次 {sub_batch_start}-{sub_batch_end} 已存在有效大纲，跳过重生成"
+                    )
+                    # 仍要纳入本次 run 的成功记录，便于上下文与统计
+                    for o in sub_existing:
+                        if o not in successful_outlines_in_run:
+                            successful_outlines_in_run.append(o)
+                    continue
+
                 if not self._generate_batch(sub_batch_start, sub_batch_end, novel_type, theme, style, extra_prompt, successful_outlines_in_run):
                     success = False
-                    break
+                    # 不再 break：继续尝试后续子批次，避免一旦某子批失败就阻塞后面所有子批
+                    # 后续未生成的章节会保持 None，由外层 generate_outline 的"补生成"流程兜底
+                    logging.warning(
+                        f"子批次 {sub_batch_start}-{sub_batch_end} 失败，继续尝试后续子批次"
+                    )
             return success
 
         try:
@@ -480,14 +515,53 @@ class OutlineGenerator:
             if not outline_data:
                 raise Exception("解析模型响应失败")
 
-            new_outlines_batch = []
+            # ----- 按章节号匹配模型返回内容（修复 4：替代纯位置映射）-----
+            # 优先使用模型返回的 chapter_number 字段；没有合法编号的项按顺序回填到剩余空位
+            returned_by_num: Dict[int, Dict] = {}
+            unindexed_items: List[Dict] = []
+            for item in outline_data:
+                if not isinstance(item, dict):
+                    continue
+                raw_num = item.get('chapter_number')
+                ch_num: Optional[int] = None
+                if isinstance(raw_num, int):
+                    ch_num = raw_num
+                elif isinstance(raw_num, str) and raw_num.strip().isdigit():
+                    ch_num = int(raw_num.strip())
+
+                if (ch_num is not None
+                        and batch_start_num <= ch_num <= batch_end_num
+                        and ch_num not in returned_by_num):
+                    returned_by_num[ch_num] = item
+                else:
+                    unindexed_items.append(item)
+
+            if unindexed_items:
+                empty_slots = [n for n in range(batch_start_num, batch_end_num + 1) if n not in returned_by_num]
+                for item, slot in zip(unindexed_items, empty_slots):
+                    returned_by_num[slot] = item
+                if len(unindexed_items) > len(empty_slots):
+                    logging.warning(
+                        f"模型返回 {len(unindexed_items)} 个无编号项，"
+                        f"超出本批次 {len(empty_slots)} 个空位，丢弃多余 {len(unindexed_items) - len(empty_slots)} 项"
+                    )
+
+            new_outlines_batch: List[Optional[ChapterOutline]] = []
             valid_count = 0
             none_count = 0
             consistency_fail_count = 0
             construct_fail_count = 0
+            missing_from_model = 0
 
-            for i, chapter_data in enumerate(outline_data):
-                expected_chapter_num = batch_start_num + i
+            for expected_chapter_num in range(batch_start_num, batch_end_num + 1):
+                chapter_data = returned_by_num.get(expected_chapter_num)
+                if chapter_data is None:
+                    logging.warning(f"模型遗漏第 {expected_chapter_num} 章，标记为 None 占位")
+                    new_outlines_batch.append(None)
+                    none_count += 1
+                    missing_from_model += 1
+                    continue
+
                 try:
                     new_outline = ChapterOutline(
                         chapter_number=expected_chapter_num,
@@ -513,16 +587,6 @@ class OutlineGenerator:
                     new_outlines_batch.append(None)
                     none_count += 1
                     construct_fail_count += 1
-
-            # 检测模型返回章节数不足的情况，补充 None 占位
-            missing_from_model = current_batch_size - len(new_outlines_batch)
-            if missing_from_model > 0:
-                logging.warning(
-                    f"模型仅返回 {len(new_outlines_batch)}/{current_batch_size} 个章节大纲，"
-                    f"缺少 {missing_from_model} 章，缺失章节将用 None 占位。"
-                )
-                new_outlines_batch.extend([None] * missing_from_model)
-                none_count += missing_from_model
 
             # 输出详细的失败原因统计
             if none_count > 0:
@@ -733,6 +797,61 @@ class OutlineGenerator:
                 result = json.loads(extracted)
                 logging.warning("JSON 解析成功（激进清理模式），字符串内容中的换行符可能已丢失")
                 return result
+            except json.JSONDecodeError:
+                pass
+
+            # === 策略5：流式逐对象解析（修复中段语法损坏，最大限度回收有效章节）===
+            # 当 LLM 输出在数组中段漏字符（如缺逗号、缺引号），整体解析必然失败。
+            # 用 raw_decode 逐对象提取，跳过损坏的对象，保住其余有效数据。
+            try:
+                stream_cleaned = _strip_markdown_wrapper(response)
+                # 定位数组开头
+                arr_start = stream_cleaned.find('[')
+                if arr_start == -1:
+                    raise json.JSONDecodeError("未找到 JSON 数组起始 '['", stream_cleaned, 0)
+
+                decoder = json.JSONDecoder()
+                pos = arr_start + 1
+                n = len(stream_cleaned)
+                recovered: list = []
+                skipped = 0
+                while pos < n:
+                    # 跳过分隔符与空白
+                    while pos < n and stream_cleaned[pos] in ', \n\r\t':
+                        pos += 1
+                    if pos >= n:
+                        break
+                    # 遇到数组结束符 ']'
+                    if stream_cleaned[pos] == ']':
+                        break
+                    # 必须从 '{' 开始一个对象，否则跳到下一个 '{'
+                    if stream_cleaned[pos] != '{':
+                        next_brace = stream_cleaned.find('{', pos)
+                        if next_brace == -1:
+                            break
+                        pos = next_brace
+                        continue
+                    try:
+                        obj, end = decoder.raw_decode(stream_cleaned, pos)
+                        if isinstance(obj, dict):
+                            recovered.append(obj)
+                        pos = end
+                    except json.JSONDecodeError:
+                        # 当前对象损坏，丢弃并跳到下一个 '{'
+                        skipped += 1
+                        next_brace = stream_cleaned.find('{', pos + 1)
+                        if next_brace == -1:
+                            break
+                        pos = next_brace
+
+                if recovered:
+                    logging.warning(
+                        f"JSON 解析成功（流式逐对象模式）：恢复 {len(recovered)} 个章节对象，"
+                        f"丢弃 {skipped} 个损坏对象"
+                    )
+                    return recovered
+                # 一个都没恢复到 → 让下面 fallback 报错
+                raise json.JSONDecodeError("流式解析未恢复任何对象", stream_cleaned, 0)
             except json.JSONDecodeError as e:
                 logging.error(f"所有 JSON 解析策略均失败: {e}\n原始内容前500字符: {response[:500]}...")
                 return None

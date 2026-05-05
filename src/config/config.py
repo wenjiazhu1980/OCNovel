@@ -76,33 +76,43 @@ class Config:
         if config_output_dir and not os.path.isabs(config_output_dir):
             config_output_dir = os.path.join(self.base_dir, config_output_dir)
         
-        # 优先使用config.json中的model_config，如果没有则使用AIConfig的默认配置
-        if "model_config" in self.config:
-            # 使用配置文件中的model_config
-            self.model_config = self.config["model_config"].copy()
-            logging.info("使用配置文件中的model_config")
+        # 优先使用config.json中的model_config（支持深合并：未声明的字段从 AIConfig 默认继承）
+        # 这样 config.json 只需声明要覆盖的字段（如 temperature/reasoning_enabled），
+        # 不必复制 api_key/base_url 等敏感与冗余信息。
+        # 动态构建 AIConfig 默认 model_config（始终构建，作为深合并基线）
+        default_model_config = {}
+        model_selection = self.config["generation_config"].get("model_selection", {})
+        # outline_model
+        outline_sel = model_selection.get("outline", {"provider": "openai", "model_type": "outline"})
+        if outline_sel["provider"] == "openai":
+            default_model_config["outline_model"] = self.ai_config.get_openai_config(outline_sel["model_type"])
+        elif outline_sel["provider"] == "claude":
+            default_model_config["outline_model"] = self.ai_config.get_claude_config(outline_sel["model_type"])
         else:
-            # 动态AI模型配置，根据config.json的model_selection字段
-            self.model_config = {}
-            model_selection = self.config["generation_config"].get("model_selection", {})
-            # outline_model
-            outline_sel = model_selection.get("outline", {"provider": "openai", "model_type": "outline"})
-            if outline_sel["provider"] == "openai":
-                self.model_config["outline_model"] = self.ai_config.get_openai_config(outline_sel["model_type"])
-            elif outline_sel["provider"] == "claude":
-                self.model_config["outline_model"] = self.ai_config.get_claude_config(outline_sel["model_type"])
-            else:
-                self.model_config["outline_model"] = self.ai_config.get_gemini_config(outline_sel["model_type"])
-            # content_model
-            content_sel = model_selection.get("content", {"provider": "openai", "model_type": "content"})
-            if content_sel["provider"] == "openai":
-                self.model_config["content_model"] = self.ai_config.get_openai_config(content_sel["model_type"])
-            elif content_sel["provider"] == "claude":
-                self.model_config["content_model"] = self.ai_config.get_claude_config(content_sel["model_type"])
-            else:
-                self.model_config["content_model"] = self.ai_config.get_gemini_config(content_sel["model_type"])
-            # embedding_model 只支持openai
-            self.model_config["embedding_model"] = self.ai_config.get_openai_config("embedding")
+            default_model_config["outline_model"] = self.ai_config.get_gemini_config(outline_sel["model_type"])
+        # content_model
+        content_sel = model_selection.get("content", {"provider": "openai", "model_type": "content"})
+        if content_sel["provider"] == "openai":
+            default_model_config["content_model"] = self.ai_config.get_openai_config(content_sel["model_type"])
+        elif content_sel["provider"] == "claude":
+            default_model_config["content_model"] = self.ai_config.get_claude_config(content_sel["model_type"])
+        else:
+            default_model_config["content_model"] = self.ai_config.get_gemini_config(content_sel["model_type"])
+        # embedding_model 只支持openai
+        default_model_config["embedding_model"] = self.ai_config.get_openai_config("embedding")
+
+        if "model_config" in self.config:
+            # 深合并：config.json 中的字段覆盖默认值，未声明的字段保留默认值
+            override = self.config["model_config"]
+            self.model_config = default_model_config
+            for sub_key, sub_override in (override or {}).items():
+                if isinstance(sub_override, dict) and isinstance(self.model_config.get(sub_key), dict):
+                    self.model_config[sub_key] = {**self.model_config[sub_key], **sub_override}
+                else:
+                    self.model_config[sub_key] = sub_override
+            logging.info("使用配置文件中的 model_config（已与 AIConfig 默认值深合并）")
+        else:
+            self.model_config = default_model_config
             logging.info("使用AIConfig的默认model_config")
         
         # 小说配置
