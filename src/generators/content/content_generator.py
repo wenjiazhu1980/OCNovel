@@ -532,6 +532,35 @@ class ContentGenerator:
             pass
         return None
 
+    def _chapter_imitated_exists(self, chapter_num: int) -> Optional[str]:
+        """检测第 chapter_num 章的仿写文件是否存在，返回路径或 None。
+
+        命名规则：`第{n}章_{title}_imitated.txt`。先按当前 outline 标题构造，
+        缺则模糊扫描目录（容忍历史改名）。
+        """
+        if not (1 <= chapter_num <= len(self.chapter_outlines)):
+            return None
+        try:
+            cleaned_title = self._clean_filename(self.chapter_outlines[chapter_num - 1].title)
+            expected = os.path.join(
+                self.output_dir, f"第{chapter_num}章_{cleaned_title}_imitated.txt"
+            )
+            if os.path.exists(expected):
+                return expected
+        except Exception:
+            pass
+        # 后备：扫描目录，匹配 `第{n}章_*_imitated.txt`
+        try:
+            prefix = f"第{chapter_num}章_"
+            for name in os.listdir(self.output_dir):
+                if not name.endswith("_imitated.txt"):
+                    continue
+                if name.startswith(prefix):
+                    return os.path.join(self.output_dir, name)
+        except Exception:
+            pass
+        return None
+
     def _generate_remaining_chapters(self, style_name: Optional[str] = None) -> bool:
         """
         生成所有剩余章节，支持风格名。
@@ -614,10 +643,13 @@ class ContentGenerator:
         将所有已生成的章节合并为一个完整的 txt 文件。
 
         Args:
-            output_filename: 输出文件名（不含路径），默认使用小说标题
+            output_filename: 原版输出文件名（不含路径），默认使用小说标题。
+                             仿写版文件名固定为 `{novel_title}_仿写版.txt`，
+                             不受该参数影响。
 
         Returns:
-            合并后的文件路径，失败返回 None
+            合并后的原版文件路径，失败返回 None。
+            仿写版路径仅在日志中体现。
         """
         try:
             self._load_outline()
@@ -625,42 +657,98 @@ class ContentGenerator:
                 logger.warning("大纲为空，无法合并章节。")
                 return None
 
+            novel_title = getattr(self.config, 'novel_config', {}).get('title', '未命名小说')
             # 确定输出文件名
             if not output_filename:
-                novel_title = getattr(self.config, 'novel_config', {}).get('title', '未命名小说')
                 output_filename = f"{novel_title}_完整版.txt"
+            imitated_filename = f"{novel_title}_仿写版.txt"
 
-            merged_parts = []
-            found_count = 0
+            original_parts: List[str] = []
+            imitated_parts: List[str] = []
+            original_count = 0
+            imitated_real_count = 0  # 真正用了仿写文件（非 fallback）的章数
+            imitated_fallback_count = 0  # 仿写版用了原文 fallback 的章数
+            has_imitated = False
 
             for outline in self.chapter_outlines:
                 chapter_num = outline.chapter_number
                 cleaned_title = self._clean_filename(outline.title)
-                filename = f"第{chapter_num}章_{cleaned_title}.txt"
-                filepath = os.path.join(self.output_dir, filename)
+                # 原文查找复用 _chapter_content_exists（带模糊扫描兜底，
+                # 容忍"大纲标题已改、磁盘文件名仍是旧标题"的历史情况）
+                filepath = self._chapter_content_exists(chapter_num)
 
-                if os.path.exists(filepath):
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        content = f.read().strip()
-                    if content:
-                        merged_parts.append(content)
-                        found_count += 1
+                # ── 原版片段 ──
+                original_content = ""
+                if filepath:
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            original_content = f.read().strip()
+                    except Exception as e:
+                        logger.warning(f"读取原文失败 {filepath}: {e}")
+                        original_content = ""
+                    if original_content:
+                        original_parts.append(original_content)
+                        original_count += 1
                 else:
-                    logger.warning(f"章节文件不存在，跳过: {filename}")
+                    expected_filename = f"第{chapter_num}章_{cleaned_title}.txt"
+                    logger.warning(f"章节文件不存在，跳过: {expected_filename}")
 
-            if not merged_parts:
+                # ── 仿写版片段（每章独立判断）──
+                imitated_path = self._chapter_imitated_exists(chapter_num)
+                if imitated_path:
+                    has_imitated = True
+                    imitated_content = ""
+                    try:
+                        with open(imitated_path, 'r', encoding='utf-8') as f:
+                            imitated_content = f.read().strip()
+                    except Exception as e:
+                        logger.warning(f"读取仿写文件失败 {imitated_path}: {e}")
+                        imitated_content = ""
+                    if imitated_content:
+                        imitated_parts.append(imitated_content)
+                        imitated_real_count += 1
+                    elif original_content:
+                        imitated_parts.append(original_content)
+                        imitated_fallback_count += 1
+                elif original_content:
+                    # 没仿写文件 → 用原文 fallback
+                    imitated_parts.append(original_content)
+                    imitated_fallback_count += 1
+                # 原文与仿写都缺 → 跳过该章
+
+            if not original_parts:
                 logger.error("未找到任何章节文件，无法合并。")
                 return None
 
-            # 用双换行分隔各章节
-            merged_content = "\n\n".join(merged_parts)
-
-            # 保存合并文件
+            # ── 写原版 ──
+            merged_content = "\n\n".join(original_parts)
             output_path = os.path.join(self.output_dir, output_filename)
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(merged_content)
+            logger.info(
+                f"已合并 {original_count}/{len(self.chapter_outlines)} 章到 "
+                f"{output_path}，总字数: {len(merged_content)}"
+            )
 
-            logger.info(f"已合并 {found_count}/{len(self.chapter_outlines)} 章到 {output_path}，总字数: {len(merged_content)}")
+            # ── 写仿写版（仅当存在任何仿写文件时）──
+            if has_imitated and imitated_parts:
+                try:
+                    imitated_merged = "\n\n".join(imitated_parts)
+                    imitated_output_path = os.path.join(self.output_dir, imitated_filename)
+                    with open(imitated_output_path, 'w', encoding='utf-8') as f:
+                        f.write(imitated_merged)
+                    logger.info(
+                        f"已合并仿写版 {imitated_real_count} 仿写 + "
+                        f"{imitated_fallback_count} 原文 fallback / "
+                        f"{len(self.chapter_outlines)} 章到 "
+                        f"{imitated_output_path}，总字数: {len(imitated_merged)}"
+                    )
+                except Exception as e:
+                    # 仿写版失败不影响原版返回
+                    logger.error(f"写入仿写版失败: {e}", exc_info=True)
+            elif not has_imitated:
+                logger.info("未检测到任何 _imitated.txt 文件，跳过仿写版输出。")
+
             return output_path
 
         except Exception as e:
