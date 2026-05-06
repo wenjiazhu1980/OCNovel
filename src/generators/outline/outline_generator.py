@@ -43,85 +43,147 @@ class OutlineGenerator:
                 existing_elements_set.add(hashable_item)
         
     def _load_outline(self):
-        """加载大纲文件"""
+        """加载大纲文件，构建位置对齐的稀疏列表
+
+        约定: ``self.chapter_outlines[i]`` 对应 chapter_number = i+1。
+        - 缺失槽位填 None，保证按 chapter_num-1 索引访问安全；
+        - 重复 chapter_number 仅保留**首次出现**版本，跳过后续重复条目；
+        - len(self.chapter_outlines) == max(chapter_number)，与 target_chapters 比较时语义一致。
+        """
         outline_file = os.path.join(self.output_dir, "outline.json")
         outline_data = load_json_file(outline_file, default_value=[])
-        
-        if outline_data:
-            # 处理可能的旧格式（包含元数据）和新格式（仅含章节列表）
-            chapters_list = outline_data.get("chapters", outline_data) if isinstance(outline_data, dict) else outline_data
-            if isinstance(chapters_list, list):
-                # 增加对 ChapterOutline 字段的健壮性检查
-                valid_chapters = []
-                for idx, chapter_data in enumerate(chapters_list):
-                    if isinstance(chapter_data, dict):
-                        try:
-                            # 尝试创建 ChapterOutline，捕获可能的 TypeError
-                            valid_chapters.append(ChapterOutline(**chapter_data))
-                        except TypeError as e:
-                            logging.warning(f"加载大纲时，第 {idx+1} 个章节数据字段不匹配或类型错误: {e} - 数据: {chapter_data} - 已跳过")
-                        except Exception as e:
-                            logging.warning(f"Error loading outline chapter {idx+1}: {e} - Data: {chapter_data} - Skipped")
-                    else:
-                        logging.warning(f"Non-dict chapter data found while loading outline: {chapter_data} - Skipped")
-                self.chapter_outlines = valid_chapters
-                logging.info(f"Loaded {len(self.chapter_outlines)} valid chapter outlines from file")
-            else:
-                logging.error("Unrecognized outline file format, should be a list or dict with 'chapters' key.")
-                self.chapter_outlines = []
-        else:
+
+        if not outline_data:
             logging.info("未找到大纲文件或文件为空。")
             self.chapter_outlines = []
+            return
+
+        # 处理可能的旧格式（包含元数据）和新格式（仅含章节列表）
+        chapters_list = outline_data.get("chapters", outline_data) if isinstance(outline_data, dict) else outline_data
+        if not isinstance(chapters_list, list):
+            logging.error("Unrecognized outline file format, should be a list or dict with 'chapters' key.")
+            self.chapter_outlines = []
+            return
+
+        # 阶段1：解析为 ChapterOutline 对象，按 chapter_number 去重（保留首次）
+        seen_nums: set = set()
+        loaded_outlines: List[ChapterOutline] = []
+        duplicate_skipped = 0
+        for idx, chapter_data in enumerate(chapters_list):
+            if not isinstance(chapter_data, dict):
+                logging.warning(f"加载大纲时跳过非字典条目 index={idx}: {chapter_data}")
+                continue
+            try:
+                outline = ChapterOutline(**chapter_data)
+            except TypeError as e:
+                logging.warning(f"加载大纲时，第 {idx+1} 个章节字段不匹配或类型错误: {e} - 数据: {chapter_data} - 已跳过")
+                continue
+            except Exception as e:
+                logging.warning(f"Error loading outline chapter {idx+1}: {e} - Data: {chapter_data} - Skipped")
+                continue
+
+            if outline.chapter_number in seen_nums:
+                duplicate_skipped += 1
+                logging.warning(
+                    f"加载大纲时检测到重复 chapter_number={outline.chapter_number} (file index={idx})，"
+                    f"已跳过（保留首次出现版本）"
+                )
+                continue
+            seen_nums.add(outline.chapter_number)
+            loaded_outlines.append(outline)
+
+        # 阶段2：构建位置对齐的稀疏列表
+        if not loaded_outlines:
+            self.chapter_outlines = []
+            logging.info("Loaded 0 valid chapter outlines from file")
+            return
+
+        max_num = max(o.chapter_number for o in loaded_outlines)
+        positioned: List[Optional[ChapterOutline]] = [None] * max_num
+        for o in loaded_outlines:
+            if 1 <= o.chapter_number <= max_num:
+                positioned[o.chapter_number - 1] = o
+        self.chapter_outlines = positioned
+
+        valid_count = sum(1 for o in self.chapter_outlines if o is not None)
+        none_count = max_num - valid_count
+        if duplicate_skipped or none_count:
+            logging.warning(
+                f"大纲加载完成：{valid_count} 章有效 / {none_count} 个空槽 / "
+                f"max_chapter_number={max_num}"
+                + (f"，跳过 {duplicate_skipped} 个重复条目" if duplicate_skipped else "")
+            )
+        logging.info(f"Loaded {valid_count} valid chapter outlines from file")
 
     def _save_outline(self) -> bool:
-        """保存大纲到文件"""
+        """保存大纲到文件
+
+        防御性约定：
+        - None 槽位跳过（保留稀疏列表的位置语义）；
+        - 同一 chapter_number 若意外重复，仅保留**首次出现**版本（与 _load_outline 一致）；
+        - 写入按 chapter_number 升序，便于人工审阅与外部工具消费。
+        """
         outline_file = os.path.join(self.output_dir, "outline.json")
         try:
-            # 修改：只收集有效的 ChapterOutline 对象
             outline_data = []
+            seen_nums: set = set()
+            duplicate_skipped = 0
+
             for outline in self.chapter_outlines:
-                # 增加检查，明确跳过 None 值，避免警告
                 if outline is None:
                     continue
-                
-                if isinstance(outline, ChapterOutline):
-                    # 将 ChapterOutline 对象转换为字典
-                    outline_dict = {
-                        "chapter_number": outline.chapter_number,
-                        "title": outline.title,
-                        "key_points": outline.key_points,
-                        "characters": outline.characters,
-                        "settings": outline.settings,
-                        "conflicts": outline.conflicts,
-                    }
-                    # 保存扩展字段（仅当非空时写入，保持向后兼容）
-                    if outline.emotion_tone:
-                        outline_dict["emotion_tone"] = outline.emotion_tone
-                    if outline.character_goals:
-                        outline_dict["character_goals"] = outline.character_goals
-                    if outline.scene_sequence:
-                        outline_dict["scene_sequence"] = outline.scene_sequence
-                    if outline.foreshadowing:
-                        outline_dict["foreshadowing"] = outline.foreshadowing
-                    if outline.pov_character:
-                        outline_dict["pov_character"] = outline.pov_character
-                    outline_data.append(outline_dict)
-                else: # 如果不是 None 但也不是 ChapterOutline，才发出警告
+
+                if not isinstance(outline, ChapterOutline):
                     logging.warning(f"尝试保存非 ChapterOutline 对象: {type(outline)} - {outline}")
+                    continue
+
+                if outline.chapter_number in seen_nums:
+                    duplicate_skipped += 1
+                    logging.warning(
+                        f"保存大纲时检测到内存中重复 chapter_number={outline.chapter_number}，"
+                        f"已跳过后续重复（保留首次）"
+                    )
+                    continue
+                seen_nums.add(outline.chapter_number)
+
+                outline_dict = {
+                    "chapter_number": outline.chapter_number,
+                    "title": outline.title,
+                    "key_points": outline.key_points,
+                    "characters": outline.characters,
+                    "settings": outline.settings,
+                    "conflicts": outline.conflicts,
+                }
+                # 保存扩展字段（仅当非空时写入，保持向后兼容）
+                if outline.emotion_tone:
+                    outline_dict["emotion_tone"] = outline.emotion_tone
+                if outline.character_goals:
+                    outline_dict["character_goals"] = outline.character_goals
+                if outline.scene_sequence:
+                    outline_dict["scene_sequence"] = outline.scene_sequence
+                if outline.foreshadowing:
+                    outline_dict["foreshadowing"] = outline.foreshadowing
+                if outline.pov_character:
+                    outline_dict["pov_character"] = outline.pov_character
+                outline_data.append(outline_dict)
+
+            # 按 chapter_number 升序输出
+            outline_data.sort(key=lambda d: d["chapter_number"])
 
             if not outline_data:
                 logging.warning("没有有效的大纲数据可以保存。")
-                # 根据需要决定是否保存空文件或返回False
-                # return save_json_file(outline_file, []) # 保存空列表
-                return False # 或者认为没有数据则保存失败
-            
-            logging.info(f"尝试保存 {len(outline_data)} 章大纲到 {outline_file}")
+                return False
+
+            logging.info(
+                f"尝试保存 {len(outline_data)} 章大纲到 {outline_file}"
+                + (f"（跳过 {duplicate_skipped} 个内存重复）" if duplicate_skipped else "")
+            )
             if outline_data:
                 logging.info(f"即将保存的大纲前5章示例: {outline_data[:5]}")
 
             return save_json_file(outline_file, outline_data)
         except Exception as e:
-            logging.error(f"保存大纲文件时出错: {str(e)}", exc_info=True) # 添加 exc_info
+            logging.error(f"保存大纲文件时出错: {str(e)}", exc_info=True)
             return False
 
     def _generate_core_seed(self) -> str:

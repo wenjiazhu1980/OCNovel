@@ -71,55 +71,96 @@ class ContentGenerator:
         self.default_style = '古风雅致'  # 默认风格
 
     def _load_outline(self):
-        """加载大纲文件，按 chapter_number 排序确保索引与编号一致"""
+        """加载大纲文件，构建位置对齐的稀疏列表
+
+        约定（与 outline_generator 一致）:
+        - ``self.chapter_outlines[i]`` 对应 chapter_number = i+1；
+        - 缺失槽位填 None，保证 ``[chapter_num - 1]`` 索引访问语义稳定；
+        - 重复 chapter_number 仅保留**首次出现**版本；
+        - len(self.chapter_outlines) == max(chapter_number)，与 target_chapters 比较时语义一致；
+        - 若存在缺失槽位，``self._outline_discontinuous`` 记录缺失编号列表。
+        """
         outline_file = os.path.join(self.output_dir, "outline.json")
         outline_data = load_json_file(outline_file, default_value=[])
-        
-        if outline_data:
-            chapters_list = outline_data.get("chapters", outline_data) if isinstance(outline_data, dict) else outline_data
-            if isinstance(chapters_list, list):
-                try:
-                    valid_chapters = [ch for ch in chapters_list if isinstance(ch, dict)]
-                    if len(valid_chapters) != len(chapters_list):
-                         logger.warning(f"大纲文件中包含非字典元素，已跳过。")
-                    outlines = [ChapterOutline(**chapter) for chapter in valid_chapters]
-                    # 按 chapter_number 排序，去重（保留最后出现的版本）
-                    seen = {}
-                    for o in outlines:
-                        seen[o.chapter_number] = o
-                    self.chapter_outlines = [seen[k] for k in sorted(seen.keys())]
-                    if len(self.chapter_outlines) != len(outlines):
-                        logger.warning(
-                            f"大纲去重：原始 {len(outlines)} 条 → 去重后 {len(self.chapter_outlines)} 条"
-                        )
-                    # 校验连续性：chapter_number 必须是 1, 2, 3, ... N
-                    if self.chapter_outlines:
-                        expected_nums = list(range(1, self.chapter_outlines[-1].chapter_number + 1))
-                        actual_nums = [o.chapter_number for o in self.chapter_outlines]
-                        if actual_nums != expected_nums:
-                            missing = sorted(set(expected_nums) - set(actual_nums))
-                            logger.error(
-                                f"大纲章节号不连续！缺失: {missing}。"
-                                f"请重新生成大纲或手动修复 outline.json。"
-                            )
-                            self._outline_discontinuous = missing
-                        else:
-                            self._outline_discontinuous = []
-                    else:
-                        self._outline_discontinuous = []
-                    logger.info(f"从文件加载了 {len(self.chapter_outlines)} 章大纲")
-                except TypeError as e:
-                    logger.error(f"加载大纲时字段不匹配或类型错误: {e} - 请检查 outline.json 结构是否与 ChapterOutline 定义一致。问题可能出在: {chapters_list[:2]}...")
-                    self.chapter_outlines = []
-                except Exception as e:
-                     logger.error(f"加载大纲时发生未知错误: {e}", exc_info=True)
-                     self.chapter_outlines = []
-            else:
-                logger.error("大纲文件格式无法识别，应为列表或包含 'chapters' 键的字典。")
-                self.chapter_outlines = []
-        else:
+
+        if not outline_data:
             logger.info("未找到大纲文件或文件为空。")
             self.chapter_outlines = []
+            self._outline_discontinuous = []
+            return
+
+        chapters_list = outline_data.get("chapters", outline_data) if isinstance(outline_data, dict) else outline_data
+        if not isinstance(chapters_list, list):
+            logger.error("大纲文件格式无法识别，应为列表或包含 'chapters' 键的字典。")
+            self.chapter_outlines = []
+            self._outline_discontinuous = []
+            return
+
+        try:
+            # 阶段1：解析并按 chapter_number 去重（保留首次）
+            seen_nums: set = set()
+            loaded_outlines: list = []
+            duplicate_skipped = 0
+            non_dict_skipped = 0
+
+            for idx, chapter_data in enumerate(chapters_list):
+                if not isinstance(chapter_data, dict):
+                    non_dict_skipped += 1
+                    continue
+                try:
+                    outline = ChapterOutline(**chapter_data)
+                except TypeError as e:
+                    logger.warning(f"加载大纲时第 {idx+1} 个条目字段不匹配: {e} - 数据: {chapter_data} - 已跳过")
+                    continue
+                if outline.chapter_number in seen_nums:
+                    duplicate_skipped += 1
+                    logger.warning(
+                        f"加载大纲时检测到重复 chapter_number={outline.chapter_number} (file index={idx})，"
+                        f"已跳过（保留首次出现版本）"
+                    )
+                    continue
+                seen_nums.add(outline.chapter_number)
+                loaded_outlines.append(outline)
+
+            if non_dict_skipped:
+                logger.warning(f"大纲文件中包含 {non_dict_skipped} 个非字典元素，已跳过。")
+
+            # 阶段2：构建位置对齐的稀疏列表
+            if not loaded_outlines:
+                self.chapter_outlines = []
+                self._outline_discontinuous = []
+                logger.info("从文件加载了 0 章大纲")
+                return
+
+            max_num = max(o.chapter_number for o in loaded_outlines)
+            positioned = [None] * max_num
+            for o in loaded_outlines:
+                if 1 <= o.chapter_number <= max_num:
+                    positioned[o.chapter_number - 1] = o
+            self.chapter_outlines = positioned
+
+            # 阶段3：检测缺失槽位（不连续性）
+            missing = [
+                idx + 1 for idx, slot in enumerate(self.chapter_outlines) if slot is None
+            ]
+            self._outline_discontinuous = missing
+
+            valid_count = max_num - len(missing)
+            if duplicate_skipped:
+                logger.warning(
+                    f"大纲去重：原始 {len(loaded_outlines) + duplicate_skipped} 条 → 去重后 {len(loaded_outlines)} 条"
+                )
+            if missing:
+                logger.error(
+                    f"大纲章节号不连续！缺失: {missing}。"
+                    f"请重新生成大纲或手动修复 outline.json。"
+                )
+            logger.info(f"从文件加载了 {valid_count} 章大纲（位置对齐到 max_chapter_number={max_num}）")
+
+        except Exception as e:
+            logger.error(f"加载大纲时发生未知错误: {e}", exc_info=True)
+            self.chapter_outlines = []
+            self._outline_discontinuous = []
 
     def _load_progress(self):
         """加载生成进度：综合 summary.json 与磁盘上已存在的章节正文文件。
