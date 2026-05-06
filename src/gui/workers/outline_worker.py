@@ -101,65 +101,88 @@ class OutlineWorker(QThread):
                 self.outline_finished.emit(False, QCoreApplication.translate("OutlineWorker", "用户取消"))
                 return
 
-            # ---- 9. 确定生成范围 ----
+            # ---- 9. 确定生成范围（3 条件独立组合：范围 / 强制 / 提示词）----
             outline_generator._load_outline()
             current_count = len(outline_generator.chapter_outlines)
 
-            # 用户指定了自定义范围
+            # 用户指定的自定义起止；0 表示"自动"，即按 force / 续写规则补全
             custom_start = self._start_chapter if self._start_chapter > 0 else 0
             custom_end = self._end_chapter if self._end_chapter > 0 else 0
 
-            # force_regenerate 默认 False；只有"自动补充"分支保持 False，其它显式覆盖分支均为 True
-            force_regen = False
+            # 起始章节：用户显式 > 强制重生成全部 > 自动续写
+            if custom_start > 0:
+                start_ch = custom_start
+            elif self._force_outline:
+                start_ch = 1
+            else:
+                start_ch = current_count + 1
 
-            if custom_start > 0 and custom_end > 0:
-                # 自定义范围模式：直接覆盖指定区间
-                if custom_start > custom_end:
-                    raise RuntimeError(
-                        QCoreApplication.translate(
-                            "OutlineWorker", "起始章节 ({0}) 不能大于结束章节 ({1})"
-                        ).format(custom_start, custom_end)
-                    )
-                if custom_end > target_chapters:
-                    raise RuntimeError(
-                        QCoreApplication.translate(
-                            "OutlineWorker",
-                            "结束章节 ({0}) 超过目标章节数 ({1})"
-                        ).format(custom_end, target_chapters)
-                    )
-                start_ch, end_ch = custom_start, custom_end
-                # 自定义范围 = 用户显式覆盖意图
-                force_regen = True
-                logger.info(
+            # 结束章节：用户显式 > 全书目标
+            end_ch = custom_end if custom_end > 0 else target_chapters
+
+            # 强制重生成只由勾选决定（自定义范围不再自动激活强制）
+            force_regen = bool(self._force_outline)
+
+            # ---- 边界校验 ----
+            if start_ch > end_ch:
+                raise RuntimeError(
                     QCoreApplication.translate(
-                        "OutlineWorker", "自定义范围生成大纲 ({0}~{1})"
+                        "OutlineWorker", "起始章节 ({0}) 不能大于结束章节 ({1})"
                     ).format(start_ch, end_ch)
                 )
-            elif self._force_outline:
-                # 强制重生成全部
-                start_ch, end_ch = 1, target_chapters
-                force_regen = True
+            if end_ch > target_chapters:
+                raise RuntimeError(
+                    QCoreApplication.translate(
+                        "OutlineWorker", "结束章节 ({0}) 超过目标章节数 ({1})"
+                    ).format(end_ch, target_chapters)
+                )
+            if start_ch < 1:
+                raise RuntimeError(
+                    QCoreApplication.translate(
+                        "OutlineWorker", "起始章节 ({0}) 必须大于 0"
+                    ).format(start_ch)
+                )
+
+            # ---- 友好预检：非强制模式下，若范围内全部有效则直接告知用户，避免空跑 ----
+            from src.generators.common.data_structures import ChapterOutline
+            if not force_regen and current_count >= start_ch:
+                slice_existing = outline_generator.chapter_outlines[start_ch - 1: min(end_ch, current_count)]
+                slot_count = end_ch - start_ch + 1
+                if (len(slice_existing) == slot_count
+                        and all(isinstance(o, ChapterOutline) for o in slice_existing)):
+                    msg = QCoreApplication.translate(
+                        "OutlineWorker",
+                        "范围 {0}~{1} 章大纲已完整存在，未做改动。如需覆盖请勾选「强制重生成大纲」。",
+                    ).format(start_ch, end_ch)
+                    logger.info(msg)
+                    self.outline_finished.emit(True, msg)
+                    return
+
+            # ---- 模式日志 ----
+            if force_regen and custom_start == 0 and custom_end == 0:
                 logger.info(
                     QCoreApplication.translate(
                         "OutlineWorker", "强制重新生成全部大纲 (1~{0})"
                     ).format(end_ch)
                 )
-            elif current_count >= target_chapters:
-                msg = QCoreApplication.translate(
-                    "OutlineWorker",
-                    "大纲已完整（{0}/{1} 章），无需重新生成。如需覆盖请勾选「强制重生成大纲」或指定章节范围。",
-                ).format(current_count, target_chapters)
-                logger.info(msg)
-                self.outline_finished.emit(True, msg)
-                return
+            elif custom_start > 0 or custom_end > 0:
+                logger.info(
+                    QCoreApplication.translate(
+                        "OutlineWorker",
+                        "自定义范围生成大纲 ({0}~{1})，强制重生成={2}",
+                    ).format(start_ch, end_ch, "是" if force_regen else "否")
+                )
             else:
-                # 自动补充模式
-                start_ch = current_count + 1
-                end_ch = target_chapters
                 logger.info(
                     QCoreApplication.translate(
                         "OutlineWorker", "补充生成大纲 ({0}~{1})"
                     ).format(start_ch, end_ch)
+                )
+            if self._extra_prompt:
+                logger.info(
+                    QCoreApplication.translate(
+                        "OutlineWorker", "已附加额外提示词: {0}"
+                    ).format(self._extra_prompt[:80] + ("..." if len(self._extra_prompt) > 80 else ""))
                 )
 
             # ---- 10. 执行生成 ----
