@@ -1,5 +1,6 @@
 """Tab2: 小说参数配置 — 编辑 config.json 中的小说相关参数"""
 import json
+import logging
 import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QGroupBox,
@@ -12,6 +13,9 @@ from PySide6.QtCore import Qt, QEvent
 from ..utils.config_io import load_config, save_config
 from ..workers.writing_guide_worker import WritingGuideWorker
 from ..widgets.resizable_text_edit import ResizableTextEdit
+
+
+_logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -569,6 +573,85 @@ class NovelParamsTab(QWidget):
             lw.setCurrentRow(0)
         else:
             self._clear_role_detail(data_attr)
+
+    @staticmethod
+    def _normalize_role(it) -> dict | None:
+        """将单个角色 raw 项规范化为 dict（含 name 推断）；非法则返回 None"""
+        if isinstance(it, dict):
+            d = dict(it)
+            if not d.get("name"):
+                personality = str(d.get("personality", ""))
+                for sep in ("：", ":"):
+                    if sep in personality:
+                        candidate = personality.split(sep, 1)[0].strip()
+                        if 1 <= len(candidate) <= 10:
+                            d["name"] = candidate
+                        break
+            return d
+        if isinstance(it, str):
+            name = it.strip()
+            return {"name": name} if name else None
+        return None
+
+    def _merge_roles(self, data_attr: str, raw):
+        """增补模式：保留已有角色，按 name 去重追加新角色
+
+        策略：
+        - 已有列表完整保留
+        - 新生成项中 name 与已有项重复则跳过（首次出现优先）
+        - 新生成项无 name 时也追加（无法去重判定）
+        """
+        existing: list[dict] = list(getattr(self, data_attr, []) or [])
+        existing_names = {
+            str(r.get("name", "")).strip()
+            for r in existing
+            if isinstance(r, dict)
+        }
+        existing_names.discard("")
+
+        appended: list[dict] = []
+        if isinstance(raw, list):
+            for it in raw:
+                d = self._normalize_role(it)
+                if d is None:
+                    continue
+                name = str(d.get("name", "")).strip()
+                if name and name in existing_names:
+                    continue
+                if name:
+                    existing_names.add(name)
+                appended.append(d)
+
+        merged = existing + appended
+        setattr(self, data_attr, merged)
+        self._refresh_role_list(data_attr)
+        lw, *_ = self._role_widgets(data_attr)
+        if merged:
+            # 优先选中第一条新追加项，便于用户立刻审阅；若无追加则保持现有选择
+            if appended:
+                lw.setCurrentRow(len(existing))
+            elif lw.currentRow() < 0:
+                lw.setCurrentRow(0)
+        else:
+            self._clear_role_detail(data_attr)
+
+    @staticmethod
+    def _set_text_if_empty(widget, value) -> bool:
+        """增补模式：仅当 widget 当前为空白时才填入新值
+
+        返回是否实际写入（用于统计）。
+        """
+        try:
+            current = widget.toPlainText()
+        except AttributeError:
+            current = ""
+        if current.strip():
+            return False
+        text = "" if value is None else str(value)
+        if not text.strip():
+            return False
+        widget.setPlainText(text)
+        return True
 
     # ------------------------------------------------------------------
     # Section 3: 生成配置
@@ -1299,6 +1382,49 @@ class NovelParamsTab(QWidget):
         # --- 输出 ---
         self._le_output_dir.setText(str(oc.get("output_dir", "data/output")))
 
+        # --- 故事创意自动填充：从 output_dir/core_seed.txt 加载 ---
+        # 仅当当前输入框为空时才填充，不覆盖用户已输入内容
+        self._autofill_story_idea_from_core_seed(str(oc.get("output_dir", "data/output")))
+
+    # ------------------------------------------------------------------
+    # 故事创意自动填充
+    # ------------------------------------------------------------------
+    def _autofill_story_idea_from_core_seed(self, output_dir: str) -> None:
+        """若 output_dir/core_seed.txt 存在且故事创意输入框为空，则自动填充
+
+        相对路径解析顺序：
+        1. 直接尝试 output_dir 原值（绝对路径或相对当前 cwd）
+        2. 若失败，尝试相对 config.json 所在目录解析
+        """
+        try:
+            if self._le_story_idea.text().strip():
+                return  # 用户已输入，不覆盖
+
+            output_dir = (output_dir or "").strip()
+            if not output_dir:
+                return
+
+            candidates: list[str] = []
+            if os.path.isabs(output_dir):
+                candidates.append(os.path.join(output_dir, "core_seed.txt"))
+            else:
+                candidates.append(os.path.join(output_dir, "core_seed.txt"))
+                # 相对 config.json 所在目录
+                if getattr(self, "_config_path", ""):
+                    cfg_dir = os.path.dirname(os.path.abspath(self._config_path))
+                    candidates.append(os.path.join(cfg_dir, output_dir, "core_seed.txt"))
+
+            for path in candidates:
+                if os.path.isfile(path):
+                    with open(path, "r", encoding="utf-8") as f:
+                        seed = f.read().strip()
+                    if seed:
+                        self._le_story_idea.setText(seed)
+                        _logger.info(f"已自动加载故事核心种子作为故事创意: {path}")
+                    return  # 找到文件即结束（无论是否非空）
+        except Exception as e:
+            _logger.warning(f"自动加载 core_seed.txt 失败: {e}", exc_info=True)
+
     # ======================================================================
     # 保存配置
     # ======================================================================
@@ -1495,7 +1621,7 @@ class NovelParamsTab(QWidget):
         self._guide_worker.start()
 
     def _on_guide_result(self, success: bool, result):
-        """处理写作指南生成结果"""
+        """处理写作指南生成结果（增补模式：仅填空字段，列表追加唯一项）"""
         self._btn_gen_guide.setEnabled(True)
         self._btn_gen_guide.setText(self.tr("自动生成写作指南"))
 
@@ -1503,70 +1629,100 @@ class NovelParamsTab(QWidget):
             QMessageBox.warning(self, self.tr("生成失败"), str(result))
             return
 
-        # 填充写作指南字段
+        # 统计增补 / 跳过 数量，便于在结束提示中告知用户
+        filled = 0
+        skipped = 0
+
+        def _try_fill(widget, value) -> None:
+            nonlocal filled, skipped
+            if self._set_text_if_empty(widget, value):
+                filled += 1
+            else:
+                if str(value or "").strip():
+                    skipped += 1
+
+        # 写作指南：世界观
         wg = result
         wb = wg.get("world_building", {})
-        self._te_magic.setPlainText(str(wb.get("magic_system", "")))
-        self._te_social.setPlainText(str(wb.get("social_system", "")))
-        self._te_bg.setPlainText(str(wb.get("background", "")))
+        _try_fill(self._te_magic, wb.get("magic_system", ""))
+        _try_fill(self._te_social, wb.get("social_system", ""))
+        _try_fill(self._te_bg, wb.get("background", ""))
 
+        # 写作指南：主角
         prot = _g(wg, "character_guide", "protagonist", default={})
         if isinstance(prot, dict):
-            self._te_prot_bg.setPlainText(str(prot.get("background", "")))
-            self._te_prot_personality.setPlainText(str(prot.get("initial_personality", "")))
-            self._te_prot_growth.setPlainText(str(prot.get("growth_path", "")))
+            _try_fill(self._te_prot_bg, prot.get("background", ""))
+            _try_fill(self._te_prot_personality, prot.get("initial_personality", ""))
+            _try_fill(self._te_prot_growth, prot.get("growth_path", ""))
 
+        # 写作指南：配角 & 反派（按 name 去重追加）
         sr = _g(wg, "character_guide", "supporting_roles", default=[])
         ant = _g(wg, "character_guide", "antagonists", default=[])
-        self._load_roles("_sup_data", sr)
-        self._load_roles("_ant_data", ant)
+        sup_before = len(self._sup_data)
+        ant_before = len(self._ant_data)
+        self._merge_roles("_sup_data", sr)
+        self._merge_roles("_ant_data", ant)
+        sup_added = len(self._sup_data) - sup_before
+        ant_added = len(self._ant_data) - ant_before
 
+        # 剧情结构
         a1 = _g(wg, "plot_structure", "act_one", default={})
         if isinstance(a1, dict):
-            self._te_setup.setPlainText(str(a1.get("setup", "")))
-            self._te_inciting.setPlainText(str(a1.get("inciting_incident", "")))
-            self._te_fp1.setPlainText(str(a1.get("first_plot_point", "")))
+            _try_fill(self._te_setup, a1.get("setup", ""))
+            _try_fill(self._te_inciting, a1.get("inciting_incident", ""))
+            _try_fill(self._te_fp1, a1.get("first_plot_point", ""))
 
         a2 = _g(wg, "plot_structure", "act_two", default={})
         if isinstance(a2, dict):
-            self._te_rising.setPlainText(str(a2.get("rising_action", "")))
-            self._te_midpoint.setPlainText(str(a2.get("midpoint", "")))
-            self._te_complications.setPlainText(str(a2.get("complications", "")))
-            self._te_darkest.setPlainText(str(a2.get("darkest_moment", "")))
-            self._te_sp2.setPlainText(str(a2.get("second_plot_point", "")))
+            _try_fill(self._te_rising, a2.get("rising_action", ""))
+            _try_fill(self._te_midpoint, a2.get("midpoint", ""))
+            _try_fill(self._te_complications, a2.get("complications", ""))
+            _try_fill(self._te_darkest, a2.get("darkest_moment", ""))
+            _try_fill(self._te_sp2, a2.get("second_plot_point", ""))
 
         a3 = _g(wg, "plot_structure", "act_three", default={})
         if isinstance(a3, dict):
-            self._te_climax.setPlainText(str(a3.get("climax", "")))
-            self._te_resolution.setPlainText(str(a3.get("resolution", "")))
-            self._te_denouement.setPlainText(str(a3.get("denouement", "")))
+            _try_fill(self._te_climax, a3.get("climax", ""))
+            _try_fill(self._te_resolution, a3.get("resolution", ""))
+            _try_fill(self._te_denouement, a3.get("denouement", ""))
 
         disasters = _g(wg, "plot_structure", "disasters", default={})
         if isinstance(disasters, dict):
-            self._te_disaster_1.setPlainText(str(disasters.get("first_disaster", "")))
-            self._te_disaster_2.setPlainText(str(disasters.get("second_disaster", "")))
-            self._te_disaster_3.setPlainText(str(disasters.get("third_disaster", "")))
+            _try_fill(self._te_disaster_1, disasters.get("first_disaster", ""))
+            _try_fill(self._te_disaster_2, disasters.get("second_disaster", ""))
+            _try_fill(self._te_disaster_3, disasters.get("third_disaster", ""))
 
+        # 风格指南
         sg = wg.get("style_guide", {})
-        self._te_tone.setPlainText(str(sg.get("tone", "")))
-        self._te_pacing.setPlainText(str(sg.get("pacing", "")))
-        # description_focus 列表同步
-        df = sg.get("description_focus", [])
-        if isinstance(df, list):
-            self._desc_focus_data = [str(x) for x in df]
-        elif isinstance(df, str) and df:
-            self._desc_focus_data = [df]
-        else:
-            self._desc_focus_data = []
-        self._refresh_desc_focus_list()
-        if self._desc_focus_data:
-            self._lw_desc_focus.setCurrentRow(0)
-        else:
-            self._focus_updating = True
-            self._te_desc_focus_detail.clear()
-            self._focus_updating = False
+        _try_fill(self._te_tone, sg.get("tone", ""))
+        _try_fill(self._te_pacing, sg.get("pacing", ""))
 
-        QMessageBox.information(self, self.tr("生成完成"), self.tr("写作指南已自动填充,请检查并按需调整后保存。"))
+        # description_focus 列表：追加唯一项（按内容去重）
+        df = sg.get("description_focus", [])
+        new_focus_items: list[str] = []
+        if isinstance(df, list):
+            new_focus_items = [str(x) for x in df if str(x).strip()]
+        elif isinstance(df, str) and df.strip():
+            new_focus_items = [df]
+
+        existing_focus = {str(x).strip() for x in self._desc_focus_data if str(x).strip()}
+        focus_before = len(self._desc_focus_data)
+        for item in new_focus_items:
+            key = item.strip()
+            if key and key not in existing_focus:
+                self._desc_focus_data.append(item)
+                existing_focus.add(key)
+        focus_added = len(self._desc_focus_data) - focus_before
+        self._refresh_desc_focus_list()
+        if self._desc_focus_data and self._lw_desc_focus.currentRow() < 0:
+            self._lw_desc_focus.setCurrentRow(0)
+
+        # 用户提示：明确"增补"语义，避免以为没生效
+        msg_lines = [self.tr("写作指南已按增补模式更新（仅填空、列表追加）。")]
+        msg_lines.append(self.tr("文本字段：填入 {0} 项，跳过 {1} 项已有内容。").format(filled, skipped))
+        msg_lines.append(self.tr("配角追加 {0} 个，反派追加 {1} 个，描写侧重追加 {2} 条。").format(sup_added, ant_added, focus_added))
+        msg_lines.append(self.tr("如需完全重写，请先清空对应字段后再点击「自动生成写作指南」。"))
+        QMessageBox.information(self, self.tr("生成完成"), "\n".join(msg_lines))
 
     # ======================================================================
     # 编辑锁定（保留滚动）
