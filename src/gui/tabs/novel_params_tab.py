@@ -160,12 +160,14 @@ class NovelParamsTab(QWidget):
         self._sp_gen_supporting = QSpinBox()
         self._sp_gen_supporting.setRange(0, 30)
         self._sp_gen_supporting.setValue(6)
+        self._sp_gen_supporting.setToolTip(self.tr("配角的目标总数；本次实际新增 = 目标 - 已有数量(下限 0)"))
         count_bar.addWidget(self._sp_gen_supporting)
         count_bar.addSpacing(12)
         count_bar.addWidget(QLabel(self.tr("反派数")))
         self._sp_gen_antagonists = QSpinBox()
         self._sp_gen_antagonists.setRange(0, 30)
         self._sp_gen_antagonists.setValue(4)
+        self._sp_gen_antagonists.setToolTip(self.tr("反派的目标总数；本次实际新增 = 目标 - 已有数量(下限 0)"))
         count_bar.addWidget(self._sp_gen_antagonists)
         count_bar.addSpacing(12)
         count_bar.addWidget(QLabel(self.tr("女性比例")))
@@ -1590,17 +1592,27 @@ class NovelParamsTab(QWidget):
             sup, ant = 10, 6
         else:
             sup, ant = 15, 8
-        # 仅当用户未手动修改过时才自动更新（用 tooltip 提示推荐值）
+        # 仅当用户未手动修改过时才自动更新（tooltip 同时说明语义）
         self._sp_gen_supporting.setToolTip(
-            self.tr("当前篇幅 {0} 章，建议 {1} 个配角").format(chapters, sup))
+            self.tr("配角的目标总数；本次实际新增 = 目标 - 已有数量(下限 0)。当前篇幅 {0} 章，建议 {1} 个").format(chapters, sup))
         self._sp_gen_antagonists.setToolTip(
-            self.tr("当前篇幅 {0} 章，建议 {1} 个反派").format(chapters, ant))
+            self.tr("反派的目标总数；本次实际新增 = 目标 - 已有数量(下限 0)。当前篇幅 {0} 章，建议 {1} 个").format(chapters, ant))
 
     # ======================================================================
     # 自动生成写作指南
     # ======================================================================
     def _on_generate_guide(self):
-        """启动后台线程生成写作指南"""
+        """启动后台线程生成写作指南
+
+        增补模式语义:
+        - 配角/反派的 spinbox 表示"目标总数",而非"本次新增数量";
+        - 真正传给 worker 的 n_supporting/n_antagonists 是
+            max(0, 目标总数 - 已有数量);
+        - 这样用户在已有 4 个配角时填 6,只会让模型新增 2 个,
+            而不是新增 6 个再去重(避免溢出)。
+        - 若 diff <= 0,worker 仍被启动以更新世界观/主角/剧情等其他字段,
+            但角色列表传 0 表示不再生成新角色。
+        """
         story_idea = self._le_story_idea.text().strip()
         title = self._le_title.text().strip()
         novel_type = self._le_type.text().strip()
@@ -1612,6 +1624,26 @@ class NovelParamsTab(QWidget):
             self._le_story_idea.setFocus()
             return
 
+        # 计算"实际需要新增的角色数" = 目标总数 - 已有数量(下限 0)
+        target_sup = self._sp_gen_supporting.value()
+        target_ant = self._sp_gen_antagonists.value()
+        existing_sup = len(getattr(self, "_sup_data", []) or [])
+        existing_ant = len(getattr(self, "_ant_data", []) or [])
+        n_sup_to_gen = max(0, target_sup - existing_sup)
+        n_ant_to_gen = max(0, target_ant - existing_ant)
+        # 缓存供 _on_guide_result 在弹框中说明
+        self._guide_target_sup = target_sup
+        self._guide_target_ant = target_ant
+        self._guide_existing_sup = existing_sup
+        self._guide_existing_ant = existing_ant
+        self._guide_request_sup = n_sup_to_gen
+        self._guide_request_ant = n_ant_to_gen
+
+        _logger.info(
+            f"自动生成写作指南: 配角 目标 {target_sup} / 已有 {existing_sup} / 新增请求 {n_sup_to_gen}; "
+            f"反派 目标 {target_ant} / 已有 {existing_ant} / 新增请求 {n_ant_to_gen}"
+        )
+
         self._btn_gen_guide.setEnabled(False)
         self._btn_gen_guide.setText(self.tr("正在生成…"))
 
@@ -1622,8 +1654,8 @@ class NovelParamsTab(QWidget):
             novel_type=novel_type or self.tr("通用"),
             theme=theme or self.tr("通用"),
             style=style or self.tr("通用"),
-            n_supporting=self._sp_gen_supporting.value(),
-            n_antagonists=self._sp_gen_antagonists.value(),
+            n_supporting=n_sup_to_gen,
+            n_antagonists=n_ant_to_gen,
             female_ratio=self._dsb_gen_female_ratio.value(),
             target_chapters=self._sp_chapters.value(),
             chapter_length=self._sp_chapter_len.value(),
@@ -1732,7 +1764,22 @@ class NovelParamsTab(QWidget):
         # 用户提示：明确"增补"语义，避免以为没生效
         msg_lines = [self.tr("写作指南已按增补模式更新（仅填空、列表追加）。")]
         msg_lines.append(self.tr("文本字段：填入 {0} 项，跳过 {1} 项已有内容。").format(filled, skipped))
-        msg_lines.append(self.tr("配角追加 {0} 个，反派追加 {1} 个，描写侧重追加 {2} 条。").format(sup_added, ant_added, focus_added))
+        msg_lines.append(self.tr("描写侧重追加 {0} 条。").format(focus_added))
+        # 配角/反派的总数变化（spinbox 表示目标总数）
+        target_sup = getattr(self, "_guide_target_sup", None)
+        target_ant = getattr(self, "_guide_target_ant", None)
+        if target_sup is not None and target_ant is not None:
+            sup_total = len(self._sup_data)
+            ant_total = len(self._ant_data)
+            sup_existed = getattr(self, "_guide_existing_sup", sup_total - sup_added)
+            ant_existed = getattr(self, "_guide_existing_ant", ant_total - ant_added)
+            msg_lines.append(self.tr(
+                "配角：目标总数 {0}，已有 {1} → 现 {2}（新增 {3}）；"
+                "反派：目标总数 {4}，已有 {5} → 现 {6}（新增 {7}）。"
+            ).format(target_sup, sup_existed, sup_total, sup_added,
+                     target_ant, ant_existed, ant_total, ant_added))
+        else:
+            msg_lines.append(self.tr("配角追加 {0} 个，反派追加 {1} 个。").format(sup_added, ant_added))
         msg_lines.append(self.tr("如需完全重写，请先清空对应字段后再点击「自动生成写作指南」。"))
         QMessageBox.information(self, self.tr("生成完成"), "\n".join(msg_lines))
 
