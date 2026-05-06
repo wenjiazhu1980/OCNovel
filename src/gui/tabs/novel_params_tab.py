@@ -1382,24 +1382,31 @@ class NovelParamsTab(QWidget):
         # --- 输出 ---
         self._le_output_dir.setText(str(oc.get("output_dir", "data/output")))
 
-        # --- 故事创意自动填充：从 output_dir/core_seed.txt 加载 ---
-        # 仅当当前输入框为空时才填充，不覆盖用户已输入内容
+        # --- 故事创意：从 output_dir/core_seed.txt 同步 ---
+        # 切换配置文件时,输入框应反映新配置目录下的种子文件内容,
+        # 而不是停留在上一次加载的旧种子。
         self._autofill_story_idea_from_core_seed(str(oc.get("output_dir", "data/output")))
 
     # ------------------------------------------------------------------
     # 故事创意自动填充
     # ------------------------------------------------------------------
     def _autofill_story_idea_from_core_seed(self, output_dir: str) -> None:
-        """若 output_dir/core_seed.txt 存在且故事创意输入框为空，则自动填充
+        """从 output_dir/core_seed.txt 同步故事创意输入框
 
-        相对路径解析顺序：
-        1. 直接尝试 output_dir 原值（绝对路径或相对当前 cwd）
-        2. 若失败，尝试相对 config.json 所在目录解析
+        策略:
+        - 若 core_seed.txt 存在且非空 → **覆盖**当前输入框(无论是否已有内容)
+          这样每次加载/切换配置时,输入框总是反映该配置目录下的真实种子;
+          手动输入未持久化为种子文件的创意会被磁盘种子覆盖(视为预期)。
+        - 若 core_seed.txt 不存在或为空 → 不动当前输入框
+          (避免误清空用户尚未生成种子的手动输入)。
+        - 若新内容与当前内容相同 → 跳过 setText 以避免不必要的信号触发。
+
+        路径解析:
+        1. 绝对路径直接用;
+        2. 相对路径相对当前 cwd;
+        3. 仍不存在时再相对 config.json 所在目录解析。
         """
         try:
-            if self._le_story_idea.text().strip():
-                return  # 用户已输入，不覆盖
-
             output_dir = (output_dir or "").strip()
             if not output_dir:
                 return
@@ -1409,19 +1416,24 @@ class NovelParamsTab(QWidget):
                 candidates.append(os.path.join(output_dir, "core_seed.txt"))
             else:
                 candidates.append(os.path.join(output_dir, "core_seed.txt"))
-                # 相对 config.json 所在目录
                 if getattr(self, "_config_path", ""):
                     cfg_dir = os.path.dirname(os.path.abspath(self._config_path))
                     candidates.append(os.path.join(cfg_dir, output_dir, "core_seed.txt"))
 
             for path in candidates:
-                if os.path.isfile(path):
-                    with open(path, "r", encoding="utf-8") as f:
-                        seed = f.read().strip()
-                    if seed:
-                        self._le_story_idea.setText(seed)
-                        _logger.info(f"已自动加载故事核心种子作为故事创意: {path}")
-                    return  # 找到文件即结束（无论是否非空）
+                if not os.path.isfile(path):
+                    continue
+                with open(path, "r", encoding="utf-8") as f:
+                    seed = f.read().strip()
+                if not seed:
+                    _logger.info(f"core_seed.txt 内容为空，未更新故事创意: {path}")
+                    return
+                current = self._le_story_idea.text().strip()
+                if current == seed:
+                    return  # 已一致,无需重置
+                self._le_story_idea.setText(seed)
+                _logger.info(f"已加载故事核心种子作为故事创意: {path}")
+                return
         except Exception as e:
             _logger.warning(f"自动加载 core_seed.txt 失败: {e}", exc_info=True)
 
