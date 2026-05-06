@@ -270,7 +270,8 @@ def main():
             # 调用内容生成方法 (removed update_sync_info)
             success = generator.generate_content(
                 target_chapter=target_chapter_to_generate,
-                external_prompt=args.extra_prompt
+                external_prompt=args.extra_prompt,
+                is_target_chapter=(args.target_chapter is not None),
             )
             if success and target_chapter_to_generate is None:
                 # 非单章重生成模式下，全部完成后自动合并

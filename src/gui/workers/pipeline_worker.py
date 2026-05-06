@@ -277,9 +277,13 @@ class PipelineWorker(QThread):
                 try:
                     # 设置 content_generator 的当前章节索引
                     content_generator.current_chapter = chapter_num - 1
+                    # 关键: 通过 is_target_chapter 显式区分两种语义,
+                    # - 连续模式(无 _target_chapters_list): 首次生成章节,需写入摘要供后续章节读取前情;
+                    # - 指定章节模式: 用户显式重生成已 finalize 的章节,不应覆盖既有上下文摘要。
                     success = content_generator.generate_content(
                         target_chapter=chapter_num,
                         external_prompt=self._extra_prompt or None,
+                        is_target_chapter=bool(self._target_chapters_list),
                     )
                     if success:
                         title = self._get_chapter_title(

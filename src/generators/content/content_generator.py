@@ -297,9 +297,23 @@ class ContentGenerator:
                 return extra_prompt, style_example
         return '', ''
 
-    def generate_content(self, target_chapter: Optional[int] = None, external_prompt: Optional[str] = None, style_name: Optional[str] = None) -> bool:
-        """
-        生成章节内容，支持传入风格名
+    def generate_content(
+        self,
+        target_chapter: Optional[int] = None,
+        external_prompt: Optional[str] = None,
+        style_name: Optional[str] = None,
+        is_target_chapter: bool = False,
+    ) -> bool:
+        """生成章节内容，支持传入风格名
+
+        Args:
+            target_chapter: 指定要生成的单一章节号；None 时走"续写剩余章节"路径。
+            external_prompt: 额外提示词。
+            style_name: 仿写风格名。
+            is_target_chapter: 是否为"重新生成既有章节"语义；
+                - False (默认): 首次生成,会更新 summary.json 与 第NNN章_摘要.txt;
+                - True: 重生成已 finalize 的章节,跳过摘要更新以保留既有上下文。
+                调用方需显式区分,避免连续生成被误判为重生成而漏写摘要。
         """
         self._load_outline()
         if not self.chapter_outlines:
@@ -319,7 +333,7 @@ class ContentGenerator:
                         target_chapter,
                         external_prompt,
                         style_name=style_name,
-                        is_target_chapter=True,
+                        is_target_chapter=is_target_chapter,
                     )
                 else:
                     logger.error(f"目标章节 {target_chapter} 超出大纲范围 (1-{len(self.chapter_outlines)})。")
@@ -490,8 +504,10 @@ class ContentGenerator:
                         if finalize_success:
                             logger.info(f"[Chapter {chapter_num}] 定稿成功")
                             self.current_chapter = chapter_num
-                            # 同步更新内存中的"已 finalize 集合"
-                            if hasattr(self, '_chapters_in_summary'):
+                            # 仅在实际写入了 summary.json 时,才把章节加入"已 finalize 集合",
+                            # 否则会与磁盘 summary.json 脱节(下次重启 _load_progress 又会
+                            # 把该章列入 _chapters_pending_finalize)。
+                            if not is_target_chapter and hasattr(self, '_chapters_in_summary'):
                                 self._chapters_in_summary.add(chapter_num)
                             if hasattr(self, '_chapters_on_disk'):
                                 self._chapters_on_disk.add(chapter_num)
