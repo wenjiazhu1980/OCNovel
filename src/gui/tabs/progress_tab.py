@@ -59,6 +59,11 @@ class ProgressTab(QWidget):
         self.btn_start = QPushButton(self.tr("▶  启动"))
         self.btn_start.setMinimumWidth(110)  # 改为最小宽度,允许自动扩展
         self.btn_start.setProperty("cssClass", "success")
+        self.btn_start.setToolTip(self.tr(
+            "启动完整流水线（大纲 → 内容 → 定稿）\n"
+            "按全书 target_chapters 全量续写，仅受「强制重生成大纲」与「额外提示词」影响\n"
+            "「大纲范围」控件仅对「仅生成大纲」按钮生效，启动流水线时被忽略"
+        ))
 
         self.btn_stop = QPushButton(self.tr("■  停止"))
         self.btn_stop.setMinimumWidth(110)  # 改为最小宽度,允许自动扩展
@@ -67,25 +72,34 @@ class ProgressTab(QWidget):
 
         self.btn_outline_only = QPushButton(self.tr("📝  仅生成大纲"))
         self.btn_outline_only.setMinimumWidth(140)
-        self.btn_outline_only.setToolTip(self.tr("仅生成大纲而不生成章节内容，可先预览大纲效果"))
+        self.btn_outline_only.setToolTip(self.tr(
+            "仅生成大纲而不生成章节内容，可先预览大纲效果\n"
+            "受「大纲范围」「强制重生成大纲」「额外提示词」三项约束"
+        ))
         self.btn_outline_only.setProperty("cssClass", "info")
 
-        # 大纲章节范围输入（0 = 自动推断）
+        # 大纲章节范围输入（0 = 自动推断；仅作用于「仅生成大纲」）
         self.spin_outline_start = QSpinBox()
         self.spin_outline_start.setRange(0, 9999)
         self.spin_outline_start.setValue(0)
         self.spin_outline_start.setSpecialValueText(self.tr("自动"))
-        self.spin_outline_start.setToolTip(self.tr("大纲起始章节（0 = 自动推断）"))
+        self.spin_outline_start.setToolTip(self.tr(
+            "大纲起始章节（0 = 自动推断）\n"
+            "仅作用于「仅生成大纲」按钮；启动流水线时被忽略"
+        ))
         self.spin_outline_start.setFixedWidth(72)
 
         self.spin_outline_end = QSpinBox()
         self.spin_outline_end.setRange(0, 9999)
         self.spin_outline_end.setValue(0)
         self.spin_outline_end.setSpecialValueText(self.tr("自动"))
-        self.spin_outline_end.setToolTip(self.tr("大纲结束章节（0 = 自动推断）"))
+        self.spin_outline_end.setToolTip(self.tr(
+            "大纲结束章节（0 = 自动推断）\n"
+            "仅作用于「仅生成大纲」按钮；启动流水线时被忽略"
+        ))
         self.spin_outline_end.setFixedWidth(72)
 
-        lbl_outline_range = QLabel(self.tr("大纲范围:"))
+        lbl_outline_range = QLabel(self.tr("大纲范围（仅大纲）:"))
         lbl_outline_tilde = QLabel("~")
 
         self.chk_force_outline = QCheckBox(self.tr("强制重生成大纲"))
@@ -229,7 +243,24 @@ class ProgressTab(QWidget):
     # ------------------------------------------------------------------
 
     def _on_start(self):
-        """启动流水线（全量续写模式）"""
+        """启动流水线（全量续写模式）
+
+        仅受「强制重生成大纲」与「额外提示词」影响；「大纲范围」控件被忽略。
+        """
+        # 若用户在大纲范围控件填了非 0 值，明确告知其在启动流水线时不生效
+        custom_start = self.spin_outline_start.value()
+        custom_end = self.spin_outline_end.value()
+        if custom_start > 0 or custom_end > 0:
+            self.log_viewer.append_log(
+                self.tr(
+                    "提示：「大纲范围」({0}~{1}) 仅作用于「仅生成大纲」按钮，"
+                    "启动流水线时已忽略；将按全书 target_chapters 全量续写。"
+                ).format(
+                    custom_start if custom_start > 0 else self.tr("自动"),
+                    custom_end if custom_end > 0 else self.tr("自动"),
+                ),
+                "INFO",
+            )
         self._start_pipeline(target_chapters_list=None)
 
     def _start_pipeline(self, target_chapters_list: list[int] | None = None):
