@@ -1601,6 +1601,37 @@ class NovelParamsTab(QWidget):
     # ======================================================================
     # 自动生成写作指南
     # ======================================================================
+    def _try_create_embedding_model(self):
+        """尝试为「描写侧重」语义去重创建 embedding 模型实例
+
+        返回 None 时上层降级到 jieba 词级 Jaccard。
+        失败场景:
+          - self._env_path 不存在
+          - AIConfig 验证失败（无任何 provider 配置）
+          - OPENAI_EMBEDDING_API_KEY 留空
+          - 模型实例化抛异常
+          - 当前 provider 不支持 embed（如纯 Claude 走 NotImplementedError）
+        """
+        try:
+            from dotenv import load_dotenv
+            from src.config.ai_config import AIConfig
+            from ..workers.model_factory import create_model
+
+            if self._env_path and os.path.exists(self._env_path):
+                load_dotenv(self._env_path, override=True)
+            ai_config = AIConfig()
+            embed_config = ai_config.get_openai_config("embedding")
+            if not embed_config.get("api_key"):
+                _logger.info("embedding API key 未配置,语义去重降级到词级 Jaccard")
+                return None
+            return create_model(embed_config, context="WritingGuide")
+        except Exception as e:
+            _logger.warning(
+                f"创建 embedding 模型失败,语义去重降级到词级 Jaccard: "
+                f"{type(e).__name__}: {e}"
+            )
+            return None
+
     def _on_generate_guide(self):
         """启动后台线程生成写作指南
 
@@ -1741,7 +1772,7 @@ class NovelParamsTab(QWidget):
         _try_fill(self._te_tone, sg.get("tone", ""))
         _try_fill(self._te_pacing, sg.get("pacing", ""))
 
-        # description_focus 列表：追加唯一项（按内容去重）
+        # description_focus 列表：语义去重（Tier B 主路径 + Tier A 兜底 + max_total=8 上限）
         df = sg.get("description_focus", [])
         new_focus_items: list[str] = []
         if isinstance(df, list):
@@ -1749,22 +1780,39 @@ class NovelParamsTab(QWidget):
         elif isinstance(df, str) and df.strip():
             new_focus_items = [df]
 
-        existing_focus = {str(x).strip() for x in self._desc_focus_data if str(x).strip()}
+        from ..utils.focus_dedup import deduplicate_focus_items
+        embed_model = self._try_create_embedding_model()
+        kept_focus, dedup_stats = deduplicate_focus_items(
+            existing=self._desc_focus_data,
+            candidates=new_focus_items,
+            embedding_model=embed_model,
+            max_total=8,
+        )
         focus_before = len(self._desc_focus_data)
-        for item in new_focus_items:
-            key = item.strip()
-            if key and key not in existing_focus:
-                self._desc_focus_data.append(item)
-                existing_focus.add(key)
+        self._desc_focus_data.extend(kept_focus)
         focus_added = len(self._desc_focus_data) - focus_before
         self._refresh_desc_focus_list()
         if self._desc_focus_data and self._lw_desc_focus.currentRow() < 0:
             self._lw_desc_focus.setCurrentRow(0)
+        _logger.info(
+            f"描写侧重去重: method={dedup_stats['method']}, "
+            f"新增 {focus_added}, 剔除重复 {dedup_stats['rejected_dup']}, "
+            f"截断 {dedup_stats['rejected_capped']}"
+            + (f", 降级原因={dedup_stats['fallback_reason']}"
+               if dedup_stats.get('fallback_reason') else "")
+        )
 
         # 用户提示：明确"增补"语义，避免以为没生效
         msg_lines = [self.tr("写作指南已按增补模式更新（仅填空、列表追加）。")]
         msg_lines.append(self.tr("文本字段：填入 {0} 项，跳过 {1} 项已有内容。").format(filled, skipped))
-        msg_lines.append(self.tr("描写侧重追加 {0} 条。").format(focus_added))
+        # 描写侧重：明示去重 tier + 详细过滤计数
+        tier_label = (self.tr("语义")
+                      if dedup_stats["method"] == "embedding"
+                      else self.tr("词级"))
+        msg_lines.append(self.tr(
+            "描写侧重：新增 {0} 条，过滤 {1} 条疑似重复，{2} 条因达上限被截断（去重方式：{3}）。"
+        ).format(focus_added, dedup_stats["rejected_dup"],
+                 dedup_stats["rejected_capped"], tier_label))
         # 配角/反派的总数变化（spinbox 表示目标总数）
         target_sup = getattr(self, "_guide_target_sup", None)
         target_ant = getattr(self, "_guide_target_ant", None)
