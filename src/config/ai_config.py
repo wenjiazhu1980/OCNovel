@@ -279,10 +279,23 @@ class AIConfig:
             except (ValueError, AttributeError):
                 fallback_timeout = 120
 
+            # [Phase 6.1] 兼容旧 GEMINI_FALLBACK_BASE_URL,与 ENABLED/TIMEOUT 同步处理
+            # 优先级:OPENAI_FALLBACK_BASE_URL > GEMINI_FALLBACK_BASE_URL(已弃用,提示) > FALLBACK_API_BASE
+            if os.getenv("OPENAI_FALLBACK_BASE_URL"):
+                fallback_base_url = os.getenv("OPENAI_FALLBACK_BASE_URL")
+            elif os.getenv("GEMINI_FALLBACK_BASE_URL"):
+                logging.warning(
+                    "GEMINI_FALLBACK_BASE_URL 已弃用于 OpenAI 兜底配置,请改用 "
+                    "OPENAI_FALLBACK_BASE_URL 或 FALLBACK_API_BASE;本次回退读取旧变量值"
+                )
+                fallback_base_url = os.getenv("GEMINI_FALLBACK_BASE_URL")
+            else:
+                fallback_base_url = os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1")
+
             config.update({
                 "fallback_enabled": True,
                 "fallback_api_key": os.getenv("FALLBACK_API_KEY", ""),
-                "fallback_base_url": os.getenv("FALLBACK_API_BASE", "https://api.siliconflow.cn/v1"),
+                "fallback_base_url": fallback_base_url,
                 "fallback_timeout": fallback_timeout,
                 "fallback_model": os.getenv("FALLBACK_MODEL_ID", "Qwen/Qwen2.5-7B-Instruct"),
                 "fallback_api_mode": os.getenv("FALLBACK_API_MODE", "auto").lower(),

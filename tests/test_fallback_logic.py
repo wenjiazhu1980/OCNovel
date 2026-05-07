@@ -424,3 +424,59 @@ class TestAIConfigFallbackPropagation:
 
             openai_config = ai_config.get_openai_config("outline")
             assert openai_config["fallback_enabled"] is False
+
+
+class TestPhase61BaseUrlCompat:
+    """[Phase 6.1] OPENAI_FALLBACK_BASE_URL 兼容旧 GEMINI_FALLBACK_BASE_URL"""
+
+    def _clean_env(self, **add):
+        """构造干净的 fallback 环境变量,移除潜在历史污染"""
+        env = {
+            "GEMINI_API_KEY": "gk",
+            "OPENAI_FALLBACK_ENABLED": "True",
+            "FALLBACK_API_KEY": "fb-key",
+            "OPENAI_OUTLINE_API_KEY": "ok",
+            "OPENAI_OUTLINE_API_BASE": "https://api.test.com",
+        }
+        env.update(add)
+        return env
+
+    def _get_fallback_base_url(self, env_dict):
+        """通过 patch.dict + clear 隔离 fallback URL 相关环境变量"""
+        # 先清除所有 fallback URL 候选,避免上游 CI 环境干扰
+        for key in ("OPENAI_FALLBACK_BASE_URL", "GEMINI_FALLBACK_BASE_URL", "FALLBACK_API_BASE"):
+            os.environ.pop(key, None)
+        with patch.dict(os.environ, env_dict, clear=False):
+            from src.config.ai_config import AIConfig
+            ai_config = AIConfig()
+            config = ai_config.get_openai_config("outline")
+            return config.get("fallback_base_url")
+
+    def test_openai_fallback_base_url_takes_priority(self):
+        """OPENAI_FALLBACK_BASE_URL 设置时优先生效"""
+        url = self._get_fallback_base_url(self._clean_env(
+            OPENAI_FALLBACK_BASE_URL="https://new-openai.fb/v1",
+            GEMINI_FALLBACK_BASE_URL="https://old-gemini.fb/v1",
+            FALLBACK_API_BASE="https://generic.fb/v1",
+        ))
+        assert url == "https://new-openai.fb/v1"
+
+    def test_gemini_fallback_base_url_used_as_fallback_alias(self):
+        """OPENAI_* 缺失而 GEMINI_FALLBACK_BASE_URL 存在 → 兼容读取"""
+        url = self._get_fallback_base_url(self._clean_env(
+            GEMINI_FALLBACK_BASE_URL="https://old-gemini.fb/v1",
+            FALLBACK_API_BASE="https://generic.fb/v1",
+        ))
+        assert url == "https://old-gemini.fb/v1"
+
+    def test_falls_back_to_generic_api_base(self):
+        """两个新旧 fallback URL 都未设置 → 回退到 FALLBACK_API_BASE"""
+        url = self._get_fallback_base_url(self._clean_env(
+            FALLBACK_API_BASE="https://generic.fb/v1",
+        ))
+        assert url == "https://generic.fb/v1"
+
+    def test_default_when_all_unset(self):
+        """完全未配置 → 返回硬编码默认 (硅基流动)"""
+        url = self._get_fallback_base_url(self._clean_env())
+        assert url == "https://api.siliconflow.cn/v1"
