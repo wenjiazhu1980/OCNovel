@@ -33,9 +33,31 @@ class ProgressTab(QWidget):
         self._marketing_worker: MarketingWorker | None = None
         self._merge_worker: MergeWorker | None = None
         self._outline_worker: OutlineWorker | None = None
+        # [5.4] i18n 注册表
+        from ..utils.i18n_helper import RetranslateRegistry
+        self._i18n_registry = RetranslateRegistry(self.tr)
 
         self._init_ui()
         self._connect_ui()
+        self._auto_register_translatable_widgets()
+
+    def _auto_register_translatable_widgets(self) -> None:
+        """[5.4] 扫描 QGroupBox 与 QPushButton,自动登记到 i18n 注册表
+
+        排除带图标前缀的运行时按钮(▶/⏹/🔄),它们由 _retranslate_buttons 专管。
+        """
+        try:
+            from PySide6.QtWidgets import QGroupBox, QPushButton
+            for gb in self.findChildren(QGroupBox):
+                title = gb.title()
+                if title:
+                    self._i18n_registry.register_title(gb, title)
+            for btn in self.findChildren(QPushButton):
+                text = btn.text()
+                if text and not text.startswith(("▶", "⏹", "🔄")):
+                    self._i18n_registry.register_text(btn, text)
+        except Exception:
+            pass
 
     def set_config_path(self, path: str):
         self._config_path = path
@@ -727,6 +749,12 @@ class ProgressTab(QWidget):
     def changeEvent(self, event):
         """语言切换时更新按钮文本"""
         if event.type() == QEvent.Type.LanguageChange:
+            # [5.4] 先回放 i18n 注册表(覆盖 QGroupBox 与普通 QPushButton)
+            try:
+                self._i18n_registry.retranslate_all()
+            except Exception:
+                pass
+            # 状态相关按钮(含图标前缀)单独刷新
             self._retranslate_buttons()
         super().changeEvent(event)
 

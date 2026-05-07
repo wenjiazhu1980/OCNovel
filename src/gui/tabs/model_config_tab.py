@@ -29,9 +29,28 @@ class ModelConfigTab(QWidget):
         # 需要在"生成中"状态下一并禁用的关键按钮（加载 / 保存 / 各测试按钮）
         self._lockable_buttons: list[QPushButton] = []
         self._group_boxes: list[QGroupBox] = []
+        # [5.4] i18n 注册表
+        from ..utils.i18n_helper import RetranslateRegistry
+        self._i18n_registry = RetranslateRegistry(self.tr)
 
         self._init_ui()
+        self._auto_register_translatable_widgets()
         self._load(silent=True)
+
+    def _auto_register_translatable_widgets(self) -> None:
+        """[5.4] 扫描 QGroupBox 与 QPushButton,自动登记到 i18n 注册表"""
+        try:
+            from PySide6.QtWidgets import QGroupBox, QPushButton
+            for gb in self.findChildren(QGroupBox):
+                title = gb.title()
+                if title:
+                    self._i18n_registry.register_title(gb, title)
+            for btn in self.findChildren(QPushButton):
+                text = btn.text()
+                if text:
+                    self._i18n_registry.register_text(btn, text)
+        except Exception:
+            pass
 
     # ── UI 构建 ──────────────────────────────────────────
 
@@ -462,6 +481,12 @@ class ModelConfigTab(QWidget):
     def changeEvent(self, event):
         """语言切换时更新按钮和分组标题"""
         if event.type() == QEvent.Type.LanguageChange:
+            # [5.4] 优先回放 i18n 注册表(覆盖所有 QGroupBox 与 QPushButton)
+            try:
+                self._i18n_registry.retranslate_all()
+            except Exception:
+                pass
+            # 保留原显式刷新作为关键按钮兜底
             self._btn_load.setText(self.tr("加载配置"))
             self._btn_save.setText(self.tr("保存配置"))
         super().changeEvent(event)
