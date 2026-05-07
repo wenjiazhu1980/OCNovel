@@ -33,6 +33,47 @@ class OutlineGenerator:
             return item.get('名称', str(item))
         return item
 
+    @staticmethod
+    def _normalize_extended_outline_fields(chapter_data: dict) -> dict:
+        """[H5] 归一化雪花写作法扩展字段,确保类型符合 ChapterOutline 定义
+
+        Prompt 要求模型输出 emotion_tone / character_goals / scene_sequence /
+        foreshadowing / pov_character 字段,但模型可能:
+        - 返回 None / 缺字段 → 使用默认值
+        - 返回错误类型(如 list 当 dict)→ 兜底为默认值并记录 warning
+        """
+        def _as_str(value, field_name):
+            if value is None:
+                return ""
+            if isinstance(value, str):
+                return value.strip()
+            logging.warning(f"扩展字段 {field_name} 类型异常({type(value).__name__}),已兜底为空字符串")
+            return ""
+
+        def _as_list_str(value, field_name):
+            if value is None:
+                return []
+            if isinstance(value, list):
+                return [str(item).strip() for item in value if item is not None]
+            logging.warning(f"扩展字段 {field_name} 类型异常({type(value).__name__}),已兜底为空列表")
+            return []
+
+        def _as_dict_str(value, field_name):
+            if value is None:
+                return {}
+            if isinstance(value, dict):
+                return {str(k): str(v) for k, v in value.items()}
+            logging.warning(f"扩展字段 {field_name} 类型异常({type(value).__name__}),已兜底为空字典")
+            return {}
+
+        return {
+            "emotion_tone": _as_str(chapter_data.get("emotion_tone"), "emotion_tone"),
+            "character_goals": _as_dict_str(chapter_data.get("character_goals"), "character_goals"),
+            "scene_sequence": _as_list_str(chapter_data.get("scene_sequence"), "scene_sequence"),
+            "foreshadowing": _as_list_str(chapter_data.get("foreshadowing"), "foreshadowing"),
+            "pov_character": _as_str(chapter_data.get("pov_character"), "pov_character"),
+        }
+
     def _merge_list_unique(self, target_list: list, source_list: list):
         """将 source_list 中的唯一元素添加到 target_list 中"""
         existing_elements_set = set(self._get_hashable_item(i) for i in target_list)
@@ -631,7 +672,9 @@ class OutlineGenerator:
                         key_points=chapter_data.get('key_points', []),
                         characters=chapter_data.get('characters', []),
                         settings=chapter_data.get('settings', []),
-                        conflicts=chapter_data.get('conflicts', [])
+                        conflicts=chapter_data.get('conflicts', []),
+                        # [H5] 透传雪花写作法扩展字段(经类型归一化)
+                        **self._normalize_extended_outline_fields(chapter_data),
                     )
 
                     if self._check_outline_consistency(new_outline, previous_outlines):
@@ -884,6 +927,8 @@ class OutlineGenerator:
                 characters=chapter_data.get("characters", []),
                 settings=chapter_data.get("settings", []),
                 conflicts=chapter_data.get("conflicts", []),
+                # [H5] 透传雪花写作法扩展字段(经类型归一化)
+                **self._normalize_extended_outline_fields(chapter_data),
             )
 
             if not self._check_outline_consistency(new_outline, previous_outlines):
