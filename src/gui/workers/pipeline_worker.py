@@ -171,6 +171,24 @@ class PipelineWorker(QThread):
             content_generator._load_outline()
             required_outline_chapters = self._get_required_outline_chapters(end_chapter)
             outline_count = len(content_generator.chapter_outlines)
+
+            # 大纲不连续（位置对齐后存在 None 槽）时，逐章 generate_content 会在
+            # 内部守卫处全部返回 False（参见 ContentGenerator.generate_content），
+            # 末尾再调用 merge_all_chapters 也只能产出残缺合并文件。直接提前失败，
+            # 把"先重新生成大纲"的指引一次性给出来，避免数百条无意义的逐章错误日志。
+            discontinuous = getattr(content_generator, "_outline_discontinuous", []) or []
+            if discontinuous:
+                preview = discontinuous[:20]
+                ellipsis = " ..." if len(discontinuous) > 20 else ""
+                logger.error(
+                    QCoreApplication.translate(
+                        "PipelineWorker",
+                        "大纲章节号不连续，缺失 {0} 个: {1}{2}。请先勾选「强制重生成大纲」修复后再启动流水线。",
+                    ).format(len(discontinuous), preview, ellipsis)
+                )
+                self.pipeline_finished.emit(False)
+                return
+
             if outline_count < required_outline_chapters:
                 if self._target_chapters_list:
                     requested_targets = self._get_requested_target_chapters(end_chapter)

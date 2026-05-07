@@ -727,7 +727,14 @@ class ContentGenerator:
             imitated_fallback_count = 0  # 仿写版用了原文 fallback 的章数
             has_imitated = False
 
-            for outline in self.chapter_outlines:
+            # 大纲不连续时存在 None 槽位（位置对齐策略，参见 _load_outline）：
+            # 若直接访问 outline.chapter_number 会触发 AttributeError；这里跳过空槽并记录，
+            # 让合并在不完整大纲下仍可输出可用部分而非整体失败。
+            missing_outline_slots: list[int] = []
+            for slot_idx, outline in enumerate(self.chapter_outlines):
+                if outline is None:
+                    missing_outline_slots.append(slot_idx + 1)
+                    continue
                 chapter_num = outline.chapter_number
                 cleaned_title = self._clean_filename(outline.title)
                 # 原文查找复用 _chapter_content_exists（带模糊扫描兜底，
@@ -773,6 +780,14 @@ class ContentGenerator:
                     imitated_fallback_count += 1
                 # 原文与仿写都缺 → 跳过该章
 
+            if missing_outline_slots:
+                preview = missing_outline_slots[:20]
+                ellipsis = ' ...' if len(missing_outline_slots) > 20 else ''
+                logger.warning(
+                    f"合并时检测到 {len(missing_outline_slots)} 个大纲缺失槽位"
+                    f"（已跳过）: {preview}{ellipsis}。建议重新生成大纲修复 outline.json。"
+                )
+
             if not original_parts:
                 logger.error("未找到任何章节文件，无法合并。")
                 return None
@@ -782,8 +797,9 @@ class ContentGenerator:
             output_path = os.path.join(self.output_dir, output_filename)
             with open(output_path, 'w', encoding='utf-8') as f:
                 f.write(merged_content)
+            valid_outline_count = len(self.chapter_outlines) - len(missing_outline_slots)
             logger.info(
-                f"已合并 {original_count}/{len(self.chapter_outlines)} 章到 "
+                f"已合并 {original_count}/{valid_outline_count} 章到 "
                 f"{output_path}，总字数: {len(merged_content)}"
             )
 
@@ -797,7 +813,7 @@ class ContentGenerator:
                     logger.info(
                         f"已合并仿写版 {imitated_real_count} 仿写 + "
                         f"{imitated_fallback_count} 原文 fallback / "
-                        f"{len(self.chapter_outlines)} 章到 "
+                        f"{valid_outline_count} 章到 "
                         f"{imitated_output_path}，总字数: {len(imitated_merged)}"
                     )
                 except Exception as e:

@@ -337,6 +337,7 @@ class ProgressTab(QWidget):
         self._worker.progress_updated.connect(self._on_progress_updated)
         self._worker.pipeline_finished.connect(self._on_pipeline_finished)
         self._worker.log_message.connect(self.log_viewer.append_log)
+        self._attach_thread_lifecycle("_worker")
 
         # 切换按钮状态
         self.btn_start.setEnabled(False)
@@ -388,6 +389,27 @@ class ProgressTab(QWidget):
             except RuntimeError:
                 # QThread 已被销毁
                 pass
+
+    def _attach_thread_lifecycle(self, attr_name: str) -> None:
+        """绑定 QThread 内置 finished 信号到引用清理。
+
+        关键：自定义 *_finished 信号是在 run() 内部 emit 的，槽里若直接置
+        self._worker = None，可能在 run() 还未真正返回时丢掉最后一个 Python
+        强引用，触发 'QThread: Destroyed while thread is still running' →
+        zsh: abort。改用 QThread.finished（Qt 在 run() 完整返回后才发射）来
+        清空属性，避免提前析构 C++ 线程对象。
+        """
+        worker = getattr(self, attr_name, None)
+        if worker is None:
+            return
+
+        def _on_thread_finished():
+            # 仅当属性仍指向同一个 worker 时才清空（防止用户已启动新任务后
+            # 旧线程的 finished 把新 worker 一并清掉）。
+            if getattr(self, attr_name, None) is worker:
+                setattr(self, attr_name, None)
+
+        worker.finished.connect(_on_thread_finished)
 
     def _on_selection_changed(self):
         """章节列表选择变化时，更新重新生成按钮状态"""
@@ -450,6 +472,7 @@ class ProgressTab(QWidget):
 
         self._outline_worker.outline_finished.connect(self._on_outline_finished)
         self._outline_worker.log_message.connect(self.log_viewer.append_log)
+        self._attach_thread_lifecycle("_outline_worker")
 
         self.btn_outline_only.setEnabled(False)
         self.btn_outline_only.setText(self.tr("⏳  大纲生成中..."))
@@ -476,7 +499,7 @@ class ProgressTab(QWidget):
                 self.tr("大纲生成失败：\n{0}").format(message),
             )
 
-        self._outline_worker = None
+        # 引用清理由 QThread.finished 触发，见 _attach_thread_lifecycle。
 
     def _on_generate_marketing(self):
         """生成营销内容"""
@@ -525,6 +548,7 @@ class ProgressTab(QWidget):
         # 连接信号
         self._marketing_worker.generation_finished.connect(self._on_marketing_finished)
         self._marketing_worker.log_message.connect(self.log_viewer.append_log)
+        self._attach_thread_lifecycle("_marketing_worker")
 
         # 禁用按钮 + 广播全局 busy 状态（锁定其它 tab）
         self.btn_marketing.setEnabled(False)
@@ -580,6 +604,7 @@ class ProgressTab(QWidget):
         # 连接信号
         self._merge_worker.merge_finished.connect(self._on_merge_finished)
         self._merge_worker.log_message.connect(self.log_viewer.append_log)
+        self._attach_thread_lifecycle("_merge_worker")
 
         # 禁用按钮 + 广播全局 busy 状态（锁定其它 tab）
         self.btn_merge.setEnabled(False)
@@ -633,8 +658,8 @@ class ProgressTab(QWidget):
                 self.tr("流水线未完整完成，已生成 {0} 章。").format(completed), "WARNING"
             )
 
-        # 清理 Worker 引用
-        self._worker = None
+        # 引用清理改由 QThread.finished 触发（见 _attach_thread_lifecycle），
+        # 这里不再立即置 None，避免在 run() 尚未返回时丢掉最后一个 Python 强引用。
 
     def _on_marketing_finished(self, success: bool, message: str):
         """营销内容生成完成"""
@@ -658,8 +683,9 @@ class ProgressTab(QWidget):
             )
             self.log_viewer.append_log(self.tr("营销内容生成失败: {0}").format(message), "ERROR")
 
-        # 清理 Worker 引用
-        self._marketing_worker = None
+        # 引用清理由 QThread.finished 触发，见 _attach_thread_lifecycle。
+        # 旧逻辑：self._marketing_worker = None  ← 在 run() 尚未返回时丢引用会触发
+        # "QThread: Destroyed while thread is still running" → zsh: abort。
 
     def _on_merge_finished(self, success: bool, message: str):
         """章节合并完成"""
@@ -683,8 +709,7 @@ class ProgressTab(QWidget):
             )
             self.log_viewer.append_log(self.tr("章节合并失败: {0}").format(message), "ERROR")
 
-        # 清理 Worker 引用
-        self._merge_worker = None
+        # 引用清理由 QThread.finished 触发，见 _attach_thread_lifecycle。
 
     def _open_output_dir(self):
         """在系统文件管理器中打开输出目录"""
