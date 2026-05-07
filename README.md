@@ -265,6 +265,22 @@ pyinstaller ocnovel_win.spec --clean
 - 至少配置一组 AI 模型 API 密钥（Claude / Gemini / OpenAI 兼容）
 - 如使用 Claude，需额外配置嵌入模型（OpenAI 兼容）
 
+## 开发与测试
+
+```bash
+# 全量测试（约 2 分钟）
+python -m pytest tests/ -v
+
+# 静默模式 + 失败摘要
+python -m pytest tests/ -q --tb=short
+
+# 单文件 / 单用例
+python -m pytest tests/test_translator_h2.py -v
+python -m pytest tests/test_outline_generator.py::TestSpecificCase -v
+```
+
+测试约定与 fixture 说明详见 [`tests/README.md`](tests/README.md)。
+
 ## 常见问题 (FAQ)
 
 ### 1. 如何下载和运行 Mac App？

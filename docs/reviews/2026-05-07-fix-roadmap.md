@@ -3,6 +3,26 @@
 > **关联评审**：[`./2026-05-07-codex-review.md`](./2026-05-07-codex-review.md)
 > **目标**：让 5 个 High 项全部修复，干净 checkout 的 CI 通过，可基于 HEAD 打 release tag
 > **总估计工时**：8–12 人时（不含编写测试用例时间）
+> **完成状态（截至 2026-05-08）**：✅ Phase 0-6 全部完成,共 17 commits / 446+ 测试
+
+## 交付摘要
+
+| Phase | 状态 | Commit SHA | 关键产物 |
+|---|---|---|---|
+| Phase 0 (H1) | ✅ | `85a3797` | tests/ 入库 + 基建恢复 |
+| Phase 1 (H2) | ✅ | `658dd12` | translator zh→en 崩溃修复 |
+| Phase 2 (H3) | ✅ | `9727ea1` | progress 状态模型重构 |
+| Phase 3 (H4) | ✅ | `df21831` | pipeline 失败收敛 |
+| Phase 4 (H5) | ✅ | `733f8b2` | 大纲扩展字段透传 |
+| Phase 5.2 | ✅ | `07ea1a7` | load_outline_chapter_data |
+| Phase 5.1 + 5.5 | ✅ | `8d4029f` | DRY 收敛 + JSON schema 校验 |
+| Phase 5.6 | ✅ | `67863e4` | 多版本 mtime 排序 |
+| Phase 5.3 | ✅ | `1ad6da5` | focus_dedup 异步化 |
+| Phase 5.4 | ✅ | `225894a` | i18n RetranslateRegistry |
+| Phase 6.1 | ✅ | (本批) | OPENAI_FALLBACK_BASE_URL 兼容 |
+| Phase 6.2 | ✅ | (本批) | KB 章节正则中文数字 |
+| Phase 6.3 | ✅ | (本批) | KB temp schema_version |
+| Phase 6.4 | ✅ | (本批) | README/CLAUDE.md/路线图文档 |
 
 ---
 

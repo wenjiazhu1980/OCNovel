@@ -59,6 +59,16 @@ data/                            # 运行时数据（gitignored）
 - **Knowledge Base**: 文本分块 → 嵌入(OpenAI 兼容 Embedding) → FAISS 向量检索 → Reranker API。Claude 不支持嵌入，需额外配置 OpenAI 兼容的嵌入模型。
 - **GUI**: PySide6 三 Tab 界面（模型配置 / 小说参数 / 创作进度），`pipeline_worker` 后台线程运行生成流水线，`log_handler` 将 `logging` 桥接到 Qt Signal 实时输出。支持中英双语切换（i18n .qm 文件）。
 - **Sensitive data sanitization**: `_sanitize_config_for_logging()` 过滤API key日志输出。
+- **稀疏大纲与自动补洞**: `outline.json` 支持 `None` 占位的稀疏列表（`b8267c7`），生成失败章节不丢空槽。`_outline_discontinuous` 检测缺洞后由 `OutlineGenerator.patch_missing_chapters()` 单一权威实现补洞（多轮重试 + 一致性检查 + 即时落盘）。CLI 工具 `tools/fill_outline_gaps.py` 与 `pipeline_worker` 均薄封装调用此方法。
+
+## generation_config 关键键
+
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `outline_auto_patch_holes` | `true` | `pipeline_worker` 检测到大纲不连续时是否自动调用 `patch_missing_chapters` 补洞（关闭则改为提示用户手动处理） |
+| `outline_gap_max_retries` | `2` | `patch_missing_chapters` 单章最大重试轮数 |
+| `outline_gap_retry_delay` | `3` | 单章失败后退避秒数 |
+| `max_retries` | 跟随用户 | `_process_single_chapter` 单章生成失败的最大重试次数 |
 
 ## Commands
 
