@@ -146,9 +146,12 @@ def switch_language(app: QApplication, language: str) -> bool:
         是否成功切换
     """
     # 移除旧翻译器
-    for t in getattr(app, '_translators', []):
+    # 注意：首次启动语言为 zh_CN 时，load_translation 会提前返回不创建 _translators
+    # 因此这里必须用 getattr 兜底，并通过重新赋值（而非 .clear()）安全重置
+    translators = getattr(app, '_translators', [])
+    for t in translators:
         app.removeTranslator(t)
-    app._translators.clear()
+    app._translators = []
 
     # 安装新翻译器（zh_CN 为源语言，不需要翻译器）
     return load_translation(app, language)
