@@ -364,6 +364,47 @@ def main():
             # Ensure content_generator always loads the outline before proceeding
             content_generator._load_outline()
 
+            # 自动补洞：与 GUI pipeline_worker 一致，缺失章节优先尝试单章补生成，
+            # 仅在补洞失败或被禁用时才返回错误，避免要求用户重生整本大纲。
+            discontinuous = getattr(content_generator, "_outline_discontinuous", []) or []
+            if discontinuous:
+                auto_patch_enabled = bool(
+                    getattr(config, "generation_config", {}).get("outline_auto_patch_holes", True)
+                )
+                if auto_patch_enabled and not force_regenerate:
+                    logging.warning(
+                        f"检测到大纲不连续（缺失 {len(discontinuous)} 个: {discontinuous[:20]}），尝试自动补洞……"
+                    )
+                    outline_generator._load_outline()
+                    try:
+                        succeeded, still_missing = outline_generator.patch_missing_chapters(
+                            discontinuous,
+                            novel_type=config.novel_config.get("type"),
+                            theme=config.novel_config.get("theme"),
+                            style=config.novel_config.get("style"),
+                            extra_prompt=args.extra_prompt,
+                        )
+                    except KeyboardInterrupt:
+                        logging.info("大纲补洞被用户中断，停止流程。")
+                        return
+                    if succeeded:
+                        logging.info(f"自动补洞成功 {len(succeeded)} 章: {succeeded[:20]}")
+                    if still_missing:
+                        logging.error(
+                            f"自动补洞后仍有 {len(still_missing)} 章未补齐: {still_missing[:20]}。"
+                            "请手动修复 outline.json 或加 --force-outline 重生整本大纲。"
+                        )
+                        return
+                    content_generator._load_outline()
+                    discontinuous = getattr(content_generator, "_outline_discontinuous", []) or []
+
+                if discontinuous:
+                    logging.error(
+                        f"大纲章节号不连续，缺失: {discontinuous[:20]}。"
+                        "请加 --force-outline 重生整本大纲，或手动修复 outline.json。"
+                    )
+                    return
+
             # Check if start chapter is already beyond target
             if actual_start_chapter_num > end_chapter:
                  content_success = True # Nothing to do, considered success

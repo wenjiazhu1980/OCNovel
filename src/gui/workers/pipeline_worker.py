@@ -172,22 +172,69 @@ class PipelineWorker(QThread):
             required_outline_chapters = self._get_required_outline_chapters(end_chapter)
             outline_count = len(content_generator.chapter_outlines)
 
-            # 大纲不连续（位置对齐后存在 None 槽）时，逐章 generate_content 会在
-            # 内部守卫处全部返回 False（参见 ContentGenerator.generate_content），
-            # 末尾再调用 merge_all_chapters 也只能产出残缺合并文件。直接提前失败，
-            # 把"先重新生成大纲"的指引一次性给出来，避免数百条无意义的逐章错误日志。
+            # 大纲不连续（位置对齐后存在 None 槽）→ 自动补洞优先于 fail-fast。
+            # 仅针对缺失章节调用 outline_generator.patch_missing_chapters，
+            # 不会改写相邻已有大纲（与 force_outline 全量重生区别开），
+            # 已写正文对应的大纲条目保持不变。补洞失败的章节仍走原有 fail-fast 逻辑。
             discontinuous = getattr(content_generator, "_outline_discontinuous", []) or []
             if discontinuous:
-                preview = discontinuous[:20]
-                ellipsis = " ..." if len(discontinuous) > 20 else ""
-                logger.error(
-                    QCoreApplication.translate(
-                        "PipelineWorker",
-                        "大纲章节号不连续，缺失 {0} 个: {1}{2}。请先勾选「强制重生成大纲」修复后再启动流水线。",
-                    ).format(len(discontinuous), preview, ellipsis)
+                auto_patch_enabled = bool(
+                    config.generation_config.get("outline_auto_patch_holes", True)
                 )
-                self.pipeline_finished.emit(False)
-                return
+                if auto_patch_enabled and not self._force_outline:
+                    logger.warning(
+                        QCoreApplication.translate(
+                            "PipelineWorker",
+                            "检测到大纲不连续（缺失 {0} 个: {1}），尝试自动补洞……",
+                        ).format(len(discontinuous), discontinuous[:20])
+                    )
+                    # 把 outline_generator 的内存状态同步到磁盘最新版本，
+                    # 避免补洞写回时覆盖掉 content_generator 这一侧已加载的更新
+                    outline_generator._load_outline()
+                    try:
+                        succeeded, still_missing = outline_generator.patch_missing_chapters(
+                            discontinuous,
+                            novel_type=config.novel_config.get("type"),
+                            theme=config.novel_config.get("theme"),
+                            style=config.novel_config.get("style"),
+                            extra_prompt=self._extra_prompt or None,
+                        )
+                    except InterruptedError:
+                        logger.info(QCoreApplication.translate(
+                            "PipelineWorker", "大纲补洞被用户取消，流水线中止。"
+                        ))
+                        self.pipeline_finished.emit(False)
+                        return
+                    if succeeded:
+                        logger.info(QCoreApplication.translate(
+                            "PipelineWorker", "自动补洞成功 {0} 章: {1}"
+                        ).format(len(succeeded), succeeded[:20]))
+                    if still_missing:
+                        logger.error(QCoreApplication.translate(
+                            "PipelineWorker",
+                            "自动补洞后仍有 {0} 章未补齐: {1}。流水线中止，请手动修复 outline.json 或勾选「强制重生成大纲」。",
+                        ).format(len(still_missing), still_missing[:20]))
+                        self.pipeline_finished.emit(False)
+                        return
+                    # 补洞成功 → 重新加载大纲使后续循环看到完整列表
+                    content_generator._load_outline()
+                    discontinuous = getattr(content_generator, "_outline_discontinuous", []) or []
+
+                # 再判断一次：若仍不连续（自动补洞被禁用 / 或重新加载后仍有空槽）→ 失败
+                if discontinuous:
+                    preview = discontinuous[:20]
+                    ellipsis = " ..." if len(discontinuous) > 20 else ""
+                    logger.error(
+                        QCoreApplication.translate(
+                            "PipelineWorker",
+                            "大纲章节号不连续，缺失 {0} 个: {1}{2}。请先勾选「强制重生成大纲」修复后再启动流水线。",
+                        ).format(len(discontinuous), preview, ellipsis)
+                    )
+                    self.pipeline_finished.emit(False)
+                    return
+
+                # 自动补洞通过 → 用最新大纲长度刷新计数器，让下面的章节数检查使用准确值
+                outline_count = len(content_generator.chapter_outlines)
 
             if outline_count < required_outline_chapters:
                 if self._target_chapters_list:

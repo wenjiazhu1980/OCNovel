@@ -694,6 +694,126 @@ class OutlineGenerator:
             self._save_outline()
             return False
 
+    def patch_missing_chapters(
+        self,
+        missing_chapters: List[int],
+        novel_type: str,
+        theme: str,
+        style: str,
+        extra_prompt: Optional[str] = None,
+        max_rounds: Optional[int] = None,
+        retry_delay: Optional[float] = None,
+    ) -> Tuple[List[int], List[int]]:
+        """补齐 outline.json 中已知缺失的章节（不触碰其它条目）。
+
+        与 generate_outline(force_regenerate=True, replace_range=(1, N)) 不同，
+        本方法只针对调用方传入的稀疏章节号清单逐章补生成，相邻已存在大纲条目原样保留，
+        不会改写已有正文对应的大纲。
+
+        复用 _generate_single_chapter_outline 的单章生成器 + 多轮重试 + 每章成功即保存
+        的现有模式（与 generate_outline 末尾的 [补生成] 逻辑同源），保证：
+          - 每章生成时使用 ``_get_context_for_batch`` 拉取前文上下文，相邻章节作为锚点；
+          - 每补一章立即 _save_outline()，崩溃时已补章节不会丢；
+          - 一致性检查不通过时仍记为失败，避免将不兼容大纲写入。
+
+        Args:
+            missing_chapters: 待补章节号列表（1-based），调用方通常从 ContentGenerator
+                ``_outline_discontinuous`` 直接转入。
+            max_rounds: 最大补洞轮数，None 时回退到 generation_config["outline_gap_max_retries"]。
+            retry_delay: 单章失败后退避秒数，None 时回退到 ["outline_gap_retry_delay"]。
+
+        Returns:
+            (succeeded, still_missing): 已补齐章节号列表 与 经过 max_rounds 仍未补上的章节号列表。
+        """
+        # 入参清洗：去重 + 排序 + 过滤越界
+        if not missing_chapters:
+            return [], []
+        deduped = sorted({int(n) for n in missing_chapters if isinstance(n, int) and n >= 1})
+        if not deduped:
+            return [], []
+
+        # 配置回退
+        gen_cfg = getattr(self.config, "generation_config", {}) or {}
+        if max_rounds is None:
+            try:
+                max_rounds = max(1, int(gen_cfg.get("outline_gap_max_retries", 2)))
+            except (TypeError, ValueError):
+                max_rounds = 2
+        if retry_delay is None:
+            try:
+                retry_delay = max(0.0, float(gen_cfg.get("outline_gap_retry_delay", 3)))
+            except (TypeError, ValueError):
+                retry_delay = 3.0
+
+        # 确保 outline_list 至少能放下最大目标章节
+        target_max = max(deduped)
+        if len(self.chapter_outlines) < target_max:
+            self.chapter_outlines.extend([None] * (target_max - len(self.chapter_outlines)))
+            logging.info(f"[补洞] 扩展大纲列表至 {target_max} 以容纳目标章节")
+
+        pending = list(deduped)
+        succeeded: List[int] = []
+
+        logging.info(
+            f"[补洞] 开始补齐 {len(pending)} 个缺失章节（最多 {max_rounds} 轮）: {pending}"
+        )
+
+        for round_idx in range(max_rounds):
+            if not pending:
+                break
+            if self.cancel_checker and self.cancel_checker():
+                logging.info("[补洞] 收到取消信号，中止。")
+                self._save_outline()
+                raise InterruptedError("用户取消大纲补洞")
+
+            round_no = round_idx + 1
+            logging.info(f"[补洞] 第 {round_no}/{max_rounds} 轮，待补: {pending}")
+
+            for ch_num in list(pending):
+                if self.cancel_checker and self.cancel_checker():
+                    logging.info("[补洞] 收到取消信号，中止。")
+                    self._save_outline()
+                    raise InterruptedError("用户取消大纲补洞")
+
+                # 已被早前轮补上（一致性检查通过后写入了对应槽位）→ 直接出列
+                slot = self.chapter_outlines[ch_num - 1] if ch_num - 1 < len(self.chapter_outlines) else None
+                if isinstance(slot, ChapterOutline) and slot.chapter_number == ch_num:
+                    pending.remove(ch_num)
+                    if ch_num not in succeeded:
+                        succeeded.append(ch_num)
+                    continue
+
+                ok = self._generate_single_chapter_outline(
+                    ch_num, novel_type, theme, style, extra_prompt
+                )
+                if ok:
+                    pending.remove(ch_num)
+                    succeeded.append(ch_num)
+                    self._save_outline()
+                elif retry_delay > 0:
+                    if not self._wait_retry_delay(retry_delay):
+                        # 等待期间收到取消
+                        self._save_outline()
+                        return sorted(succeeded), sorted(pending)
+
+            if pending:
+                logging.warning(
+                    f"[补洞] 第 {round_no} 轮结束，仍剩 {len(pending)} 个未补: {pending}"
+                )
+
+        # 最后再 save 一次，覆盖最后一轮成功的章节（_generate_single_chapter_outline
+        # 内部不 save，只有调用方落盘——这里收尾）
+        self._save_outline()
+
+        if pending:
+            logging.error(
+                f"[补洞] 完成 {max_rounds} 轮后仍有 {len(pending)} 个章节未补齐: {pending}"
+            )
+        else:
+            logging.info(f"[补洞] 全部 {len(succeeded)} 个章节补齐完成: {sorted(succeeded)}")
+
+        return sorted(succeeded), sorted(pending)
+
     def _generate_single_chapter_outline(
         self,
         chapter_num: int,
