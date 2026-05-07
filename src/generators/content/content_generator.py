@@ -210,18 +210,24 @@ class ContentGenerator:
         summary_max = max(summary_keys) if summary_keys else 0
         disk_max = max(disk_keys) if disk_keys else 0
 
-        # ── 3. 进度指针 = 最长连续前缀 N（1..N 都已存在于并集中）──
-        # 这样后续循环会从第一个"洞"开始扫，逐章决定生成 / 补 finalize / 跳过。
-        union_keys = summary_keys | disk_keys
+        # ── 3. 进度指针 = 最长连续前缀 N（1..N 都已存在【正文】文件）──
+        # 关键：完成态以"正文存在"为硬条件（disk_keys），而非 summary∪disk 的并集。
+        # 否则会出现"假完成"——summary.json 残留了第 N 章条目但正文已被删除时,
+        # 旧逻辑会把 N 视为已完成、跳过重生成,造成最终合并文件缺章。
         consecutive_prefix = 0
-        while (consecutive_prefix + 1) in union_keys:
+        while (consecutive_prefix + 1) in disk_keys:
             consecutive_prefix += 1
         self.current_chapter = consecutive_prefix
 
-        # ── 4. 记录差异，供 _generate_remaining_chapters 补 finalize ──
+        # ── 4. 记录差异，供 _generate_remaining_chapters 与日志使用 ──
         self._chapters_in_summary = summary_keys
         self._chapters_on_disk = disk_keys
+        # 4.1 正文已落盘但缺 summary.json 条目 → 由生成循环补 finalize
         self._chapters_pending_finalize = sorted(disk_keys - summary_keys)
+        # 4.2 摘要存在但正文缺失 → 异常态(stale_summary_only),需要重新生成正文
+        #     这是 H3 修复的关键新增追踪项,避免被 union 逻辑掩盖
+        self._chapters_stale_summary_only = sorted(summary_keys - disk_keys)
+        # 4.3 大纲范围内的"正文洞"(综合 summary 与 disk 的最大边界)
         self._chapters_missing_content = sorted(
             n for n in range(1, max(summary_max, disk_max) + 1)
             if n not in disk_keys
@@ -234,6 +240,13 @@ class ContentGenerator:
                 f"发现 {len(self._chapters_pending_finalize)} 个章节正文已存在但缺 summary.json 条目: "
                 f"{preview}{ellipsis}（生成循环将自动补 finalize）"
             )
+        if self._chapters_stale_summary_only:
+            preview = self._chapters_stale_summary_only[:20]
+            ellipsis = ' ...' if len(self._chapters_stale_summary_only) > 20 else ''
+            logger.warning(
+                f"检测到 {len(self._chapters_stale_summary_only)} 个 summary-only 异常章节"
+                f"（摘要存在但正文缺失）: {preview}{ellipsis}（将在生成循环到达时重新生成正文）"
+            )
         if self._chapters_missing_content:
             preview = self._chapters_missing_content[:20]
             ellipsis = ' ...' if len(self._chapters_missing_content) > 20 else ''
@@ -244,7 +257,9 @@ class ContentGenerator:
 
         logger.info(
             f"Loaded progress: summary_max={summary_max}, disk_max={disk_max}, "
-            f"consecutive_prefix={consecutive_prefix}, current_chapter={self.current_chapter}"
+            f"consecutive_prefix={consecutive_prefix}(基于正文), "
+            f"current_chapter={self.current_chapter}, "
+            f"stale_summary_only={len(self._chapters_stale_summary_only)}"
         )
 
     def _save_progress(self):
