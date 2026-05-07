@@ -74,6 +74,25 @@ class OutlineGenerator:
             "pov_character": _as_str(chapter_data.get("pov_character"), "pov_character"),
         }
 
+    @staticmethod
+    def _looks_like_chapter_outline(obj: dict) -> bool:
+        """[5.5] 校验 dict 是否疑似章节大纲对象,用于 JSON 流式恢复时过滤嵌套字典
+
+        判断标准: 至少包含 chapter_number 字段,或者同时包含 title 与
+        以下任一关键字段: key_points / characters / settings / conflicts。
+        这样可以排除 character_goals / foreshadowing 等嵌套结构被误捕为章节。
+        """
+        if not isinstance(obj, dict):
+            return False
+        # 优先信号: chapter_number 字段存在(雪花法/数据结构强约束)
+        if "chapter_number" in obj:
+            return True
+        # 次级信号: 必须有 title 且至少一个章节关键字段
+        if "title" not in obj:
+            return False
+        chapter_keys = {"key_points", "characters", "settings", "conflicts"}
+        return any(k in obj for k in chapter_keys)
+
     def _merge_list_unique(self, target_list: list, source_list: list):
         """将 source_list 中的唯一元素添加到 target_list 中"""
         existing_elements_set = set(self._get_hashable_item(i) for i in target_list)
@@ -82,7 +101,7 @@ class OutlineGenerator:
             if hashable_item not in existing_elements_set:
                 target_list.append(item)
                 existing_elements_set.add(hashable_item)
-        
+
     def _load_outline(self):
         """加载大纲文件，构建位置对齐的稀疏列表
 
@@ -429,63 +448,27 @@ class OutlineGenerator:
             ]
 
             if missing_chapters:
-                raw_gap_retries = self.config.generation_config.get("outline_gap_max_retries", 2)
-                raw_gap_delay = self.config.generation_config.get("outline_gap_retry_delay", 3)
-                try:
-                    gap_max_retries = max(1, int(raw_gap_retries))
-                except (TypeError, ValueError):
-                    gap_max_retries = 2
-                try:
-                    gap_retry_delay = max(0.0, float(raw_gap_delay))
-                except (TypeError, ValueError):
-                    gap_retry_delay = 3.0
-
+                # [5.1] DRY 整合: 调用 patch_missing_chapters 单一实现,
+                # 不再在此处复制粘贴重试循环 / 一致性检查 / 落盘逻辑
                 logging.info(
-                    f"检测到 {len(missing_chapters)} 个缺失章节: {missing_chapters}，"
-                    f"开始逐章补生成（最多 {gap_max_retries} 轮）"
+                    f"检测到 {len(missing_chapters)} 个缺失章节: {missing_chapters},"
+                    f"调用 patch_missing_chapters 补齐"
                 )
-
-                for round_idx in range(gap_max_retries):
-                    if not missing_chapters:
-                        break
-                    if self.cancel_checker and self.cancel_checker():
-                        logging.info("补生成期间收到取消信号，中止。")
-                        self._save_outline()
-                        raise InterruptedError("用户取消大纲生成")
-
-                    round_no = round_idx + 1
-                    logging.info(f"[补生成] 第 {round_no}/{gap_max_retries} 轮，待补章节: {missing_chapters}")
-
-                    for ch_num in list(missing_chapters):
-                        if self.cancel_checker and self.cancel_checker():
-                            logging.info("补生成期间收到取消信号，中止。")
-                            self._save_outline()
-                            raise InterruptedError("用户取消大纲生成")
-
-                        success = self._generate_single_chapter_outline(
-                            ch_num, novel_type, theme, style, extra_prompt
-                        )
-                        if success:
-                            missing_chapters.remove(ch_num)
-                            self._save_outline()
-                        elif gap_retry_delay > 0:
-                            if not self._wait_retry_delay(gap_retry_delay):
-                                self._save_outline()
-                                return False
-
-                    if missing_chapters:
-                        logging.warning(
-                            f"[补生成] 第 {round_no} 轮结束，仍有 {len(missing_chapters)} 个缺失: {missing_chapters}"
-                        )
-
-                if missing_chapters:
+                succeeded, still_missing = self.patch_missing_chapters(
+                    missing_chapters,
+                    novel_type=novel_type,
+                    theme=theme,
+                    style=style,
+                    extra_prompt=extra_prompt,
+                )
+                if still_missing:
                     logging.warning(
-                        f"补生成结束，仍有 {len(missing_chapters)} 个章节缺失: {missing_chapters}。"
-                        f"已保存当前结果，ContentGenerator 可能会因大纲不连续而拒绝生成。"
+                        f"补生成结束,仍有 {len(still_missing)} 个章节缺失: {still_missing}。"
+                        f"已保存当前结果,ContentGenerator 可能会因大纲不连续而拒绝生成。"
                     )
                     all_batches_successful = False
                 else:
-                    logging.info("所有缺失章节已补生成完毕！")
+                    logging.info(f"所有 {len(succeeded)} 个缺失章节已补生成完毕!")
                     if not all_batches_successful:
                         all_batches_successful = True
 
@@ -1060,8 +1043,13 @@ class OutlineGenerator:
                         continue
                     try:
                         obj, end = decoder.raw_decode(stream_cleaned, pos)
-                        if isinstance(obj, dict):
+                        # [5.5] schema 校验:仅接受疑似章节对象,避免误捕嵌套字典
+                        # (如 character_goals 也是 dict,但不是章节)
+                        if isinstance(obj, dict) and self._looks_like_chapter_outline(obj):
                             recovered.append(obj)
+                        elif isinstance(obj, dict):
+                            # 是 dict 但不像章节 → 视为损坏跳过
+                            skipped += 1
                         pos = end
                     except json.JSONDecodeError:
                         # 当前对象损坏，丢弃并跳到下一个 '{'

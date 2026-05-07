@@ -18,7 +18,6 @@ import argparse
 import logging
 import os
 import sys
-import time
 from pathlib import Path
 
 # 注入项目根路径
@@ -122,55 +121,29 @@ def main() -> int:
     theme = novel_cfg.get("theme", "")
     style = novel_cfg.get("style", "")
 
-    succeeded: list[int] = []
-    failed: list[int] = []
-
-    total = len(missing)
-    for i, ch_num in enumerate(missing, start=1):
-        log.info(f"━━━ [{i}/{total}] 补生成第 {ch_num} 章 ━━━")
-        last_err = None
-        ok = False
-        for attempt in range(1, args.max_retries + 1):
-            try:
-                ok = generator._generate_single_chapter_outline(
-                    chapter_num=ch_num,
-                    novel_type=novel_type,
-                    theme=theme,
-                    style=style,
-                    extra_prompt=None,
-                )
-            except Exception as e:
-                last_err = e
-                log.warning(f"第 {ch_num} 章第 {attempt}/{args.max_retries} 次尝试异常: {e}")
-                ok = False
-
-            if ok:
-                # 立即落盘
-                if not generator._save_outline():
-                    log.error(f"第 {ch_num} 章生成成功但保存失败！")
-                    ok = False
-                else:
-                    log.info(f"✓ 第 {ch_num} 章补生成成功并已保存")
-                break
-
-            if attempt < args.max_retries:
-                log.warning(
-                    f"第 {ch_num} 章尝试 {attempt}/{args.max_retries} 失败，"
-                    f"{args.retry_delay} 秒后重试..."
-                )
-                time.sleep(args.retry_delay)
-
-        if ok:
-            succeeded.append(ch_num)
-        else:
-            log.error(
-                f"✗ 第 {ch_num} 章补生成失败（{args.max_retries} 次尝试均不成功）"
-                + (f"，最后异常: {last_err}" if last_err else "")
-            )
-            failed.append(ch_num)
+    # [5.1] DRY 整合: 直接复用 OutlineGenerator.patch_missing_chapters,
+    # 而非在此处重复实现"逐章补生成 + 重试 + 落盘"循环。
+    # patch_missing_chapters 已包含:
+    #   - 多轮重试(配置 outline_gap_max_retries / outline_gap_retry_delay)
+    #   - 一致性检查 + 落盘
+    #   - 取消信号处理
+    # 本脚本只负责参数桥接(--max-retries/--retry-delay 覆盖配置默认)
+    try:
+        succeeded, failed = generator.patch_missing_chapters(
+            missing,
+            novel_type=novel_type,
+            theme=theme,
+            style=style,
+            extra_prompt=None,
+            max_rounds=args.max_retries,
+            retry_delay=args.retry_delay,
+        )
+    except InterruptedError:
+        log.info("用户中断,已保留已成功章节")
+        return 130
 
     log.info("=" * 60)
-    log.info(f"补生成结束：成功 {len(succeeded)}/{total}，失败 {len(failed)}")
+    log.info(f"补生成结束：成功 {len(succeeded)}/{len(missing)}，失败 {len(failed)}")
     if succeeded:
         log.info(f"  成功章节: {succeeded}")
     if failed:
