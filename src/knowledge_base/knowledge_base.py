@@ -26,6 +26,13 @@ class TextChunk:
     metadata: Dict
 
 class KnowledgeBase:
+    # [Phase 6.3] 临时 pickle 文件 schema 版本
+    # v1: 989616a 之前,文件后缀语义为"当前 i"
+    # v2: 989616a 之后,文件后缀语义为"next_idx"(i + batch_size)
+    # 加载时若发现 schema_version < TEMP_SCHEMA_VERSION 一律保守丢弃,
+    # 避免新旧语义混用导致 chunk 重复或丢失
+    TEMP_SCHEMA_VERSION = 2
+
     def __init__(self, config: Dict, embedding_model, reranker_config: Dict = None):
         self.config = config
         self.embedding_model = embedding_model
@@ -71,9 +78,14 @@ class KnowledgeBase:
         chunk_size = self.config["chunk_size"]
         overlap = self.config["chunk_overlap"]
         chunks = []
-        
-        # 按章节分割文本（使用正则匹配 "第X章" 格式，避免 "第" 字出现在正文中导致误分割）
-        chapters = re.split(r'(?=第\d+章)', text)
+
+        # [Phase 6.2] 章节边界匹配:阿拉伯数字 + 中文数字(一/二/.../十/百/千/零/两/万)
+        # 支持: 第1章 / 第一章 / 第十章 / 第一百零一章 / 第两千章
+        # 字符类约束 1~10 字符,避免误匹配长串相似字符;后接"章"做硬锚点。
+        _CH_NUM_PATTERN = r'第[\d一二三四五六七八九十百千零两万]{1,10}章'
+
+        # 按章节分割文本(使用正则匹配 "第X章" 格式,避免 "第" 字出现在正文中导致误分割)
+        chapters = re.split(rf'(?={_CH_NUM_PATTERN})', text)
         # 过滤空分片
         chapters = [c for c in chapters if c.strip()]
         logging.info(f"文本分割为 {len(chapters)} 个章节")
@@ -84,7 +96,7 @@ class KnowledgeBase:
             start_idx = 0
         else:
             # 若首段不是 "第N章" 开头（前言/版权/目录等），丢弃以避免被错标为第 1 章
-            if not re.match(r'\s*第\d+章', chapters[0]):
+            if not re.match(rf'\s*{_CH_NUM_PATTERN}', chapters[0]):
                 logging.info("跳过首段非章节内容（如前言/目录），从第 1 章开始计数")
                 chapters = chapters[1:]
             start_idx = 1
@@ -163,11 +175,27 @@ class KnowledgeBase:
         return max(temp_files, key=lambda x: x[1]) if temp_files else None
 
     def _load_from_temp(self, temp_file: str) -> Tuple[List[TextChunk], List]:
-        """从临时文件加载进度"""
+        """从临时文件加载进度
+
+        [Phase 6.3] schema_version 校验:
+        - 新格式 (schema_version >= 2): 信任 chunks/vectors,正常恢复
+        - 旧格式 (无 schema_version 字段): 989616a 之前的语义可能与当前
+          start_idx 不一致(旧版用"当前 i",新版改为"next_idx"),为防止重复
+          向量化或丢失 chunk,保守丢弃并 WARNING 提示用户重建。
+        """
         try:
             with open(temp_file, 'rb') as f:
                 temp_data = pickle.load(f)
-                return temp_data['chunks'], temp_data['vectors']
+            schema_version = temp_data.get('schema_version', 0) if isinstance(temp_data, dict) else 0
+            if schema_version < self.TEMP_SCHEMA_VERSION:
+                logging.warning(
+                    f"临时文件 {temp_file} 缺少 schema_version 或版本过旧 "
+                    f"(found={schema_version}, expected={self.TEMP_SCHEMA_VERSION}),"
+                    f"为避免新旧 next_idx 语义不一致导致 chunk 重复或丢失,保守丢弃。"
+                    f"建议手动删除该文件并重新构建知识库。"
+                )
+                return [], []
+            return temp_data['chunks'], temp_data['vectors']
         except Exception as e:
             logging.error(f"加载临时文件失败: {str(e)}")
             return [], []
@@ -274,8 +302,12 @@ class KnowledgeBase:
                 temp_cache_path = cache_path + f".temp_{next_idx}"
                 with open(temp_cache_path, 'wb') as f:
                     pickle.dump({
+                        # [Phase 6.3] schema_version=2 表示 next_idx 语义
+                        # (与 989616a 之前的"当前 i"语义不兼容)
+                        'schema_version': self.TEMP_SCHEMA_VERSION,
+                        'next_chunk_idx': next_idx,
                         'chunks': valid_chunks,
-                        'vectors': vectors
+                        'vectors': vectors,
                     }, f)
                 logging.info(f"保存临时进度到 {temp_cache_path}（下次从 chunk 索引 {next_idx} 继续）")
 
