@@ -591,15 +591,33 @@ class ContentGenerator:
         except Exception:
             pass
         # 后备：扫描目录
+        # [5.6] 修复:旧实现遇到多个历史标题版本时返回 os.listdir() 任意顺序的首个,
+        # 改为按修改时间倒序选择最新版本,并对多候选打 warning,便于用户清理
         try:
             prefix = f"第{chapter_num}章_"
+            candidates = []
             for name in os.listdir(self.output_dir):
                 if not name.endswith('.txt'):
                     continue
                 if '_摘要' in name or '_imitated' in name:
                     continue
                 if name.startswith(prefix):
-                    return os.path.join(self.output_dir, name)
+                    candidates.append(name)
+            if not candidates:
+                return None
+            if len(candidates) == 1:
+                return os.path.join(self.output_dir, candidates[0])
+            # 多候选:按 mtime 倒序排序(新→旧)
+            candidates.sort(
+                key=lambda n: os.path.getmtime(os.path.join(self.output_dir, n)),
+                reverse=True,
+            )
+            logger.warning(
+                f"第 {chapter_num} 章发现 {len(candidates)} 个候选正文文件,"
+                f"将使用最新版本 '{candidates[0]}',其余: {candidates[1:5]}"
+                f"{'...' if len(candidates) > 6 else ''}"
+            )
+            return os.path.join(self.output_dir, candidates[0])
         except Exception:
             pass
         return None
