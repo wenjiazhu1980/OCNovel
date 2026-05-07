@@ -59,8 +59,33 @@ class NovelParamsTab(QWidget):
         self._env_path = env_path or os.path.join(
             os.path.dirname(config_path), ".env")
         self._guide_worker: WritingGuideWorker | None = None
+        # [5.4] i18n 注册表:在 _init_ui 里注册关键 widget,changeEvent 时回放
+        from ..utils.i18n_helper import RetranslateRegistry
+        self._i18n_registry = RetranslateRegistry(self.tr)
         self._init_ui()
+        # [5.4] 自动扫描所有 QGroupBox 与 QPushButton,捕获其当前文本作为
+        # source_text 注册。这样即使没在每个构造点显式登记,也能在语言切换时
+        # 重新翻译。Limitation: 仅覆盖在 init 时已存在且 setTitle/setText 用
+        # self.tr(...) 设置的 widget;运行时动态创建/修改的文本仍需手动注册。
+        self._auto_register_translatable_widgets()
         self._load_from_file(silent=True)
+
+    def _auto_register_translatable_widgets(self) -> None:
+        """[5.4] 扫描子组件,把 QGroupBox.title / QPushButton.text 自动登记"""
+        try:
+            from PySide6.QtWidgets import QGroupBox, QPushButton
+            for gb in self.findChildren(QGroupBox):
+                title = gb.title()
+                if title:
+                    self._i18n_registry.register_title(gb, title)
+            for btn in self.findChildren(QPushButton):
+                text = btn.text()
+                if text and not text.startswith(("▶", "⏹", "🔄", "🗑")):
+                    # 跳过含图标前缀的按钮(它们由专门逻辑刷新)
+                    self._i18n_registry.register_text(btn, text)
+        except Exception:
+            # 找不到 widget 类或扫描失败时静默,changeEvent 仍可正常运行
+            pass
 
     # ======================================================================
     # UI 构建
@@ -1690,6 +1715,10 @@ class NovelParamsTab(QWidget):
             female_ratio=self._dsb_gen_female_ratio.value(),
             target_chapters=self._sp_chapters.value(),
             chapter_length=self._sp_chapter_len.value(),
+            # [5.3] 把已有描写侧重传入 worker,让去重 + embed 网络调用在
+            # 后台线程完成,避免主线程在 _on_guide_result 中卡住
+            existing_focus=list(self._desc_focus_data),
+            dedup_max_total=8,
             parent=self,
         )
         self._guide_worker.finished_result.connect(self._on_guide_result)
@@ -1773,21 +1802,34 @@ class NovelParamsTab(QWidget):
         _try_fill(self._te_pacing, sg.get("pacing", ""))
 
         # description_focus 列表：语义去重（Tier B 主路径 + Tier A 兜底 + max_total=8 上限）
-        df = sg.get("description_focus", [])
-        new_focus_items: list[str] = []
-        if isinstance(df, list):
-            new_focus_items = [str(x) for x in df if str(x).strip()]
-        elif isinstance(df, str) and df.strip():
-            new_focus_items = [df]
+        # [5.3] 优先消费 worker 在后台线程预计算的去重结果,避免主线程
+        # 再次触发 embed() 网络调用导致 UI 卡顿
+        kept_focus: list[str]
+        dedup_stats: dict
+        if (
+            isinstance(result.get("description_focus_kept"), list)
+            and isinstance(result.get("description_focus_dedup_stats"), dict)
+        ):
+            kept_focus = [str(x) for x in result["description_focus_kept"]]
+            dedup_stats = dict(result["description_focus_dedup_stats"])
+        else:
+            # 兜底:worker 未预计算时(如旧版/异常路径)在主线程跑同步去重
+            df = sg.get("description_focus", [])
+            new_focus_items: list[str] = []
+            if isinstance(df, list):
+                new_focus_items = [str(x) for x in df if str(x).strip()]
+            elif isinstance(df, str) and df.strip():
+                new_focus_items = [df]
 
-        from ..utils.focus_dedup import deduplicate_focus_items
-        embed_model = self._try_create_embedding_model()
-        kept_focus, dedup_stats = deduplicate_focus_items(
-            existing=self._desc_focus_data,
-            candidates=new_focus_items,
-            embedding_model=embed_model,
-            max_total=8,
-        )
+            from ..utils.focus_dedup import deduplicate_focus_items
+            embed_model = self._try_create_embedding_model()
+            kept_focus, dedup_stats = deduplicate_focus_items(
+                existing=self._desc_focus_data,
+                candidates=new_focus_items,
+                embedding_model=embed_model,
+                max_total=8,
+            )
+
         focus_before = len(self._desc_focus_data)
         self._desc_focus_data.extend(kept_focus)
         focus_added = len(self._desc_focus_data) - focus_before
@@ -1852,7 +1894,11 @@ class NovelParamsTab(QWidget):
             child.setEnabled(enabled)
 
     def changeEvent(self, event):
-        """语言切换时传播事件到子组件"""
+        """语言切换时传播事件到子组件并回放 i18n 注册表"""
         if event.type() == QEvent.Type.LanguageChange:
-            pass  # 子组件通过 findChildren 自动接收事件
+            # [5.4] 调用 i18n_registry 重新应用所有已注册 widget 的翻译
+            try:
+                self._i18n_registry.retranslate_all()
+            except Exception:
+                pass  # 注册表初始化失败时静默,避免阻塞事件传播
         super().changeEvent(event)

@@ -1,6 +1,7 @@
 """后台线程：调用 AI 模型自动生成写作指南"""
 import json
 import logging
+import os
 from PySide6.QtCore import QThread, Signal
 
 from src.gui.utils.config_io import load_env
@@ -102,7 +103,10 @@ class WritingGuideWorker(QThread):
                  novel_type: str, theme: str, style: str,
                  n_supporting: int = 6, n_antagonists: int = 4,
                  female_ratio: float = 0.3, target_chapters: int = 100,
-                 chapter_length: int = 2500, parent=None):
+                 chapter_length: int = 2500,
+                 existing_focus: list = None,
+                 dedup_max_total: int = 8,
+                 parent=None):
         super().__init__(parent)
         self._env_path = env_path
         self._story_idea = story_idea
@@ -115,6 +119,10 @@ class WritingGuideWorker(QThread):
         self._female_ratio = max(0.0, min(1.0, float(female_ratio)))
         self._target_chapters = max(1, int(target_chapters))
         self._chapter_length = max(500, int(chapter_length))
+        # [5.3] 异步化:把描写侧重去重(含 embedding 网络调用)挪到 worker 线程,
+        # 主线程 _on_guide_result 不再直接 embed(),避免 UI 卡顿
+        self._existing_focus = list(existing_focus or [])
+        self._dedup_max_total = max(1, int(dedup_max_total))
 
     def stop(self):
         """协作取消：run() 内 stream 循环会在下一个 chunk 感知并立即退出。"""
@@ -184,6 +192,10 @@ class WritingGuideWorker(QThread):
                 self.finished_result.emit(False, "模型返回的不是有效的 JSON 对象")
                 return
 
+            # [5.3] 在 worker 线程内完成描写侧重去重,
+            # 避免主线程在收到结果后被 embed() 网络调用阻塞
+            self._maybe_dedup_focus(result)
+
             self.finished_result.emit(True, result)
 
         except json.JSONDecodeError as e:
@@ -198,3 +210,64 @@ class WritingGuideWorker(QThread):
                     stream.close()
                 except Exception:
                     pass
+
+    # ------------------------------------------------------------------
+    # [5.3] 后台线程内执行描写侧重去重,避免阻塞主线程 UI
+    # ------------------------------------------------------------------
+    def _maybe_dedup_focus(self, result: dict) -> None:
+        """若 result.style_guide.description_focus 存在,则在本线程内去重
+
+        副作用: 在 result 中写入两个新字段供主线程消费:
+        - 'description_focus_kept': 已去重并截断的列表
+        - 'description_focus_dedup_stats': 去重统计 dict (与 deduplicate_focus_items 返回一致)
+        失败时静默(不写新字段),主线程会回退到旧路径处理。
+        """
+        try:
+            sg = result.get("style_guide", {}) or {}
+            df = sg.get("description_focus", [])
+            if isinstance(df, list):
+                candidates = [str(x) for x in df if str(x).strip()]
+            elif isinstance(df, str) and df.strip():
+                candidates = [df]
+            else:
+                return
+
+            if not candidates:
+                return
+
+            from ..utils.focus_dedup import deduplicate_focus_items
+            embed_model = self._create_embedding_model_in_worker()
+            kept, stats = deduplicate_focus_items(
+                existing=self._existing_focus,
+                candidates=candidates,
+                embedding_model=embed_model,
+                max_total=self._dedup_max_total,
+            )
+            result["description_focus_kept"] = kept
+            result["description_focus_dedup_stats"] = stats
+        except Exception as e:
+            logger.warning(f"[5.3] worker 内去重失败,主线程将走兜底路径: {e}")
+
+    def _create_embedding_model_in_worker(self):
+        """与 NovelParamsTab._try_create_embedding_model 等价的工厂方法
+
+        Returns:
+            可用的 embedding 模型实例;失败时返回 None,deduplicate_focus_items
+            会自动降级到 Jaccard 词级路径。
+        """
+        try:
+            from dotenv import load_dotenv
+            from src.config.ai_config import AIConfig
+            from .model_factory import create_model
+
+            if self._env_path and os.path.exists(self._env_path):
+                load_dotenv(self._env_path, override=True)
+            ai_config = AIConfig()
+            embed_config = ai_config.get_openai_config("embedding")
+            if not embed_config.get("api_key"):
+                logger.info("[5.3] embedding API key 未配置,worker 内将走 Jaccard 兜底")
+                return None
+            return create_model(embed_config, context="WritingGuide")
+        except Exception as e:
+            logger.warning(f"[5.3] worker 内创建 embedding 模型失败: {type(e).__name__}: {e}")
+            return None
