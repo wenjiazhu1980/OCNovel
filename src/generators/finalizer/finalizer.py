@@ -7,7 +7,7 @@ import json
 from typing import Optional, Set, Dict, List
 # from opencc import OpenCC # Keep if used elsewhere, otherwise remove
 from ..common.data_structures import Character, ChapterOutline # Keep if Character is used later
-from ..common.utils import load_json_file, save_json_file, clean_text, validate_directory
+from ..common.utils import load_json_file, save_json_file, clean_text, validate_directory, load_outline_chapter_data
 # --- Import the correct prompt function ---
 from .. import prompts # Import the prompts module
 
@@ -37,32 +37,16 @@ class NovelFinalizer:
         """
         logger.info(f"开始定稿第 {chapter_num} 章...")
         try:
-            # Load outline to get the title for the filename
-            outline_file = os.path.join(self.output_dir, "outline.json")
-            logger.info(f"实际读取的大纲文件路径: {outline_file}")
-            if not os.path.exists(outline_file):
-                logger.error(f"无法找到大纲文件: {outline_file}")
+            # [5.2] 改用 load_outline_chapter_data 按 chapter_number 字段精确查找
+            # 替代旧的 chapters_list[chapter_num - 1] 位置访问。
+            # 旧方式遇到稀疏大纲(含 None 占位)会读到错误章节或越界。
+            chapter_outline_data = load_outline_chapter_data(self.output_dir, chapter_num)
+            if chapter_outline_data is None:
+                logger.error(f"第 {chapter_num} 章大纲数据加载失败,无法 finalize")
                 return False
-
-            outline_data = load_json_file(outline_file, default_value={})
-            # Handle both dict {chapters: []} and list [] formats
-            chapters_list = []
-            if isinstance(outline_data, dict) and "chapters" in outline_data and isinstance(outline_data["chapters"], list):
-                 chapters_list = outline_data["chapters"]
-            elif isinstance(outline_data, list):
-                 chapters_list = outline_data
-            else:
-                 logger.error(f"无法识别的大纲文件格式: {outline_file}")
-                 return False
-
-            if not (1 <= chapter_num <= len(chapters_list)):
-                logger.error(f"章节号 {chapter_num} 超出大纲范围 (1-{len(chapters_list)})")
-                return False
-
-            chapter_outline_data = chapters_list[chapter_num - 1]
             if not isinstance(chapter_outline_data, dict):
-                 logger.error(f"第 {chapter_num} 章的大纲条目不是有效的字典格式。")
-                 return False
+                logger.error(f"第 {chapter_num} 章的大纲条目不是有效的字典格式。")
+                return False
 
             title = chapter_outline_data.get('title', f'无标题章节{chapter_num}') # Default title if missing
             cleaned_title = self._clean_filename(title) # Use helper method

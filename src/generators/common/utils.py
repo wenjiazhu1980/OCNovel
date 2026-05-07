@@ -76,4 +76,39 @@ def validate_directory(directory: str) -> bool:
         return True
     except Exception as e:
         logging.error(f"创建目录 {directory} 时出错: {str(e)}")
-        return False 
+        return False
+
+
+def load_outline_chapter_data(output_dir: str, chapter_num: int) -> Optional[Dict[str, Any]]:
+    """[5.2] 按 chapter_number 字段查找单章大纲数据,适用于稀疏大纲
+
+    替代旧的 chapters_list[chapter_num - 1] 位置访问方式。当大纲含 None
+    占位(b8267c7 引入的稀疏列表语义)或顺序乱序时,位置访问会拿到错误章节
+    甚至越界。本 helper 通过 chapter_number 字段精确匹配,确保读取正确性。
+
+    Args:
+        output_dir: 输出目录,outline.json 所在路径
+        chapter_num: 章节编号(1-based)
+
+    Returns:
+        匹配的章节 dict;找不到或文件异常时返回 None
+    """
+    outline_file = os.path.join(output_dir, "outline.json")
+    if not os.path.exists(outline_file):
+        logging.error(f"无法找到大纲文件: {outline_file}")
+        return None
+    data = load_json_file(outline_file, default_value=None)
+    if data is None:
+        return None
+    # 兼容 dict {chapters: [...]} 与 list [...] 两种顶层格式
+    chapters = data.get("chapters") if isinstance(data, dict) else data
+    if not isinstance(chapters, list):
+        logging.error(f"无法识别的大纲文件格式: {outline_file}")
+        return None
+    for entry in chapters:
+        if isinstance(entry, dict) and entry.get("chapter_number") == chapter_num:
+            return entry
+    logging.error(
+        f"在大纲中未找到第 {chapter_num} 章 (按 chapter_number 字段精确匹配,大纲共 {len(chapters)} 个条目)"
+    )
+    return None
