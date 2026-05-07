@@ -39,9 +39,17 @@ web_ui/
 backup/
 .promptx/
 backup/
-# tests/ 目录下默认忽略本地草稿与数据，但跟踪测试代码本体
-tests/*
-docs/
+# tests/ 目录：忽略本地草稿/缓存/数据，跟踪测试代码本体
+tests/__pycache__/
+tests/.pytest_cache/
+tests/.coverage
+tests/htmlcov/
+tests/data/
+tests/output/
+tests/.local_*
+# docs/：仅忽略产物目录（如生成的 site/），跟踪 Markdown 源
+docs/_build/
+docs/site/
 examples/
 scripts/
 # *_gui.* — GUI入口已入库
