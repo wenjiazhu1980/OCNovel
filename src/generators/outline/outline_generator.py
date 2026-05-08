@@ -182,12 +182,30 @@ class OutlineGenerator:
         - None 槽位跳过（保留稀疏列表的位置语义）；
         - 同一 chapter_number 若意外重复，仅保留**首次出现**版本（与 _load_outline 一致）；
         - 写入按 chapter_number 升序，便于人工审阅与外部工具消费。
+
+        [P0] 雪花写作法扩展字段（emotion_tone / character_goals / scene_sequence /
+        foreshadowing / pov_character）**始终写入**，即便为空也以默认值（""/{{}}/[]）落盘。
+        这样可:
+        1. 让 LLM 漏输出扩展字段的"沉默失败"暴露在最终产物里，便于审计；
+        2. 配合 backfill 工具按章节号回填情绪阶段而无需修改 schema；
+        3. 避免下游消费方因字段不存在而走异常分支。
+
+        保存完成后会输出扩展字段覆盖率统计；emotion_tone 覆盖率 < 50% 时升级为 warning。
         """
         outline_file = os.path.join(self.output_dir, "outline.json")
         try:
             outline_data = []
             seen_nums: set = set()
             duplicate_skipped = 0
+
+            # 扩展字段非空计数器（用于覆盖率统计）
+            ext_non_empty = {
+                "emotion_tone": 0,
+                "character_goals": 0,
+                "scene_sequence": 0,
+                "foreshadowing": 0,
+                "pov_character": 0,
+            }
 
             for outline in self.chapter_outlines:
                 if outline is None:
@@ -206,6 +224,7 @@ class OutlineGenerator:
                     continue
                 seen_nums.add(outline.chapter_number)
 
+                # [P0] 始终写入全部字段（含扩展字段），暴露 LLM 漏输出
                 outline_dict = {
                     "chapter_number": outline.chapter_number,
                     "title": outline.title,
@@ -213,18 +232,25 @@ class OutlineGenerator:
                     "characters": outline.characters,
                     "settings": outline.settings,
                     "conflicts": outline.conflicts,
+                    "emotion_tone": outline.emotion_tone or "",
+                    "character_goals": outline.character_goals or {},
+                    "scene_sequence": outline.scene_sequence or [],
+                    "foreshadowing": outline.foreshadowing or [],
+                    "pov_character": outline.pov_character or "",
                 }
-                # 保存扩展字段（仅当非空时写入，保持向后兼容）
+
+                # 累计非空计数（list/dict/str 统一以"truthy"为非空）
                 if outline.emotion_tone:
-                    outline_dict["emotion_tone"] = outline.emotion_tone
+                    ext_non_empty["emotion_tone"] += 1
                 if outline.character_goals:
-                    outline_dict["character_goals"] = outline.character_goals
+                    ext_non_empty["character_goals"] += 1
                 if outline.scene_sequence:
-                    outline_dict["scene_sequence"] = outline.scene_sequence
+                    ext_non_empty["scene_sequence"] += 1
                 if outline.foreshadowing:
-                    outline_dict["foreshadowing"] = outline.foreshadowing
+                    ext_non_empty["foreshadowing"] += 1
                 if outline.pov_character:
-                    outline_dict["pov_character"] = outline.pov_character
+                    ext_non_empty["pov_character"] += 1
+
                 outline_data.append(outline_dict)
 
             # 按 chapter_number 升序输出
@@ -241,7 +267,31 @@ class OutlineGenerator:
             if outline_data:
                 logging.info(f"即将保存的大纲前5章示例: {outline_data[:5]}")
 
-            return save_json_file(outline_file, outline_data)
+            saved = save_json_file(outline_file, outline_data)
+
+            # [P0] 扩展字段覆盖率统计：保存成功后输出
+            if saved:
+                total = len(outline_data)
+                coverage_lines = []
+                low_coverage_fields = []
+                for fname, cnt in ext_non_empty.items():
+                    pct = (cnt / total * 100) if total else 0.0
+                    coverage_lines.append(f"  - {fname}: {cnt}/{total} ({pct:.1f}%)")
+                    # emotion_tone 是核心节奏字段，<50% 视为异常
+                    if fname == "emotion_tone" and pct < 50.0:
+                        low_coverage_fields.append((fname, pct))
+                msg = "扩展字段覆盖率统计:\n" + "\n".join(coverage_lines)
+                if low_coverage_fields:
+                    msg += (
+                        "\n⚠️ emotion_tone 覆盖率偏低，可能 LLM 未按 prompt 输出该字段；"
+                        "可运行 `python tools/backfill_emotion_tone.py --output-dir <dir> "
+                        "--chapters-per-arc <N>` 自动回填阶段占位。"
+                    )
+                    logging.warning(msg)
+                else:
+                    logging.info(msg)
+
+            return saved
         except Exception as e:
             logging.error(f"保存大纲文件时出错: {str(e)}", exc_info=True)
             return False

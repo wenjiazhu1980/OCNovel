@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, NamedTuple, Optional
 import dataclasses # 导入 dataclasses 以便类型提示
 import json
 import os
@@ -24,6 +24,102 @@ from .humanization_prompts import (
 #     characters: List[str]
 #     settings: List[str]
 #     conflicts: List[str]
+
+
+class EmotionPhase(NamedTuple):
+    """卷内情绪阶段定义（螺旋上升模型的单个阶段）
+
+    Attributes:
+        threshold: 该阶段在卷内进度的上界（[0,1]）。`arc_pct <= threshold` 即落入本阶段。
+        name: 阶段名（成长/挫折/绝境/爆发/跌落/新局）。
+        desc: 阶段简述（编辑视角）。
+        reader_emotion: 读者情绪目标（写作时要让读者感受到什么）。
+        narrative_guide: 叙事指导（本阶段应安排什么样的事件）。
+        taboo: 阶段禁忌（本阶段绝对不能做什么）。
+    """
+    threshold: float
+    name: str
+    desc: str
+    reader_emotion: str
+    narrative_guide: str
+    taboo: str
+
+
+# 卷内情绪阶段（螺旋上升情绪卡点模型）—— 模块级常量
+# 顺序很重要：threshold 必须升序排列。get_emotion_phase_for_arc_position 依赖此顺序。
+EMOTION_PHASES: List[EmotionPhase] = [
+    EmotionPhase(0.23, "成长", "享受红利，高歌猛进",
+                 "爽感、期待感、安全感",
+                 "主角获得新能力/资源/盟友，连续取得小胜利，读者跟着爽。",
+                 "禁止在此阶段安排重大挫折或失败，保持上升势头。"),
+    EmotionPhase(0.40, "挫折", "遭遇反噬，信念动摇",
+                 "揪心、不安、替主角着急",
+                 "之前的顺利埋下的隐患开始爆发，主角遭遇意料之外的挫折。",
+                 "挫折必须源于前文伏笔，禁止无中生有的突然打击。"),
+    EmotionPhase(0.55, "绝境", "跌入谷底，绝处逢生",
+                 "绝望中的一丝希望、屏息以待",
+                 "主角失去重要的人/物/能力，被逼到绝境，必须做出艰难抉择。",
+                 "禁止轻易化解危机，必须让主角付出真实代价。"),
+    EmotionPhase(0.72, "爆发", "触底反弹，超越极限",
+                 "热血沸腾、酣畅淋漓的爽感",
+                 "主角在绝境中领悟/突破，以超出预期的方式逆转局面。",
+                 "爆发必须建立在前面的铺垫之上，禁止无根据的突然变强。"),
+    EmotionPhase(0.93, "跌落", "升维打击，格局撕裂",
+                 "倒吸一口凉气、格局突然打开的震撼",
+                 "虽然打赢了这场仗，却暴露在更恐怖的视线中，发现引以为傲的实力在更高维度只是蝼蚁。",
+                 "绝对禁止削弱主角的核心能力或没收金手指！跌落是'环境升维'而非'主角降级'。"),
+    EmotionPhase(1.00, "新局", "消化收益，开启新篇",
+                 "重燃斗志、对下一卷的强烈期待",
+                 "在跌落的低谷中清点爆发阶段获得的战利品，确立下一个更大、更疯狂的目标。",
+                 "必须给读者一个明确的'下一卷会更精彩'的信号，同时完成本卷的情绪闭环。"),
+]
+
+
+def get_emotion_phase_for_arc_position(arc_pct: float) -> EmotionPhase:
+    """根据卷内进度百分比返回所属情绪阶段。
+
+    Args:
+        arc_pct: 卷内进度，定义为 ``arc_pos / chapters_per_arc``，期望落在 (0, 1]。
+                 若超出 (0, 1] 范围则会被夹逼到边界（>1 视为 1.0，<=0 视为最小阶段）。
+
+    Returns:
+        EmotionPhase: 命中的阶段对象。EMOTION_PHASES 已确保最后一项 threshold=1.0,
+        故任何合法 arc_pct 必有命中。
+
+    Examples:
+        >>> get_emotion_phase_for_arc_position(0.10).name
+        '成长'
+        >>> get_emotion_phase_for_arc_position(0.95).name
+        '新局'
+    """
+    # 边界夹逼：负数或 0 视为阶段起点；>1 视为收尾
+    if arc_pct <= 0:
+        return EMOTION_PHASES[0]
+    if arc_pct > 1.0:
+        return EMOTION_PHASES[-1]
+    for phase in EMOTION_PHASES:
+        if arc_pct <= phase.threshold:
+            return phase
+    # 理论上不可达（threshold 升序且最后一项=1.0）；保险兜底
+    return EMOTION_PHASES[-1]
+
+
+def get_emotion_phase_for_chapter(chapter_number: int, chapters_per_arc: int) -> Optional[EmotionPhase]:
+    """根据全局章节号 + 卷长返回该章对应的情绪阶段。
+
+    Args:
+        chapter_number: 1-based 全局章节号。
+        chapters_per_arc: 每卷章节数（必须 > 0）。
+
+    Returns:
+        Optional[EmotionPhase]: 命中阶段；当 ``chapters_per_arc <= 0`` 或 ``chapter_number < 1``
+        时返回 None（语义：未配置卷长 → 不应回填）。
+    """
+    if chapters_per_arc <= 0 or chapter_number < 1:
+        return None
+    arc_pos = ((chapter_number - 1) % chapters_per_arc) + 1
+    arc_pct = arc_pos / chapters_per_arc
+    return get_emotion_phase_for_arc_position(arc_pct)
 
 
 def get_outline_prompt(
@@ -93,52 +189,19 @@ def get_outline_prompt(
         _arc_end_pos = ((_end_ch - 1) % _chapters_per_arc) + 1
         _arc_end_pct = _arc_end_pos / _chapters_per_arc
 
-        _PHASES = [
-            (0.23, "成长", "享受红利，高歌猛进",
-             "爽感、期待感、安全感",
-             "主角获得新能力/资源/盟友，连续取得小胜利，读者跟着爽。",
-             "禁止在此阶段安排重大挫折或失败，保持上升势头。"),
-            (0.40, "挫折", "遭遇反噬，信念动摇",
-             "揪心、不安、替主角着急",
-             "之前的顺利埋下的隐患开始爆发，主角遭遇意料之外的挫折。",
-             "挫折必须源于前文伏笔，禁止无中生有的突然打击。"),
-            (0.55, "绝境", "跌入谷底，绝处逢生",
-             "绝望中的一丝希望、屏息以待",
-             "主角失去重要的人/物/能力，被逼到绝境，必须做出艰难抉择。",
-             "禁止轻易化解危机，必须让主角付出真实代价。"),
-            (0.72, "爆发", "触底反弹，超越极限",
-             "热血沸腾、酣畅淋漓的爽感",
-             "主角在绝境中领悟/突破，以超出预期的方式逆转局面。",
-             "爆发必须建立在前面的铺垫之上，禁止无根据的突然变强。"),
-            (0.93, "跌落", "升维打击，格局撕裂",
-             "倒吸一口凉气、格局突然打开的震撼",
-             "虽然打赢了这场仗，却暴露在更恐怖的视线中，发现引以为傲的实力在更高维度只是蝼蚁。",
-             "绝对禁止削弱主角的核心能力或没收金手指！跌落是'环境升维'而非'主角降级'。"),
-            (1.00, "新局", "消化收益，开启新篇",
-             "重燃斗志、对下一卷的强烈期待",
-             "在跌落的低谷中清点爆发阶段获得的战利品，确立下一个更大、更疯狂的目标。",
-             "必须给读者一个明确的'下一卷会更精彩'的信号，同时完成本卷的情绪闭环。"),
-        ]
-
-        _phase_name = ""
-        _phase_desc = ""
-        _reader_emotion = ""
-        _narrative_guide = ""
-        _phase_taboo = ""
-        for threshold, name, desc, emotion, guide, taboo in _PHASES:
-            if _arc_pct <= threshold:
-                _phase_name = name
-                _phase_desc = desc
-                _reader_emotion = emotion
-                _narrative_guide = guide
-                _phase_taboo = taboo
-                break
+        # 复用模块级 EMOTION_PHASES 常量（避免重复定义）
+        _phase = get_emotion_phase_for_arc_position(_arc_pct)
+        _phase_name = _phase.name
+        _phase_desc = _phase.desc
+        _reader_emotion = _phase.reader_emotion
+        _narrative_guide = _phase.narrative_guide
+        _phase_taboo = _phase.taboo
 
         _cross_phase_note = ""
         if _arc_end_pct > _arc_pct:
-            for threshold, name, _, _, _, _ in _PHASES:
-                if _arc_pct <= threshold < _arc_end_pct and name != _phase_name:
-                    _cross_phase_note = f"\n⚠️ 本批次跨越情绪阶段转换，需在批次中安排从「{_phase_name}」到「{name}」的自然过渡。"
+            for phase in EMOTION_PHASES:
+                if _arc_pct <= phase.threshold < _arc_end_pct and phase.name != _phase_name:
+                    _cross_phase_note = f"\n⚠️ 本批次跨越情绪阶段转换，需在批次中安排从「{_phase_name}」到「{phase.name}」的自然过渡。"
                     break
 
         _emotion_phase_hint = f"""
