@@ -70,6 +70,20 @@ data/                            # 运行时数据（gitignored）
 | `outline_gap_retry_delay` | `3` | 单章失败后退避秒数 |
 | `max_retries` | 跟随用户 | `_process_single_chapter` 单章生成失败的最大重试次数 |
 
+## novel_config.arc_config 关键键（情绪节奏）
+
+| 键 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `chapters_per_arc` | int | 0 | 每卷章节数。`>0` 启用卷内 6 阶段螺旋情绪节奏（成长→挫折→绝境→爆发→跌落→新局），`0` 禁用 |
+| `auto_compute` | bool | false | `chapters_per_arc<=0` 且 `target_chapters>0` 时按总章数自动推算最优分卷数（K∈{5,9,13,17,21,25,29}），保证全书 25%/50%/75% 灾难锚点对齐卷内挫折/绝境/跌落期 |
+
+**优先级**：`chapters_per_arc>0` (user) > `auto_compute=true` (auto) > 禁用 (disabled)。
+解析结果以 `_resolved_by` 审计字段标记，不写回 disk config.json。
+
+**配套工具**：
+- `tools/recommend_arc_size.py --total-chapters N` 查询推荐 cpa 与对齐质量
+- `tools/backfill_emotion_tone.py --output-dir <DIR> --chapters-per-arc N` 为已有 outline.json 回填阶段占位
+
 ## Commands
 
 ### CLI
@@ -82,6 +96,19 @@ python main.py finalize --chapter 8               # 定稿
 python main.py auto                               # 全流程
 python main.py auto --force-outline               # 强制重生成大纲
 python main.py imitate --style-source ... --input-file ... --output-file ...
+```
+
+### 配套工具（tools/）
+
+```bash
+# 查询推荐 chapters_per_arc（不修改任何文件）
+python tools/recommend_arc_size.py --total-chapters 400 [--show-candidates] [--json]
+
+# 为已有 outline.json 回填 emotion_tone 占位（自动备份）
+python tools/backfill_emotion_tone.py --output-dir data/output --chapters-per-arc 80
+
+# 补生成 outline.json 缺失槽位
+python tools/fill_outline_gaps.py --config config.json --env .env
 ```
 
 ### GUI

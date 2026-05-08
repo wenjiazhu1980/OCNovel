@@ -117,7 +117,11 @@ class Config:
         
         # 小说配置
         self.novel_config = self.config["novel_config"]
-        
+
+        # [L2] 解析 arc_config.chapters_per_arc(支持 auto_compute)
+        # 必须在 generator_config 构建前完成,以便下游消费方拿到已解析值
+        self._resolve_arc_config()
+
         # 知识库配置
         self.knowledge_base_config = self.config["knowledge_base_config"]
         self.knowledge_base_config["reference_files"] = [
@@ -175,7 +179,60 @@ class Config:
     def get_writing_guide(self) -> Dict:
         """获取写作指南"""
         return self.novel_config["writing_guide"]
-        
+
+    def _resolve_arc_config(self) -> None:
+        """[L2] 解析 arc_config.chapters_per_arc,支持自动计算。
+
+        三档优先级(高 → 低):
+            1. **user**: chapters_per_arc > 0 → 使用用户显式值
+            2. **auto**: chapters_per_arc <= 0 且 auto_compute=true 且 target_chapters > 0
+                → 调用 compute_optimal_chapters_per_arc() 自动推算
+            3. **disabled**: 其他情况 → chapters_per_arc=0(禁用情绪节奏)
+
+        副作用:
+            - 写回 self.novel_config["arc_config"]["chapters_per_arc"] 为已解析值
+            - 写入审计字段 _resolved_by ∈ {"user", "auto", "disabled"}
+            - auto 模式额外写入 _resolved_reason(供日志/GUI 展示)
+
+        审计字段命名以 ``_`` 开头,GUI 保存路径会主动跳过(不污染 disk config.json)。
+        """
+        # 延迟导入避免循环依赖(prompts → humanization_prompts → ...)
+        from src.generators.prompts import compute_optimal_chapters_per_arc
+
+        arc_cfg = self.novel_config.setdefault("arc_config", {})
+        try:
+            raw_cpa = int(arc_cfg.get("chapters_per_arc", 0) or 0)
+        except (TypeError, ValueError):
+            raw_cpa = 0
+        auto = bool(arc_cfg.get("auto_compute", False))
+        try:
+            target = int(self.novel_config.get("target_chapters", 0) or 0)
+        except (TypeError, ValueError):
+            target = 0
+
+        if raw_cpa > 0:
+            arc_cfg["chapters_per_arc"] = raw_cpa
+            arc_cfg["_resolved_by"] = "user"
+            arc_cfg.pop("_resolved_reason", None)
+            logging.info(f"[arc_config] 使用用户指定 chapters_per_arc={raw_cpa}")
+        elif auto and target > 0:
+            cpa, reason = compute_optimal_chapters_per_arc(target)
+            arc_cfg["chapters_per_arc"] = cpa
+            arc_cfg["_resolved_by"] = "auto"
+            arc_cfg["_resolved_reason"] = reason
+            logging.info(f"[arc_config] 自动计算 chapters_per_arc={cpa} | {reason}")
+        else:
+            arc_cfg["chapters_per_arc"] = 0
+            arc_cfg["_resolved_by"] = "disabled"
+            arc_cfg.pop("_resolved_reason", None)
+            if auto and target <= 0:
+                logging.warning(
+                    "[arc_config] auto_compute=true 但 target_chapters<=0,"
+                    "已禁用 arc 模型;请在 novel_config 中设置 target_chapters"
+                )
+            else:
+                logging.info("[arc_config] 已禁用 arc 模型(未启用 auto_compute 且未指定 chapters_per_arc)")
+
     def save(self):
         """保存配置到文件"""
         config = {

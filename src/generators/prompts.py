@@ -1,4 +1,4 @@
-from typing import Dict, List, NamedTuple, Optional
+from typing import Dict, List, NamedTuple, Optional, Tuple
 import dataclasses # 导入 dataclasses 以便类型提示
 import json
 import os
@@ -120,6 +120,125 @@ def get_emotion_phase_for_chapter(chapter_number: int, chapters_per_arc: int) ->
     arc_pos = ((chapter_number - 1) % chapters_per_arc) + 1
     arc_pct = arc_pos / chapters_per_arc
     return get_emotion_phase_for_arc_position(arc_pct)
+
+
+# ---------------------------------------------------------------------------
+# [L2] 自动推算 chapters_per_arc
+# ---------------------------------------------------------------------------
+
+# 卷长合理范围:
+# - 下界 30 章: 卷内 6 阶段(成长/挫折/绝境/爆发/跌落/新局)需要至少 30 章
+#   才能逐阶段展开,平均每阶段 5 章
+# - 上界 100 章: 单卷超过 100 章读者会失去节奏感
+ARC_M_MIN = 30
+ARC_M_MAX = 100
+
+# 总卷数候选: K ≡ 1 (mod 4) 时三次灾难锚点(N×0.25/0.50/0.75)
+# 在卷内位置 0.25/0.50/0.75 处,即恰好落入挫折/绝境/跌落期,
+# 与雪花写作法叙事节奏完美同向放大
+ARC_VALID_K = (5, 9, 13, 17, 21, 25, 29)
+
+
+def compute_optimal_chapters_per_arc(total_chapters: int) -> Tuple[int, str]:
+    """[L2] 根据总章数推算最优 chapters_per_arc。
+
+    数学原理:
+        当总卷数 K = 4n + 1 (n >= 1) 时:
+            K × 0.25 = n + 0.25 → 卷内 0.25 → 挫折期 ✓
+            K × 0.50 = 2n + 0.5 → 卷内 0.50 → 绝境期 ✓
+            K × 0.75 = 3n + 0.75 → 卷内 0.75 → 跌落期 ✓
+        因此 K ∈ {5, 9, 13, 17, ...} 是天然对齐的候选。
+
+    选择策略:
+        1. 遍历 ARC_VALID_K 候选,对每个 K 同时尝试 round/floor/ceil 三种取整,
+           保留落在 [ARC_M_MIN, ARC_M_MAX] 范围内的 M
+        2. 对每个候选 (K, M) 用 _score_alignment 计算 0-3 的对齐分(三次灾难
+           是否各自落入挫折/绝境/跌落)
+        3. 选 score 最高的 M;同分时优先 K 小(更少卷数);仍同分时优先 round
+        4. 全部越界则按"宁少勿多"原则 fallback 并记录原因
+
+    Args:
+        total_chapters: 总章节数。<= 0 时返回 (0, 原因)。
+
+    Returns:
+        (M, reason):
+            - M: 推荐的 chapters_per_arc。0 表示禁用。
+            - reason: 中文解释,可直接展示给用户或写入日志。
+
+    Examples:
+        >>> compute_optimal_chapters_per_arc(400)[0]
+        80
+        >>> compute_optimal_chapters_per_arc(0)[0]
+        0
+    """
+    if total_chapters <= 0:
+        return 0, "总章数无效(<=0),已禁用 arc 模型"
+
+    # 主策略: 遍历 K + 三种取整,选对齐最优
+    best: Optional[Tuple[int, int, int, int]] = None  # (M, K, score, round_priority)
+    for K in ARC_VALID_K:
+        ideal = total_chapters / K
+        candidates = {round(ideal), int(ideal), int(ideal) + 1}
+        # round_priority: round=0(优先), floor=1, ceil=2 — 同分时倾向 round
+        for M, prio in [(round(ideal), 0), (int(ideal), 1), (int(ideal) + 1, 2)]:
+            if M not in candidates or not (ARC_M_MIN <= M <= ARC_M_MAX):
+                continue
+            score = _score_alignment(total_chapters, M)
+            # 排序键: score 降序 → K 升序 → prio 升序
+            if best is None:
+                best = (M, K, score, prio)
+            else:
+                bM, bK, bScore, bPrio = best
+                if (score, -K, -prio) > (bScore, -bK, -bPrio):
+                    best = (M, K, score, prio)
+            candidates.discard(M)  # 避免重复评估同一 M
+
+    if best is not None:
+        M, K, score, _ = best
+        quality = "完美" if score == 3 else f"{score}/3"
+        return M, (
+            f"推荐 K={K} 卷模型,每卷 {M} 章。"
+            f"全书 25%/50%/75% 灾难锚点对齐质量: {quality}"
+            f"(挫折/绝境/跌落期)。"
+        )
+
+    # Fallback 1: 总章数偏少,所有 K 候选都让 M < ARC_M_MIN
+    # 阈值: ARC_M_MIN * 5 = 150
+    if total_chapters < ARC_M_MIN * 5:
+        ideal = total_chapters // 5
+        # 总章 < 60 时连 ARC_M_MIN 都够不到,只能折半
+        M = max(min(ARC_M_MIN, total_chapters // 2), ideal) if total_chapters >= ARC_M_MIN * 2 else max(1, total_chapters // 2)
+        return M, (
+            f"⚠ 总章数 {total_chapters} 偏少(<{ARC_M_MIN * 5}),"
+            f"已 fallback 到 M={M};节奏可能偏紧,建议手动调整或增加 target_chapters"
+        )
+
+    # Fallback 2: 总章数极大,即便最大 K 也让 M > ARC_M_MAX
+    K_max = ARC_VALID_K[-1]
+    M = min(ARC_M_MAX, max(ARC_M_MIN, round(total_chapters / K_max)))
+    return M, (
+        f"⚠ 总章数 {total_chapters} 过大(K={K_max} 仍越界),"
+        f"已 fallback 到 M={M};灾难锚点对齐质量可能下降,"
+        f"建议拆分为多个独立项目"
+    )
+
+
+def _score_alignment(total_chapters: int, chapters_per_arc: int) -> int:
+    """[L2 内部] 评估给定 (N, M) 的三次灾难锚点对齐分数。
+
+    Returns:
+        0-3 的整数,表示 25%/50%/75% 锚点中分别落入"挫折/绝境/跌落"的数量。
+    """
+    if chapters_per_arc <= 0 or total_chapters <= 0:
+        return 0
+    score = 0
+    expected = (("挫折", 0.25), ("绝境", 0.50), ("跌落", 0.75))
+    for expected_name, pct in expected:
+        ch = max(1, round(total_chapters * pct))
+        phase = get_emotion_phase_for_chapter(ch, chapters_per_arc)
+        if phase and phase.name == expected_name:
+            score += 1
+    return score
 
 
 def get_outline_prompt(

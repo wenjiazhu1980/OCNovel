@@ -718,6 +718,17 @@ class NovelParamsTab(QWidget):
         self._sp_chapters_per_arc.setToolTip(self.tr("每卷章节数，用于卷内情绪节奏控制（螺旋上升模型：成长→挫折→绝境→爆发→跌落→新局）。设为 0 则禁用"))
         o_form.addRow(self.tr("每卷章节数(情绪节奏)"), self._sp_chapters_per_arc)
 
+        # [L2] 自动计算开关：勾选后忽略上方手动值，按 target_chapters 推算最优分卷
+        self._cb_arc_auto = QCheckBox(self.tr("自动计算（按目标章节数推算最优分卷）"))
+        self._cb_arc_auto.setToolTip(self.tr(
+            "勾选后忽略上方手动值，按 target_chapters 自动推算最优 chapters_per_arc，"
+            "使全书 25%/50%/75% 灾难锚点对齐卷内挫折/绝境/跌落期"
+        ))
+        self._cb_arc_auto.toggled.connect(self._on_arc_auto_toggled)
+        o_form.addRow("", self._cb_arc_auto)
+        # target_chapters 变化时,若勾选 auto 则刷新推算
+        self._sp_chapters.valueChanged.connect(self._refresh_arc_auto_tooltip)
+
         outer.addWidget(o_grp)
 
         # 验证开关
@@ -1355,7 +1366,9 @@ class NovelParamsTab(QWidget):
 
         # --- 生成配置：卷结构 ---
         arc_cfg = nc.get("arc_config", {})
-        self._sp_chapters_per_arc.setValue(int(arc_cfg.get("chapters_per_arc", 0)))
+        # 先 setValue 再 setChecked,避免 toggled 信号回调先触发导致顺序混乱
+        self._sp_chapters_per_arc.setValue(int(arc_cfg.get("chapters_per_arc", 0) or 0))
+        self._cb_arc_auto.setChecked(bool(arc_cfg.get("auto_compute", False)))
 
         # --- 生成配置：验证 ---
         val = gc.get("validation", {})
@@ -1496,6 +1509,7 @@ class NovelParamsTab(QWidget):
         nc["chapter_length"] = self._sp_chapter_len.value()
         nc["arc_config"] = {
             "chapters_per_arc": self._sp_chapters_per_arc.value(),
+            "auto_compute": self._cb_arc_auto.isChecked(),
         }
 
         wg = nc.setdefault("writing_guide", {})
@@ -1622,6 +1636,47 @@ class NovelParamsTab(QWidget):
             self.tr("配角的目标总数；本次实际新增 = 目标 - 已有数量(下限 0)。当前篇幅 {0} 章，建议 {1} 个").format(chapters, sup))
         self._sp_gen_antagonists.setToolTip(
             self.tr("反派的目标总数；本次实际新增 = 目标 - 已有数量(下限 0)。当前篇幅 {0} 章，建议 {1} 个").format(chapters, ant))
+
+    # ======================================================================
+    # [L2] arc_config 自动计算
+    # ======================================================================
+    def _on_arc_auto_toggled(self, checked: bool) -> None:
+        """[L2] 自动计算开关切换:勾选时禁用手动 spinbox 并刷新推算 tooltip"""
+        # spinbox 仍可显示推算结果,但禁止编辑(避免与 auto 冲突)
+        self._sp_chapters_per_arc.setEnabled(not checked)
+        if checked:
+            self._refresh_arc_auto_tooltip()
+        else:
+            # 还原默认提示
+            self._sp_chapters_per_arc.setToolTip(self.tr(
+                "每卷章节数，用于卷内情绪节奏控制（螺旋上升模型："
+                "成长→挫折→绝境→爆发→跌落→新局）。设为 0 则禁用"
+            ))
+
+    def _refresh_arc_auto_tooltip(self) -> None:
+        """[L2] 当 auto_compute 勾选时,根据 target_chapters 实时计算并展示推算值。
+
+        - 同时更新 spinbox.value(直觉感受推算结果)与 tooltip(详细原因)
+        - 当 target_chapters 在合法范围外时静默(避免每次按键都弹错误)
+        """
+        cb = getattr(self, "_cb_arc_auto", None)
+        if cb is None or not cb.isChecked():
+            return
+        try:
+            from src.generators.prompts import compute_optimal_chapters_per_arc
+            n = self._sp_chapters.value()
+            cpa, reason = compute_optimal_chapters_per_arc(n)
+            self._sp_chapters_per_arc.blockSignals(True)
+            try:
+                self._sp_chapters_per_arc.setValue(cpa)
+            finally:
+                self._sp_chapters_per_arc.blockSignals(False)
+            self._sp_chapters_per_arc.setToolTip(
+                self.tr("自动推算: chapters_per_arc = {0}\n{1}").format(cpa, reason)
+            )
+        except Exception:
+            # 计算失败时不打扰用户,保留上次 tooltip
+            pass
 
     # ======================================================================
     # 自动生成写作指南
