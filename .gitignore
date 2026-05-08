@@ -66,6 +66,7 @@ Thumbs.db
 .qoderignore
 .gitignore
 .ace-tool/
+.remember/
 *.png
 *.jpg
 *.bak.*
