@@ -1639,7 +1639,15 @@ class ContentGenerator:
                 # 此时已经无法创建同步信息文件，但不应该影响主要功能
 
     def _create_sync_info_prompt(self, story_content: str) -> str:
-        """创建生成同步信息的提示词"""
+        """创建生成同步信息的提示词
+
+        截断阈值可通过 generation_config 配置(默认上调到 32K/60K,容纳长篇累积):
+        - sync_info_max_length: 现有同步信息上限,默认 32000(原 8000)
+        - sync_story_max_length: 故事内容上限,默认 60000(原 30000)
+
+        模型层(openai_model.py max_prompt_length=65536, claude_model.py=180000)
+        会再次兜底,本截断主要防止 prompt 模板拼接后过度膨胀。
+        """
         existing_sync_info = ""
         if os.path.exists(self.sync_info_file):
             try:
@@ -1648,9 +1656,20 @@ class ContentGenerator:
             except Exception as e:
                 logger.warning(f"读取现有同步信息时出错: {str(e)}")
 
-        # 限制各部分长度，防止 prompt 超过模型输入限制
-        max_sync_info_len = 8000
-        max_story_len = 30000
+        # 限制各部分长度,防止 prompt 超过模型输入限制(可配置)
+        gen_cfg = getattr(self.config, "generation_config", None) or {}
+
+        def _coerce_positive_int(value, default: int) -> int:
+            """容错转换:None / 非数值 / <=0 都回退到 default"""
+            try:
+                v = int(value)
+                return v if v > 0 else default
+            except (TypeError, ValueError):
+                return default
+
+        max_sync_info_len = _coerce_positive_int(gen_cfg.get("sync_info_max_length"), 32000)
+        max_story_len = _coerce_positive_int(gen_cfg.get("sync_story_max_length"), 60000)
+
         if len(existing_sync_info) > max_sync_info_len:
             logger.warning(f"现有同步信息过长 ({len(existing_sync_info)} 字符)，截断到 {max_sync_info_len}")
             existing_sync_info = existing_sync_info[:max_sync_info_len] + "\n...(已截断)"
