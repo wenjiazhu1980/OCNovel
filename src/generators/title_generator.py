@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 class TitleGenerator:
     """小说标题、梗概和封面提示词生成器"""
@@ -92,17 +92,61 @@ class TitleGenerator:
             logging.error(f"生成标题时出错: {str(e)}")
             return {platform: f"未能生成{platform}标题" for platform in platforms}
             
-    def _compress_summaries(self, summaries: List[str], max_length: int = 50000) -> str:
+    @staticmethod
+    def _coerce_summary_to_text(value: Any) -> str:
+        """[Bugfix] 容错地把单条摘要值转换为纯文本
+
+        历史 summary.json 数据可能包含:
+        - str: 直接使用(spec 内默认)
+        - dict: 历史/外部工具写入,优先尝试 text / summary / content / 内容 / 摘要
+                字段;若无则取首个非空 str 值;再无则 fallback 到 str(value)
+        - None: 返回空串
+        - 其他类型(int / list 等): str(value)
+
+        这样可防御 _compress_summaries 在 "\n".join() 时抛
+        TypeError: sequence item N: expected str instance, dict found。
+        """
+        if isinstance(value, str):
+            return value
+        if value is None:
+            return ""
+        if isinstance(value, dict):
+            for key in ("text", "summary", "content", "内容", "摘要"):
+                v = value.get(key)
+                if isinstance(v, str) and v.strip():
+                    return v
+            # 无已知字段:取首个非空 str 值兜底
+            for v in value.values():
+                if isinstance(v, str) and v.strip():
+                    return v
+            # 完全无可用 str → 序列化以便追踪(转储成 JSON 字符串),
+            # 这样调用方至少能看到原始内容结构而非崩溃
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except Exception:
+                return str(value)
+        # int / list / 其他对象
+        return str(value)
+
+    def _compress_summaries(self, summaries: List[Any], max_length: int = 50000) -> str:
         """
         智能压缩章节摘要，避免提示词过长
 
         Args:
-            summaries: 章节摘要列表
+            summaries: 章节摘要列表(容忍 str / dict / None / 其他类型,会防御性 coerce)
             max_length: 最大总长度（字符数）
 
         Returns:
             str: 压缩后的摘要文本
         """
+        if not summaries:
+            return ""
+
+        # 容错: summary.json 历史数据可能存储为 dict(如 {"text": "..."} 或包含元信息),
+        # 这里统一归一化为纯文本,避免 "\n".join 抛 TypeError
+        summaries = [self._coerce_summary_to_text(s) for s in summaries]
+        # 过滤归一化后仍为空的条目,避免空行污染压缩文本
+        summaries = [s for s in summaries if s]
         if not summaries:
             return ""
 

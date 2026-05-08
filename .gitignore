@@ -47,7 +47,7 @@ tests/htmlcov/
 tests/data/
 tests/output/
 tests/.local_*
-# docs/：仅忽略产物目录（如生成的 site/），跟踪 Markdown 源
+docs/
 docs/_build/
 docs/site/
 examples/
@@ -64,6 +64,7 @@ Thumbs.db
 .cursorignore
 .cursorrules
 .qoderignore
+.gitignore
 .ace-tool/
 *.png
 *.jpg
