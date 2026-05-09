@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QStatusBar, QLabel,
     QMenuBar, QFileDialog, QMessageBox,
 )
-from PySide6.QtCore import Qt, QEvent
+from PySide6.QtCore import Qt, QEvent, QSettings
 from PySide6.QtGui import QFont, QAction
 
 from .tabs.model_config_tab import ModelConfigTab
@@ -24,8 +24,17 @@ class MainWindow(QMainWindow):
         self.resize(1100, 780)
 
         self._project_root = get_project_root()
-        self._config_path = os.path.join(self._project_root, "config.json")
-        self._env_path = os.path.join(self._project_root, ".env")
+        self._settings = QSettings("OCNovel", "OCNovel")
+
+        # 恢复上次使用的配置路径(若文件仍存在);否则回退到项目根目录默认
+        last_config = self._settings.value("last_config_path", "")
+        default_config = os.path.join(self._project_root, "config.json")
+        if last_config and os.path.isfile(last_config):
+            self._config_path = last_config
+        else:
+            self._config_path = default_config
+
+        self._env_path = os.path.join(os.path.dirname(self._config_path), ".env")
         self._language_actions = {}  # 语言菜单动作字典
 
         self._init_menu()
@@ -75,6 +84,8 @@ class MainWindow(QMainWindow):
             self._config_path = path
             # 自动派生 .env 路径为新 config 所在目录下的 .env
             self._env_path = os.path.join(os.path.dirname(path), ".env")
+            # 持久化到 QSettings,下次启动自动恢复
+            self._settings.setValue("last_config_path", path)
             self._update_title()
             self.model_tab.set_config_path(path)
             self.novel_tab.set_config_path(path)
