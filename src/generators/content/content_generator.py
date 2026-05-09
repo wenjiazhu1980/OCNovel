@@ -547,9 +547,39 @@ class ContentGenerator:
                 # 字数偏差已在上面记录，不重复打 traceback
                 # 保存内容用于下次迭代做缩写/扩写调整
                 if e.content:
+                    # [收敛判断] 如果本次调整后偏差比上次更接近目标,
+                    # 说明方向正确但 LLM 控制力不足;此时接受当前结果,
+                    # 避免"偏多→精简过度→偏少→扩展过度"的无阻尼震荡
+                    if pending_adjustment:
+                        prev_content, prev_actual, prev_target = pending_adjustment
+                        prev_deviation = abs(prev_actual - prev_target) / prev_target
+                        curr_deviation = abs(e.actual - e.target) / e.target
+                        if curr_deviation < prev_deviation:
+                            logger.info(
+                                f"[Chapter {chapter_num}] 字数调整收敛中: "
+                                f"偏差 {prev_deviation:.0%} → {curr_deviation:.0%}，"
+                                f"接受当前 {e.actual} 字结果（避免震荡）"
+                            )
+                            raw_content = e.content
+                            # 跳出 ChapterLengthError 处理,让后续流程继续
+                            pending_adjustment = None
+                            # 重新走正常保存流程:需要 goto 后续逻辑,
+                            # 但 Python 无 goto;用 continue + 标记实现
+                            # 简化方案:直接把 raw_content 赋值并 break 到保存
+                            break
                     pending_adjustment = (e.content, e.actual, e.target)
                 success = False
                 if attempt >= max_retries - 1:
+                    # 最后一次仍不达标:如果有内容且偏差 < 80%,降级接受
+                    if e.content and e.actual > 0:
+                        final_dev = abs(e.actual - e.target) / e.target
+                        if final_dev < 0.8:
+                            logger.warning(
+                                f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标"
+                                f"（偏差 {final_dev:.0%}），降级接受 {e.actual} 字结果"
+                            )
+                            raw_content = e.content
+                            break
                     logger.error(f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标，放弃")
                     return False
             except Exception as e:
@@ -935,28 +965,42 @@ class ContentGenerator:
             max_len = int(target_length * 1.2)
 
             if actual_length > target_length:
-                # 缩写
+                # 缩写：限制最大删减比例,避免过度精简导致震荡
+                # 目标:从 actual 缩到 target,但最多只删 30%
+                safe_floor = int(actual_length * 0.7)
+                effective_target = max(target_length, safe_floor)
+                effective_min = max(min_len, safe_floor)
                 action = "精简缩写"
                 instruction = (
-                    f"当前内容 {actual_length} 字，目标 {target_length} 字（允许 {min_len}~{max_len}）。\n"
+                    f"当前内容 {actual_length} 字，目标 {effective_target} 字（允许 {effective_min}~{max_len}）。\n"
+                    f"⚠️ 重要：最终字数必须在 {effective_min}~{max_len} 字之间，"
+                    f"绝对不能低于 {effective_min} 字！\n"
                     "请对以下章节内容进行精简缩写，要求：\n"
                     "1. 保留所有关键剧情点、人物对话的核心内容和重要转折\n"
                     "2. 删减冗余的环境描写、重复的心理活动、过度的修饰语\n"
                     "3. 压缩过长的动作描写和场景过渡\n"
                     "4. 保持故事连贯性和人物性格一致性\n"
-                    "5. 直接输出缩写后的完整章节内容，不要添加任何说明"
+                    "5. 直接输出缩写后的完整章节内容，不要添加任何说明\n"
+                    f"6. 宁可字数略多也不要删减过度——低于 {effective_min} 字视为失败"
                 )
             else:
-                # 扩写
+                # 扩写：限制最大增幅,避免过度膨胀
+                # 目标:从 actual 扩到 target,但最多只加 80%
+                safe_ceil = int(actual_length * 1.8)
+                effective_target = min(target_length, safe_ceil)
+                effective_max = min(max_len, safe_ceil)
                 action = "扩展充实"
                 instruction = (
-                    f"当前内容 {actual_length} 字，目标 {target_length} 字（允许 {min_len}~{max_len}）。\n"
+                    f"当前内容 {actual_length} 字，目标 {effective_target} 字（允许 {min_len}~{effective_max}）。\n"
+                    f"⚠️ 重要：最终字数必须在 {min_len}~{effective_max} 字之间，"
+                    f"绝对不能超过 {effective_max} 字！\n"
                     "请对以下章节内容进行扩展充实，要求：\n"
                     "1. 围绕现有剧情点增加细节描写、人物对话和心理活动\n"
                     "2. 补充环境氛围描写和角色互动\n"
                     "3. 不要改变原有剧情走向和人物设定\n"
                     "4. 新增内容要自然融入，不能有拼凑感\n"
-                    "5. 直接输出扩写后的完整章节内容，不要添加任何说明"
+                    "5. 直接输出扩写后的完整章节内容，不要添加任何说明\n"
+                    f"6. 宁可字数略少也不要过度膨胀——超过 {effective_max} 字视为失败"
                 )
 
             prompt = (
