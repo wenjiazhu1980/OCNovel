@@ -276,8 +276,8 @@ Please restart the application to apply the new language settings.</translation>
     <name>ModelConfigTab</name>
     <message>
         <location filename="../tabs/model_config_tab.py" line="51"/>
-        <source>免费获取 API Key：&lt;a href=&quot;https://cloud.siliconflow.cn/i/VFtAog0M&quot;&gt;注册硅基流动账号&lt;/a&gt;（注册即送额度，支持 Qwen / DeepSeek 等开源模型）</source>
-        <translation>Get Free API Key: &lt;a href=&quot;https://cloud.siliconflow.cn/i/VFtAog0M&quot;&gt;Register SiliconFlow Account&lt;/a&gt; (Free credits on signup, supports Qwen / DeepSeek and other open-source models)</translation>
+        <source>免费获取 API Key：&lt;a href=&quot;https://cloud.siliconflow.cn&quot;&gt;注册硅基流动账号&lt;/a&gt;（注册即送额度，支持 Qwen / DeepSeek 等开源模型）</source>
+        <translation>Get Free API Key: &lt;a href=&quot;https://cloud.siliconflow.cn&quot;&gt;Register SiliconFlow Account&lt;/a&gt; (Free credits on signup, supports Qwen / DeepSeek and other open-source models)</translation>
     </message>
     <message>
         <location filename="../tabs/model_config_tab.py" line="73"/>

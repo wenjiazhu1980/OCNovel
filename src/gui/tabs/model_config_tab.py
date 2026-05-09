@@ -71,7 +71,7 @@ class ModelConfigTab(QWidget):
         # 硅基流动注册提示
         tip = QLabel(
             self.tr('免费获取 API Key：'
-            '<a href="https://cloud.siliconflow.cn/i/VFtAog0M">注册硅基流动账号</a>'
+            '<a href="https://cloud.siliconflow.cn">注册硅基流动账号</a>'
             '（注册即送额度，支持 Qwen / DeepSeek 等开源模型）')
         )
         tip.setOpenExternalLinks(True)
