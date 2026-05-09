@@ -49,6 +49,8 @@ def _make_mocks(target_chapters=5):
     # 默认无已存在章节(强制走 generate_content 路径)
     mock_content_generator._chapter_content_exists.return_value = None
     mock_content_generator._chapters_in_summary = set()
+    # 默认无字数异常标记
+    mock_content_generator._length_warnings = {}
     # current_chapter=0 → start_chapter=1,生成全量
     mock_content_generator.current_chapter = 0
     mock_content_generator.merge_all_chapters.return_value = "/tmp/merged.txt"

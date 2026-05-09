@@ -304,6 +304,7 @@ class TestPipelineWorkerTargetChapters:
         # [Follow-up to a1232e7] _outline_discontinuous 必须为空列表(否则触发补洞分支)
         mock_content_generator._outline_discontinuous = []
         mock_content_generator._chapters_in_summary = set()
+        mock_content_generator._length_warnings = {}
         # 补洞函数若被调用应返回 (succeeded, still_missing) 元组
         mock_outline_generator.patch_missing_chapters.return_value = ([], [])
 

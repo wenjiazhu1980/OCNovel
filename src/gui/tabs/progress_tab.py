@@ -355,6 +355,7 @@ class ProgressTab(QWidget):
         # 连接 Worker 信号
         self._worker.chapter_started.connect(self._on_chapter_started)
         self._worker.chapter_completed.connect(self._on_chapter_completed)
+        self._worker.chapter_warning.connect(self._on_chapter_warning)
         self._worker.chapter_failed.connect(self._on_chapter_failed)
         self._worker.progress_updated.connect(self._on_progress_updated)
         self._worker.pipeline_finished.connect(self._on_pipeline_finished)
@@ -648,6 +649,12 @@ class ProgressTab(QWidget):
 
     def _on_chapter_completed(self, chapter_num: int, title: str):
         self.chapter_list.set_chapter_status(chapter_num, "completed")
+
+    def _on_chapter_warning(self, chapter_num: int, warning_msg: str):
+        self.chapter_list.set_chapter_status(chapter_num, "warning")
+        self.log_viewer.append_log(
+            self.tr("第 {0} 章降级接受: {1}").format(chapter_num, warning_msg), "WARNING"
+        )
 
     def _on_chapter_failed(self, chapter_num: int, error_msg: str):
         self.chapter_list.set_chapter_status(chapter_num, "failed")

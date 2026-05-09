@@ -16,6 +16,7 @@ class PipelineWorker(QThread):
     # ---- 信号 ----
     chapter_started = Signal(int)            # 章节开始
     chapter_completed = Signal(int, str)     # 章节完成 (chapter_num, title)
+    chapter_warning = Signal(int, str)       # 章节降级接受 (chapter_num, warning_msg)
     chapter_failed = Signal(int, str)        # 章节失败 (chapter_num, error_msg)
     progress_updated = Signal(int, int)      # (current, total)
     pipeline_finished = Signal(bool)         # 是否成功完成
@@ -366,7 +367,12 @@ class PipelineWorker(QThread):
                         title = self._get_chapter_title(
                             content_generator, chapter_num
                         )
-                        self.chapter_completed.emit(chapter_num, title)
+                        # 检查是否有字数异常标记(降级接受)
+                        length_warn = content_generator._length_warnings.get(chapter_num)
+                        if length_warn:
+                            self.chapter_warning.emit(chapter_num, length_warn)
+                        else:
+                            self.chapter_completed.emit(chapter_num, title)
                     else:
                         # [H4] 生成失败:记录到 failed_chapters,连续模式中止
                         failed_chapters.append(chapter_num)

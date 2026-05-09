@@ -10,6 +10,7 @@ _STATUS_MAP = {
     "pending":   ("○", QColor(Theme.STATUS_PENDING)),
     "running":   ("◎", QColor(Theme.STATUS_RUNNING)),
     "completed": ("✓", QColor(Theme.STATUS_COMPLETED)),
+    "warning":   ("⚠", QColor("#E6A817")),  # 降级接受(字数超标/不足)
     "failed":    ("✗", QColor(Theme.STATUS_FAILED)),
 }
 

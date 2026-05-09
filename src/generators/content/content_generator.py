@@ -41,6 +41,7 @@ class ContentGenerator:
         self.current_chapter = 0
         self.finalizer = finalizer
         self.cancel_checker = None  # 可选：外部注入的取消检查回调，返回 True 表示应取消
+        self._length_warnings: dict = {}  # {chapter_num: "字数超标(4624/2500,偏差85%)"} 供 pipeline_worker 读取
         
         # 新增：缓存计数器和同步信息生成器
         self.chapters_since_last_cache = 0
@@ -570,17 +571,22 @@ class ContentGenerator:
                     pending_adjustment = (e.content, e.actual, e.target)
                 success = False
                 if attempt >= max_retries - 1:
-                    # 最后一次仍不达标:如果有内容且偏差 < 80%,降级接受
+                    # 最后一次仍不达标:无条件降级接受(保留内容 + 标记警告),
+                    # 不再放弃章节,让流水线继续推进
                     if e.content and e.actual > 0:
                         final_dev = abs(e.actual - e.target) / e.target
-                        if final_dev < 0.8:
-                            logger.warning(
-                                f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标"
-                                f"（偏差 {final_dev:.0%}），降级接受 {e.actual} 字结果"
-                            )
-                            raw_content = e.content
-                            break
-                    logger.error(f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标，放弃")
+                        direction = "字数超标" if e.actual > e.target else "字数不足"
+                        warning_msg = f"{direction}({e.actual}/{e.target},偏差{final_dev:.0%})"
+                        logger.warning(
+                            f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标"
+                            f"（{warning_msg}），降级接受并标记"
+                        )
+                        # 记录到实例级字典,供 pipeline_worker 读取
+                        self._length_warnings[chapter_num] = warning_msg
+                        raw_content = e.content
+                        break
+                    # 极端情况:内容为空,真正无法继续
+                    logger.error(f"[Chapter {chapter_num}] 字数调整 {max_retries} 次且内容为空，放弃")
                     return False
             except Exception as e:
                 logger.error(f"[Chapter {chapter_num}] 处理出错: {str(e)}", exc_info=True)
