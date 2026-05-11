@@ -531,6 +531,7 @@ class ContentGenerator:
 
                 # 1.5. 字数检测
                 target_length = self.config.generator_config.get("chapter_length", 0)
+                soft_warning = None  # 0.2-0.5 区间的软警告，最终保存成功后写入
                 if target_length > 0:
                     actual_length = len(raw_content)
                     deviation = abs(actual_length - target_length) / target_length
@@ -551,6 +552,11 @@ class ContentGenerator:
                             f"[Chapter {chapter_num}] 字数{direction}: "
                             f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}）"
                         )
+                        # 软警告：内容可通过验证但偏差仍显著，让 pipeline_worker 标记 warning
+                        soft_warning = (
+                            f"字数{direction}({actual_length}/{target_length},"
+                            f"偏差{deviation:.0%})"
+                        )
                     else:
                         logger.info(
                             f"[Chapter {chapter_num}] 字数检测通过: "
@@ -561,6 +567,10 @@ class ContentGenerator:
                 if self._validate_save_finalize_chapter(
                     chapter_num, raw_content, chapter_outline, is_target_chapter
                 ):
+                    # 软警告仅在正常路径成功且未被覆盖时写入；
+                    # 降级路径自行写入更严重的 warning_msg，不应被软警告覆盖
+                    if soft_warning and chapter_num not in self._length_warnings:
+                        self._length_warnings[chapter_num] = soft_warning
                     success = True
                     break
             except ChapterLengthError as e:
@@ -595,10 +605,28 @@ class ContentGenerator:
                         f"[Chapter {chapter_num}] 字数调整 {max_retries} 次且无可用最佳结果，放弃"
                     )
                     return False
+            except InterruptedError:
+                # 用户取消：不重试、不降级、立即退出
+                logger.warning(f"[Chapter {chapter_num}] 用户取消生成，停止重试")
+                return False
             except Exception as e:
                 logger.error(f"[Chapter {chapter_num}] 处理出错: {str(e)}", exc_info=True)
                 success = False
                 if attempt >= max_retries - 1:
+                    # 用尽重试预算：若有历史最佳调整结果，仍尝试降级保存（覆盖
+                    # "adjust 返回 None / 网络抖动" 等场景，避免白白浪费已经
+                    # 拿到的可用内容）
+                    if best_adjusted:
+                        bc, ba, bt, bd = best_adjusted
+                        direction = "字数超标" if ba > bt else "字数不足"
+                        warning_msg = f"{direction}({ba}/{bt},偏差{bd:.0%},末次异常)"
+                        logger.warning(
+                            f"[Chapter {chapter_num}] 末次重试异常但有历史最佳结果"
+                            f"（{warning_msg}），降级接受并标记"
+                        )
+                        self._length_warnings[chapter_num] = warning_msg
+                        raw_content = bc
+                        break
                     logger.error(f"[Chapter {chapter_num}] 达到最大重试次数")
                     return False
                 time.sleep(retry_delay)
