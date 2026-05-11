@@ -385,6 +385,93 @@ class ContentGenerator:
 
         return effective_max_retries, effective_retry_delay
 
+    def _validate_save_finalize_chapter(
+        self,
+        chapter_num: int,
+        raw_content: str,
+        chapter_outline: ChapterOutline,
+        is_target_chapter: bool,
+    ) -> bool:
+        """统一的验证 → 保存 → 定稿流程，供正常路径与降级路径共享。
+
+        流程：逻辑验证 → 一致性检查 → 重复文字验证 → 保存 → finalize → 状态集合更新。
+        成功返回 True；任何环节失败抛出异常，由调用方决定是否重试。
+        """
+        self._check_cancelled()
+        sync_info = self._load_sync_info()
+
+        # 3. 逻辑验证
+        logic_report, needs_logic_revision = self.logic_validator.check_logic(
+            raw_content,
+            chapter_outline.__dict__,
+            sync_info
+        )
+        logger.info(
+            f"[Chapter {chapter_num}] 逻辑验证报告 (摘要): {logic_report[:200]}..."
+            f"\n需要修改: {'是' if needs_logic_revision else '否'}"
+        )
+
+        self._check_cancelled()
+        # 4. 一致性验证
+        logger.info(f"[Chapter {chapter_num}] 开始一致性检查...")
+        final_content = self.consistency_checker.ensure_chapter_consistency(
+            chapter_content=raw_content,
+            chapter_outline=chapter_outline.__dict__,
+            sync_info=sync_info,
+            chapter_idx=chapter_num - 1
+        )
+        logger.info(f"[Chapter {chapter_num}] 一致性检查完成")
+
+        self._check_cancelled()
+        # 5. 重复文字验证
+        duplicate_report, needs_duplicate_revision = self.duplicate_validator.check_duplicates(
+            final_content,
+            self._load_adjacent_chapter(chapter_num - 1),
+            self._load_adjacent_chapter(chapter_num + 1) if chapter_num < len(self.chapter_outlines) else ""
+        )
+        logger.info(
+            f"[Chapter {chapter_num}] 重复文字验证报告 (摘要): {duplicate_report[:200]}..."
+            f"\n需要修改: {'是' if needs_duplicate_revision else '否'}"
+        )
+
+        # 6. 保存最终内容
+        if not self._save_chapter_content(chapter_num, final_content):
+            raise Exception("保存最终内容失败")
+        logger.info(f"[Chapter {chapter_num}] 内容保存成功")
+
+        # 7. 调用 Finalizer (如果提供了)
+        if self.finalizer:
+            logger.info(f"[Chapter {chapter_num}] 开始调用 Finalizer 进行定稿...")
+            # 重新生成单章（is_target_chapter=True）时跳过 summary 更新，
+            # 避免覆盖既有上下文摘要导致与 sync_info 不一致。
+            finalize_success = self.finalizer.finalize_chapter(
+                chapter_num=chapter_num,
+                update_summary=not is_target_chapter,
+            )
+            if not finalize_success:
+                # 定稿失败时不能将 success 置 True，否则上层会把进度推到下一章，
+                # 导致 summary.json 与磁盘脱节。抛异常以触发 except 分支的重试。
+                raise Exception(f"第 {chapter_num} 章 finalize 失败")
+            logger.info(f"[Chapter {chapter_num}] 定稿成功")
+            self.current_chapter = chapter_num
+            # 仅在实际写入了 summary.json 时,才把章节加入"已 finalize 集合",
+            # 否则会与磁盘 summary.json 脱节(下次重启 _load_progress 又会
+            # 把该章列入 _chapters_pending_finalize)。
+            if not is_target_chapter and hasattr(self, '_chapters_in_summary'):
+                self._chapters_in_summary.add(chapter_num)
+            if hasattr(self, '_chapters_on_disk'):
+                self._chapters_on_disk.add(chapter_num)
+        else:
+            logger.warning(f"[Chapter {chapter_num}] Finalizer 未提供，跳过定稿步骤。")
+            self.current_chapter = chapter_num
+            if hasattr(self, '_chapters_on_disk'):
+                self._chapters_on_disk.add(chapter_num)
+
+        # content模式不触发同步信息更新，只有auto模式和finalize模式才更新；
+        # 此外 target_chapter（重生成单章）模式额外不刷新 summary。
+        logger.info(f"[Chapter {chapter_num}] content模式不触发同步信息更新，仅保存章节内容")
+        return True
+
     def _process_single_chapter(self, chapter_num: int, external_prompt: Optional[str] = None, max_retries: Optional[int] = None, style_name: Optional[str] = None, is_target_chapter: bool = False) -> bool:
         """
         处理单个章节的生成、验证、保存和定稿，支持风格名
@@ -407,6 +494,10 @@ class ContentGenerator:
         success = False
         length_hint = ""  # 字数约束提示，重试时追加到 prompt
         pending_adjustment = None  # 待调整的内容 (content, actual, target)
+        # best-of-retries：跨 attempt 记录历史最佳结果 (content, actual, target, deviation)
+        # 替代之前"略有收敛即接受"的策略，避免接受仍严重超标的内容
+        best_adjusted = None
+        raw_content = None  # 确保循环外可访问
         for attempt in range(max_retries):
             logger.info(f"[Chapter {chapter_num}] 尝试 {attempt + 1}/{max_retries}")
             try:
@@ -466,127 +557,43 @@ class ContentGenerator:
                             f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}）"
                         )
 
-                self._check_cancelled()
-                # 2. 加载同步信息
-                sync_info = self._load_sync_info()
-                
-                # 3. 逻辑验证
-                logic_report, needs_logic_revision = self.logic_validator.check_logic(
-                    raw_content, 
-                    chapter_outline.__dict__,
-                    sync_info
-                )
-                logger.info(
-                    f"[Chapter {chapter_num}] 逻辑验证报告 (摘要): {logic_report[:200]}..."
-                    f"\n需要修改: {'是' if needs_logic_revision else '否'}"
-                )
-
-                self._check_cancelled()
-                # 4. 一致性验证
-                logger.info(f"[Chapter {chapter_num}] 开始一致性检查...")
-                final_content = self.consistency_checker.ensure_chapter_consistency(
-                    chapter_content=raw_content,
-                    chapter_outline=chapter_outline.__dict__,
-                    sync_info=sync_info,
-                    chapter_idx=chapter_num - 1
-                )
-                logger.info(f"[Chapter {chapter_num}] 一致性检查完成")
-
-                self._check_cancelled()
-                # 5. 重复文字验证
-                duplicate_report, needs_duplicate_revision = self.duplicate_validator.check_duplicates(
-                    final_content,
-                    self._load_adjacent_chapter(chapter_num - 1),
-                    self._load_adjacent_chapter(chapter_num + 1) if chapter_num < len(self.chapter_outlines) else ""
-                )
-                logger.info(
-                    f"[Chapter {chapter_num}] 重复文字验证报告 (摘要): {duplicate_report[:200]}..."
-                    f"\n需要修改: {'是' if needs_duplicate_revision else '否'}"
-                )
-
-                # 6. 保存最终内容
-                if self._save_chapter_content(chapter_num, final_content):
-                    logger.info(f"[Chapter {chapter_num}] 内容保存成功")
-
-                    # 7. 调用 Finalizer (如果提供了)
-                    if self.finalizer:
-                        logger.info(f"[Chapter {chapter_num}] 开始调用 Finalizer 进行定稿...")
-                        # 重新生成单章（is_target_chapter=True）时跳过 summary 更新，
-                        # 避免覆盖既有上下文摘要导致与 sync_info 不一致。
-                        finalize_success = self.finalizer.finalize_chapter(
-                            chapter_num=chapter_num,
-                            update_summary=not is_target_chapter,
-                        )
-                        if finalize_success:
-                            logger.info(f"[Chapter {chapter_num}] 定稿成功")
-                            self.current_chapter = chapter_num
-                            # 仅在实际写入了 summary.json 时,才把章节加入"已 finalize 集合",
-                            # 否则会与磁盘 summary.json 脱节(下次重启 _load_progress 又会
-                            # 把该章列入 _chapters_pending_finalize)。
-                            if not is_target_chapter and hasattr(self, '_chapters_in_summary'):
-                                self._chapters_in_summary.add(chapter_num)
-                            if hasattr(self, '_chapters_on_disk'):
-                                self._chapters_on_disk.add(chapter_num)
-                        else:
-                            # 定稿失败时不能将 success 置 True，否则上层会把进度推到下一章，
-                            # 导致 summary.json 与磁盘脱节。抛异常以触发 except 分支的重试。
-                            raise Exception(f"第 {chapter_num} 章 finalize 失败")
-                    else:
-                        logger.warning(f"[Chapter {chapter_num}] Finalizer 未提供，跳过定稿步骤。")
-                        self.current_chapter = chapter_num
-                        if hasattr(self, '_chapters_on_disk'):
-                            self._chapters_on_disk.add(chapter_num)
-
-                    # content模式不触发同步信息更新，只有auto模式和finalize模式才更新；
-                    # 此外 target_chapter（重生成单章）模式额外不刷新 summary。
-                    logger.info(f"[Chapter {chapter_num}] content模式不触发同步信息更新，仅保存章节内容")
+                # 2~7: 加载 sync_info → 逻辑验证 → 一致性 → 重复检测 → 保存 → finalize → 状态更新
+                if self._validate_save_finalize_chapter(
+                    chapter_num, raw_content, chapter_outline, is_target_chapter
+                ):
                     success = True
                     break
-                else:
-                    raise Exception("保存最终内容失败")
             except ChapterLengthError as e:
                 # 字数偏差已在上面记录，不重复打 traceback
-                # 保存内容用于下次迭代做缩写/扩写调整
-                if e.content:
-                    # [收敛判断] 如果本次调整后偏差比上次更接近目标,
-                    # 说明方向正确但 LLM 控制力不足;此时接受当前结果,
-                    # 避免"偏多→精简过度→偏少→扩展过度"的无阻尼震荡
-                    if pending_adjustment:
-                        prev_content, prev_actual, prev_target = pending_adjustment
-                        prev_deviation = abs(prev_actual - prev_target) / prev_target
-                        curr_deviation = abs(e.actual - e.target) / e.target
-                        if curr_deviation < prev_deviation:
-                            logger.info(
-                                f"[Chapter {chapter_num}] 字数调整收敛中: "
-                                f"偏差 {prev_deviation:.0%} → {curr_deviation:.0%}，"
-                                f"接受当前 {e.actual} 字结果（避免震荡）"
-                            )
-                            raw_content = e.content
-                            # 跳出 ChapterLengthError 处理,让后续流程继续
-                            pending_adjustment = None
-                            # 重新走正常保存流程:需要 goto 后续逻辑,
-                            # 但 Python 无 goto;用 continue + 标记实现
-                            # 简化方案:直接把 raw_content 赋值并 break 到保存
-                            break
+                # best-of-retries：记录历史最佳结果用于最终降级，并保留内容用于下次迭代缩写/扩写
+                if e.content and e.actual > 0:
+                    curr_deviation = abs(e.actual - e.target) / e.target
+                    if best_adjusted is None or curr_deviation < best_adjusted[3]:
+                        best_adjusted = (e.content, e.actual, e.target, curr_deviation)
+                        logger.info(
+                            f"[Chapter {chapter_num}] 记录最佳调整结果: "
+                            f"{e.actual} 字（偏差 {curr_deviation:.0%}）"
+                        )
                     pending_adjustment = (e.content, e.actual, e.target)
                 success = False
                 if attempt >= max_retries - 1:
-                    # 最后一次仍不达标:无条件降级接受(保留内容 + 标记警告),
-                    # 不再放弃章节,让流水线继续推进
-                    if e.content and e.actual > 0:
-                        final_dev = abs(e.actual - e.target) / e.target
-                        direction = "字数超标" if e.actual > e.target else "字数不足"
-                        warning_msg = f"{direction}({e.actual}/{e.target},偏差{final_dev:.0%})"
+                    # 用完重试预算：用历史最佳结果做降级接受（保留内容 + 标记警告）
+                    # 不再放弃章节，让流水线继续推进
+                    if best_adjusted:
+                        bc, ba, bt, bd = best_adjusted
+                        direction = "字数超标" if ba > bt else "字数不足"
+                        warning_msg = f"{direction}({ba}/{bt},偏差{bd:.0%})"
                         logger.warning(
                             f"[Chapter {chapter_num}] 字数调整 {max_retries} 次仍不达标"
-                            f"（{warning_msg}），降级接受并标记"
+                            f"（{warning_msg}），降级接受历史最佳结果并标记"
                         )
-                        # 记录到实例级字典,供 pipeline_worker 读取
                         self._length_warnings[chapter_num] = warning_msg
-                        raw_content = e.content
+                        raw_content = bc
                         break
-                    # 极端情况:内容为空,真正无法继续
-                    logger.error(f"[Chapter {chapter_num}] 字数调整 {max_retries} 次且内容为空，放弃")
+                    # 极端情况:历次内容均为空,真正无法继续
+                    logger.error(
+                        f"[Chapter {chapter_num}] 字数调整 {max_retries} 次且无可用最佳结果，放弃"
+                    )
                     return False
             except Exception as e:
                 logger.error(f"[Chapter {chapter_num}] 处理出错: {str(e)}", exc_info=True)
@@ -595,6 +602,20 @@ class ContentGenerator:
                     logger.error(f"[Chapter {chapter_num}] 达到最大重试次数")
                     return False
                 time.sleep(retry_delay)
+
+        # 降级接受的内容仍需走完整验证+保存+finalize 流程（含 logic / duplicate 校验）
+        if not success and raw_content:
+            try:
+                if self._validate_save_finalize_chapter(
+                    chapter_num, raw_content, chapter_outline, is_target_chapter
+                ):
+                    success = True
+            except Exception as e:
+                logger.error(
+                    f"[Chapter {chapter_num}] 降级内容处理出错: {str(e)}", exc_info=True
+                )
+                return False
+
         return success
 
     def _load_adjacent_chapter(self, chapter_num: int) -> str:
@@ -971,11 +992,18 @@ class ContentGenerator:
             max_len = int(target_length * 1.2)
 
             if actual_length > target_length:
-                # 缩写：限制最大删减比例,避免过度精简导致震荡
-                # 目标:从 actual 缩到 target,但最多只删 30%
+                # safe_floor: 限制单次最大删减幅度,避免 LLM 过度精简导致震荡
+                # 但若 safe_floor 已超出允许的 max_len,继续设防震荡反而让目标不可达,
+                # 此时必须放弃 safe_floor 直接瞄准真实目标
                 safe_floor = int(actual_length * 0.7)
-                effective_target = max(target_length, safe_floor)
-                effective_min = max(min_len, safe_floor)
+                if safe_floor > max_len:
+                    # safe_floor 高于允许上限：禁用防震荡，瞄准真实目标
+                    effective_target = target_length
+                    effective_min = min_len
+                else:
+                    # safe_floor 落在允许区间内：保留防震荡（单次最多删 30%）
+                    effective_target = max(target_length, safe_floor)
+                    effective_min = max(min_len, safe_floor)
                 action = "精简缩写"
                 instruction = (
                     f"当前内容 {actual_length} 字，目标 {effective_target} 字（允许 {effective_min}~{max_len}）。\n"
