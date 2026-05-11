@@ -58,15 +58,16 @@ class TestTierBEmbedding:
     def test_high_cosine_treated_as_dup(self):
         """同维度向量(都映射到「战斗」轴)应被识别为重复"""
         embedder = _make_keyword_embedder({
-            "战斗": [1.0, 0.0, 0.0],
-            "世界观": [0.0, 1.0, 0.0],
-            "人物": [0.0, 0.0, 1.0],
+            "战斗": [1.0, 0.0, 0.0, 0.0],
+            "世界观": [0.0, 1.0, 0.0, 0.0],
+            "人物": [0.0, 0.0, 1.0, 0.0],
+            "武打": [0.0, 0.0, 0.0, 1.0],
         })
-        existing = ["战斗场面的力量感"]  # 命中"战斗" → [1,0,0]
+        existing = ["战斗场面的力量感"]  # 命中"战斗" → [1,0,0,0]
         candidates = [
-            "武打戏与神通的力量感",  # 无关键词 → 噪声(预期不重)
-            "战斗描写的爽感",  # 命中"战斗" → [1,0,0] → 与 existing cos=1.0
-            "世界观奇景营造",  # 命中"世界观" → 不重
+            "武打戏与神通的力量感",  # 命中"武打" → [0,0,0,1] → 与 existing 正交
+            "战斗描写的爽感",  # 命中"战斗" → [1,0,0,0] → 与 existing cos=1.0
+            "世界观奇景营造",  # 命中"世界观" → [0,1,0,0] → 不重
         ]
         kept, stats = deduplicate_focus_items(
             existing, candidates, embedding_model=embedder,
