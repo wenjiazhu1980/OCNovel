@@ -500,6 +500,9 @@ class ContentGenerator:
         raw_content = None  # 确保循环外可访问
         for attempt in range(max_retries):
             logger.info(f"[Chapter {chapter_num}] 尝试 {attempt + 1}/{max_retries}")
+            # soft_warning 在 try 块内字数检测处赋值；此处提前初始化，
+            # 保证 except 分支能安全访问（即使异常发生在字数检测之前）
+            soft_warning = None
             try:
                 self._check_cancelled()
 
@@ -531,7 +534,6 @@ class ContentGenerator:
 
                 # 1.5. 字数检测
                 target_length = self.config.generator_config.get("chapter_length", 0)
-                soft_warning = None  # 0.2-0.5 区间的软警告，最终保存成功后写入
                 if target_length > 0:
                     actual_length = len(raw_content)
                     deviation = abs(actual_length - target_length) / target_length
@@ -613,9 +615,24 @@ class ContentGenerator:
                 logger.error(f"[Chapter {chapter_num}] 处理出错: {str(e)}", exc_info=True)
                 success = False
                 if attempt >= max_retries - 1:
-                    # 用尽重试预算：若有历史最佳调整结果，仍尝试降级保存（覆盖
-                    # "adjust 返回 None / 网络抖动" 等场景，避免白白浪费已经
-                    # 拿到的可用内容）
+                    # 末次重试：降级优先级
+                    # 1) 本次 raw_content 已通过字数检测（deviation≤0.5）→ 优先用本次内容
+                    #    判据：进入 generic Exception 而非 ChapterLengthError，意味着字数检测
+                    #    要么通过、要么压根没触发。raw_content 不为 None 时一定是本次 attempt
+                    #    赋值的（生成/调整失败时 raw_content 已被赋 None），不会是上次残留。
+                    # 2) 否则才回退 best_adjusted（历史最佳字数调整结果）
+                    if raw_content:
+                        # 本次内容已达标但下游验证/finalize 抛异常，让循环外 fallback 重跑一次
+                        # validator+finalize 链路；若 0.2-0.5 软警告已设置则一并写入 _length_warnings
+                        if soft_warning and chapter_num not in self._length_warnings:
+                            self._length_warnings[chapter_num] = soft_warning
+                        logger.warning(
+                            f"[Chapter {chapter_num}] 末次重试下游异常，但本次内容字数已达标"
+                            f"({len(raw_content)} 字)，将用本次内容走降级保存"
+                        )
+                        break
+                    # 用尽重试预算且本次 raw_content 不可用：若有历史最佳调整结果，仍尝试
+                    # 降级保存（覆盖 "adjust 返回 None / 网络抖动" 等场景）
                     if best_adjusted:
                         bc, ba, bt, bd = best_adjusted
                         direction = "字数超标" if ba > bt else "字数不足"
@@ -638,6 +655,13 @@ class ContentGenerator:
                     chapter_num, raw_content, chapter_outline, is_target_chapter
                 ):
                     success = True
+            except InterruptedError:
+                # 用户取消（降级保存阶段）：与循环内 InterruptedError 分支保持同义，
+                # 不打 traceback、直接 return False；避免被下面 except Exception 误吃
+                logger.warning(
+                    f"[Chapter {chapter_num}] 用户取消生成（降级保存阶段），停止处理"
+                )
+                return False
             except Exception as e:
                 logger.error(
                     f"[Chapter {chapter_num}] 降级内容处理出错: {str(e)}", exc_info=True
