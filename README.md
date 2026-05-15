@@ -6,16 +6,16 @@
 
 ## 下载
 
-**[前往最新版 Release 下载 →](https://github.com/wenjiazhu/OCNovel/releases/latest)**
+**[前往最新版 Release 下载 →](https://github.com/wenjiazhu1980/OCNovel/releases/latest)**
 
 无需配置 Python 环境，下载对应平台的压缩包，解压后即可直接运行 GUI：
 
 | 平台 | 下载链接 | 当前最新 |
 |------|----------|----------|
-| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.12 |
-| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.12 |
+| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.21 |
+| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.21 |
 
-> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu/OCNovel/releases)  ·  本次发布：[v1.0.12](https://github.com/wenjiazhu/OCNovel/releases/tag/v1.0.12)
+> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu1980/OCNovel/releases)  ·  本次发布：[v1.0.21](https://github.com/wenjiazhu1980/OCNovel/releases/tag/v1.0.21)
 
 > **macOS 用户首次启动**：因应用未经 Apple 公证（Apple Developer Program 收费 $99/年），
 > 解压后请在终端执行一次以下命令清除 quarantine 标记：
@@ -26,9 +26,21 @@
 >
 > 之后双击即可正常启动。该命令仅清除下载隔离属性，不修改应用本身。
 
+## 仓库迁移说明
+
+本项目已从 `github.com/wenjiazhu/OCNovel` 迁移至 **[github.com/wenjiazhu1980/OCNovel](https://github.com/wenjiazhu1980/OCNovel)**。
+
+迁移原因：原 GitHub 账号 `wenjiazhu` 因账户策略调整不再用于开源项目维护，现统一迁移至新账号 `wenjiazhu1980` 以便长期管理和持续更新。所有历史提交、标签和分支均已完整保留，功能和使用方式不受影响。
+
+如果你之前 clone 了旧仓库，可通过以下命令更新远程地址：
+
+```bash
+git remote set-url origin https://github.com/wenjiazhu1980/OCNovel.git
+```
+
 ## 作者与项目说明
 
-OCNovel 由 @wenjiazhu 个人发起并持续维护，是一个面向长篇小说创作场景的开源项目。项目目标是帮助用户更高效地完成长文本生成、内容规划和多轮迭代，并欢迎社区提出 issue、建议和 PR 共同完善。
+OCNovel 由 @wenjiazhu1980 个人发起并持续维护，是一个面向长篇小说创作场景的开源项目。项目目标是帮助用户更高效地完成长文本生成、内容规划和多轮迭代，并欢迎社区提出 issue、建议和 PR 共同完善。
 
 ## 项目结构
 

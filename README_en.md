@@ -177,6 +177,20 @@ src/
 
 ------
 
+## Repository Migration Notice
+
+This project has been migrated from `github.com/wenjiazhu/OCNovel` to **[github.com/wenjiazhu1980/OCNovel](https://github.com/wenjiazhu1980/OCNovel)**.
+
+The original GitHub account `wenjiazhu` is no longer used for open-source project maintenance due to account policy changes. All development has moved to the new account `wenjiazhu1980` for long-term management and continuous updates. All commit history, tags, and branches have been fully preserved — functionality and usage remain unchanged.
+
+If you previously cloned the old repository, update your remote URL with:
+
+```bash
+git remote set-url origin https://github.com/wenjiazhu1980/OCNovel.git
+```
+
+------
+
 ## Contribution
 
 OCNovel is actively maintained and open to contributions:
