@@ -83,12 +83,18 @@ class KnowledgeBase:
         # 支持: 第1章 / 第一章 / 第十章 / 第一百零一章 / 第两千章
         # 字符类约束 1~10 字符,避免误匹配长串相似字符;后接"章"做硬锚点。
         _CH_NUM_PATTERN = r'第[\d一二三四五六七八九十百千零两万]{1,10}章'
+        # [Phase 6.4] 章节标题边界:
+        # - 行首锚定 ((?m)^ + 可选行首空白):避免正文中段内出现 "第一章所述" 被误判
+        # - 章后排除汉字 ((?![一-鿿])):避免 "第十章节" / "第一章所述" 等正文连读
+        _CH_BOUNDARY = rf'^[ \t　]*{_CH_NUM_PATTERN}(?![一-鿿])'
 
-        # 按章节分割文本(使用正则匹配 "第X章" 格式,避免 "第" 字出现在正文中导致误分割)
-        chapters = re.split(rf'(?={_CH_NUM_PATTERN})', text)
+        # 按章节分割文本(行首锚定,仅在合法章节标题处切分)
+        chapters = re.split(rf'(?={_CH_BOUNDARY})', text, flags=re.MULTILINE)
         # 过滤空分片
         chapters = [c for c in chapters if c.strip()]
         logging.info(f"文本分割为 {len(chapters)} 个章节")
+
+        original_text_len = len(text)
 
         # 如果没有找到章节标记，将整个文本作为一个章节处理
         if len(chapters) <= 1:
@@ -96,10 +102,23 @@ class KnowledgeBase:
             start_idx = 0
         else:
             # 若首段不是 "第N章" 开头（前言/版权/目录等），丢弃以避免被错标为第 1 章
-            if not re.match(rf'\s*{_CH_NUM_PATTERN}', chapters[0]):
+            if not re.match(rf'[ \t　\n]*{_CH_NUM_PATTERN}(?![一-鿿])', chapters[0]):
                 logging.info("跳过首段非章节内容（如前言/目录），从第 1 章开始计数")
                 chapters = chapters[1:]
             start_idx = 1
+
+            # [Phase 6.4] 兜底阈值:章节分割保留内容若 < 原文 30%,大概率是
+            # 章节正则在非小说文本中误命中(如后记里的"第一章所述"),
+            # 回退为整文模式,避免十几万字正文被当作"前言"丢弃。
+            kept_len = sum(len(c) for c in chapters)
+            if kept_len < original_text_len * 0.3:
+                logging.warning(
+                    f"章节分割后保留内容仅 {kept_len}/{original_text_len} 字符 "
+                    f"({kept_len / max(original_text_len, 1):.1%}),"
+                    f"疑似章节正则误命中(如正文中出现的章节引用),回退为整文模式处理"
+                )
+                chapters = [text]
+                start_idx = 0
             
         for chapter_idx, chapter_content in enumerate(chapters, start_idx):
             try:
