@@ -371,3 +371,59 @@ class TestSaveChapterContent:
         path = os.path.join(generator.output_dir, f"第1章_{cleaned}.txt")
         with open(path, "r", encoding="utf-8") as f:
             assert f.read() == content
+
+
+class TestSplitChaptersBySize:
+    """_split_chapters_by_size 分卷算法测试"""
+
+    @pytest.fixture
+    def generator(self, mock_config, output_dir_with_outline):
+        mock_model = MagicMock()
+        mock_model.model_name = "mock"
+        mock_kb = MagicMock()
+        mock_kb.is_built = True
+        mock_kb.embedding_model = MagicMock()
+        mock_kb.embedding_model.model_name = "mock"
+        mock_kb.reranker_config = None
+        return ContentGenerator(mock_config, mock_model, mock_kb)
+
+    def test_disabled_returns_single_volume(self, generator):
+        parts = ["a" * 100, "b" * 100, "c" * 100]
+        assert generator._split_chapters_by_size(parts, max_bytes=0) == [parts]
+        assert generator._split_chapters_by_size(parts, max_bytes=-1) == [parts]
+
+    def test_empty_parts_returns_empty(self, generator):
+        assert generator._split_chapters_by_size([], max_bytes=100) == []
+
+    def test_single_volume_under_limit(self, generator):
+        parts = ["a" * 100, "b" * 100]
+        # 总字节 200 + 分隔符 2 = 202,阈值 1000 → 一卷
+        result = generator._split_chapters_by_size(parts, max_bytes=1000)
+        assert len(result) == 1
+        assert result[0] == parts
+
+    def test_splits_on_boundary(self, generator):
+        # 每章 100 字节,阈值 250 → 第3章追加会超阈值 → 拆 2 卷
+        parts = ["a" * 100, "b" * 100, "c" * 100]
+        result = generator._split_chapters_by_size(parts, max_bytes=250)
+        assert len(result) == 2
+        assert result[0] == ["a" * 100, "b" * 100]
+        assert result[1] == ["c" * 100]
+
+    def test_single_chapter_exceeds_limit(self, generator):
+        # 单章自身 > 阈值时该章独占一卷,允许略超
+        parts = ["a" * 500, "b" * 50]
+        result = generator._split_chapters_by_size(parts, max_bytes=200)
+        assert len(result) == 2
+        assert result[0] == ["a" * 500]
+        assert result[1] == ["b" * 50]
+
+    def test_utf8_byte_accounting(self, generator):
+        # 一个中文字符 UTF-8 占 3 字节;100 个中文字符 = 300 字节
+        parts = ["甲" * 100, "乙" * 100, "丙" * 100]
+        # 总字节 900 + 2*2 分隔符 = 904,阈值 700 → 两卷
+        result = generator._split_chapters_by_size(parts, max_bytes=700)
+        assert len(result) == 2
+        # 第一卷应含 1-2 章(具体取决于分隔符累计)
+        assert len(result[0]) >= 1
+        assert sum(len(p.encode("utf-8")) for p in result[0]) <= 700 or len(result[0]) == 1

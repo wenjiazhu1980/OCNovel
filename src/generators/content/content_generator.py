@@ -856,6 +856,31 @@ class ContentGenerator:
             logger.info(f"没有需要生成的剩余章节（当前进度索引: {self.current_chapter}）。")
             return True
 
+    def _split_chapters_by_size(self, parts: List[str], max_bytes: int) -> List[List[str]]:
+        """按 UTF-8 字节累加 + 章节边界分卷。
+
+        - max_bytes <= 0:禁用分卷,返回 [parts]。
+        - 章节内部不切分;若某章自身 > max_bytes,该卷只含该章并允许略超。
+        - 空 parts 返回 []。
+        """
+        if not parts:
+            return []
+        if max_bytes <= 0:
+            return [parts]
+        sep_bytes = len("\n\n".encode("utf-8"))
+        volumes: List[List[str]] = [[]]
+        cur_bytes = 0
+        for p in parts:
+            p_bytes = len(p.encode("utf-8"))
+            add = p_bytes + (sep_bytes if volumes[-1] else 0)
+            if cur_bytes + add > max_bytes and volumes[-1]:
+                volumes.append([])
+                cur_bytes = 0
+                add = p_bytes
+            volumes[-1].append(p)
+            cur_bytes += add
+        return volumes
+
     def merge_all_chapters(self, output_filename: Optional[str] = None) -> Optional[str]:
         """
         将所有已生成的章节合并为一个完整的 txt 文件。
