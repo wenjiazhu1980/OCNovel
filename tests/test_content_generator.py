@@ -336,3 +336,38 @@ class TestStripMarkdownHeading:
     def test_preserves_trailing_newline(self):
         from src.generators.content.content_generator import _strip_markdown_heading
         assert _strip_markdown_heading("# 标题\n正文\n") == "标题\n正文\n"
+
+
+class TestSaveChapterContent:
+    """_save_chapter_content 落盘时去 # 行为测试"""
+
+    @pytest.fixture
+    def generator(self, mock_config, output_dir_with_outline):
+        mock_model = MagicMock()
+        mock_model.model_name = "mock"
+        mock_kb = MagicMock()
+        mock_kb.is_built = True
+        mock_kb.embedding_model = MagicMock()
+        mock_kb.embedding_model.model_name = "mock"
+        mock_kb.reranker_config = None
+        return ContentGenerator(mock_config, mock_model, mock_kb)
+
+    def test_strips_leading_hash_on_write(self, generator):
+        generator._load_outline()
+        content = "# 第1章 废柴觉醒\n\n正文开始"
+        assert generator._save_chapter_content(1, content) is True
+        cleaned = generator._clean_filename(generator.chapter_outlines[0].title)
+        path = os.path.join(generator.output_dir, f"第1章_{cleaned}.txt")
+        with open(path, "r", encoding="utf-8") as f:
+            disk = f.read()
+        assert disk.startswith("第1章 废柴觉醒")
+        assert not disk.startswith("#")
+
+    def test_preserves_content_without_hash(self, generator):
+        generator._load_outline()
+        content = "第1章 废柴觉醒\n\n正文"
+        assert generator._save_chapter_content(1, content) is True
+        cleaned = generator._clean_filename(generator.chapter_outlines[0].title)
+        path = os.path.join(generator.output_dir, f"第1章_{cleaned}.txt")
+        with open(path, "r", encoding="utf-8") as f:
+            assert f.read() == content

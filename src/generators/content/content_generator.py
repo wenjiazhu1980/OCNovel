@@ -1170,6 +1170,9 @@ class ContentGenerator:
             filename = f"第{chapter_num}章_{cleaned_title}.txt"
             chapter_file = os.path.join(self.output_dir, filename)
 
+            # 落盘前剥离 LLM 自带的首行 '#' 标题,保证作家助手等软件兼容
+            content = _strip_markdown_heading(content)
+
             with open(chapter_file, 'w', encoding='utf-8') as f:
                 f.write(content)
             logger.info(f"已保存第 {chapter_num} 章内容到 {chapter_file}")
