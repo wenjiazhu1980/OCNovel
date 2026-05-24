@@ -275,9 +275,12 @@ def main():
             )
             if success and target_chapter_to_generate is None:
                 # 非单章重生成模式下，全部完成后自动合并
-                merged_path = generator.merge_all_chapters()
-                if merged_path:
-                    print(f"已合并所有章节到: {merged_path}")
+                merged_paths = generator.merge_all_chapters()
+                if merged_paths:
+                    if len(merged_paths) == 1:
+                        print(f"已合并所有章节到: {merged_paths[0]}")
+                    else:
+                        print(f"已分卷输出 {len(merged_paths)} 个文件,目录: {os.path.dirname(merged_paths[0])}")
             print("内容生成成功！" if success else "内容生成失败，请查看日志文件了解详细信息。")
             
         elif args.command == 'finalize':
@@ -430,9 +433,12 @@ def main():
                  print("内容生成及定稿成功！")
 
                  # 全部章节完成后自动合并
-                 merged_path = content_generator.merge_all_chapters()
-                 if merged_path:
-                     print(f"已合并所有章节到: {merged_path}")
+                 merged_paths = content_generator.merge_all_chapters()
+                 if merged_paths:
+                     if len(merged_paths) == 1:
+                         print(f"已合并所有章节到: {merged_paths[0]}")
+                     else:
+                         print(f"已分卷输出 {len(merged_paths)} 个文件,目录: {os.path.dirname(merged_paths[0])}")
 
             print("自动生成流程全部完成！")
 
