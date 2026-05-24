@@ -60,6 +60,8 @@ data/                            # 运行时数据（gitignored）
 - **GUI**: PySide6 三 Tab 界面（模型配置 / 小说参数 / 创作进度），`pipeline_worker` 后台线程运行生成流水线，`log_handler` 将 `logging` 桥接到 Qt Signal 实时输出。支持中英双语切换（i18n .qm 文件）。
 - **Sensitive data sanitization**: `_sanitize_config_for_logging()` 过滤API key日志输出。
 - **稀疏大纲与自动补洞**: `outline.json` 支持 `None` 占位的稀疏列表（`b8267c7`），生成失败章节不丢空槽。`_outline_discontinuous` 检测缺洞后由 `OutlineGenerator.patch_missing_chapters()` 单一权威实现补洞（多轮重试 + 一致性检查 + 即时落盘）。CLI 工具 `tools/fill_outline_gaps.py` 与 `pipeline_worker` 均薄封装调用此方法。
+- **章节落盘清理**：`_save_chapter_content` 与 `merge_all_chapters` 自动剥离章节首行的 leading `#`（LLM 自带 Markdown 标题），保证作家助手等写作软件兼容。
+- **合并分卷**：`merge_all_chapters` 在产物超过 `output_config.max_volume_size_mb`（默认 2MB，UTF-8 字节）时按章节边界分卷，文件命名 `{title}_完整版_第N卷.txt`；返回 `Optional[List[str]]`。
 
 ## generation_config 关键键
 
@@ -69,6 +71,13 @@ data/                            # 运行时数据（gitignored）
 | `outline_gap_max_retries` | `2` | `patch_missing_chapters` 单章最大重试轮数 |
 | `outline_gap_retry_delay` | `3` | 单章失败后退避秒数 |
 | `max_retries` | 跟随用户 | `_process_single_chapter` 单章生成失败的最大重试次数 |
+
+## output_config 关键键
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `output_dir` | `data/output` | 章节与合并产物落盘目录 |
+| `max_volume_size_mb` | `2` | 合并产物按 UTF-8 字节超过此值自动按章节边界分卷；`<=0` 禁用,无论多大都单文件输出 |
 
 ## novel_config.arc_config 关键键（情绪节奏）
 

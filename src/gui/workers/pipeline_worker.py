@@ -411,9 +411,15 @@ class PipelineWorker(QThread):
                 # 仅在连续模式且全部成功时执行合并
                 try:
                     logger.info(QCoreApplication.translate("PipelineWorker", "开始合并所有章节..."))
-                    merged_path = content_generator.merge_all_chapters()
-                    if merged_path:
-                        logger.info(QCoreApplication.translate("PipelineWorker", "已合并所有章节到: {0}").format(merged_path))
+                    merged_paths = content_generator.merge_all_chapters()
+                    if merged_paths:
+                        if len(merged_paths) == 1:
+                            logger.info(QCoreApplication.translate("PipelineWorker", "已合并所有章节到: {0}").format(merged_paths[0]))
+                        else:
+                            logger.info(QCoreApplication.translate(
+                                "PipelineWorker",
+                                "已分卷输出 {0} 个文件,目录: {1}"
+                            ).format(len(merged_paths), os.path.dirname(merged_paths[0])))
                     else:
                         logger.warning(QCoreApplication.translate("PipelineWorker", "章节合并未成功,请检查日志"))
                 except Exception as exc:

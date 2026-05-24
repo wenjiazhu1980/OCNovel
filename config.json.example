@@ -178,7 +178,8 @@
       "encoding": "utf-8",
       "save_outline": true,
       "save_character_states": true,
-      "output_dir": "data/output_mgs"
+      "output_dir": "data/output_mgs",
+      "max_volume_size_mb": 2
     },
     "imitation_config": {
       "enabled": false,
