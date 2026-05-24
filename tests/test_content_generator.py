@@ -290,3 +290,49 @@ class TestMergeAllChapters:
         result = generator.merge_all_chapters()
         assert result is not None
         assert "完整版" in os.path.basename(result)
+
+
+class TestStripMarkdownHeading:
+    """模块级 _strip_markdown_heading 工具函数测试"""
+
+    def test_empty_string_returns_unchanged(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        assert _strip_markdown_heading("") == ""
+
+    def test_no_hash_returns_unchanged(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        text = "第19章 画展前的风声\n\n正文……"
+        assert _strip_markdown_heading(text) is text  # 短路返回同一对象
+
+    def test_single_hash_with_space(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        text = "# 第19章 画展前的风声\n\n正文……"
+        assert _strip_markdown_heading(text) == "第19章 画展前的风声\n\n正文……"
+
+    def test_multiple_hashes(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        text = "### 第19章 标题\n正文"
+        assert _strip_markdown_heading(text) == "第19章 标题\n正文"
+
+    def test_hash_without_space(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        text = "#第19章 标题\n正文"
+        assert _strip_markdown_heading(text) == "第19章 标题\n正文"
+
+    def test_leading_whitespace_before_hash(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        text = "  # 第19章 标题\n正文"
+        assert _strip_markdown_heading(text) == "第19章 标题\n正文"
+
+    def test_only_first_line_affected(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        text = "# 第19章 标题\n正文里 #也保留\n# 后续不是标题"
+        assert _strip_markdown_heading(text) == "第19章 标题\n正文里 #也保留\n# 后续不是标题"
+
+    def test_single_line_no_newline(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        assert _strip_markdown_heading("# 仅一行") == "仅一行"
+
+    def test_preserves_trailing_newline(self):
+        from src.generators.content.content_generator import _strip_markdown_heading
+        assert _strip_markdown_heading("# 标题\n正文\n") == "标题\n正文\n"

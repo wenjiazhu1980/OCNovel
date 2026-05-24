@@ -31,6 +31,25 @@ import functools
 # Get a logger specific to this module
 logger = logging.getLogger(__name__)
 
+
+_LEADING_HEADING_RE = re.compile(r'^\s*#+\s*')
+
+
+def _strip_markdown_heading(content: str) -> str:
+    """剥离首行的 leading '#' 与紧随空白,保留标题文本与文件其余内容。
+
+    - 只处理首行,避免误伤正文里偶尔出现的 '#'。
+    - 兼容 '#'、'##'、'###'、'#第19章'(无空格)、'  # 第19章'(行首空白)等变体。
+    - 无匹配时短路返回原对象。
+    """
+    if not content:
+        return content
+    nl = content.find('\n')
+    first, rest = (content, '') if nl == -1 else (content[:nl], content[nl:])
+    new_first = _LEADING_HEADING_RE.sub('', first, count=1)
+    return new_first + rest if new_first != first else content
+
+
 class ContentGenerator:
     def __init__(self, config, content_model, knowledge_base, finalizer: Optional[Any] = None):
         self.config = config
