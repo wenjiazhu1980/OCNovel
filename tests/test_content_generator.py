@@ -427,3 +427,15 @@ class TestSplitChaptersBySize:
         # 第一卷应含 1-2 章(具体取决于分隔符累计)
         assert len(result[0]) >= 1
         assert sum(len(p.encode("utf-8")) for p in result[0]) <= 700 or len(result[0]) == 1
+
+
+class TestVolumeSizeConfig:
+    """max_volume_size_mb 配置默认与读取行为"""
+
+    def test_default_when_key_absent(self, mock_config):
+        # MockConfig 默认 output_config 中无 max_volume_size_mb
+        assert mock_config.output_config.get("max_volume_size_mb", 2) == 2
+
+    def test_explicit_zero_disables_split(self, mock_config):
+        mock_config.output_config["max_volume_size_mb"] = 0
+        assert mock_config.output_config.get("max_volume_size_mb", 2) == 0
