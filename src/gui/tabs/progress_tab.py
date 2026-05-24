@@ -716,8 +716,8 @@ class ProgressTab(QWidget):
         # 旧逻辑：self._marketing_worker = None  ← 在 run() 尚未返回时丢引用会触发
         # "QThread: Destroyed while thread is still running" → zsh: abort。
 
-    def _on_merge_finished(self, success: bool, message: str):
-        """章节合并完成"""
+    def _on_merge_finished(self, success: bool, paths: list):
+        """章节合并完成。paths:成功时为产物路径列表,失败时为错误消息列表。"""
         self.btn_merge.setEnabled(True)
         self.btn_merge.setText(self.tr("📚  合并所有章节"))
         self.btn_marketing.setEnabled(True)
@@ -726,17 +726,23 @@ class ProgressTab(QWidget):
         self.pipeline_running_changed.emit(False)
 
         if success:
-            QMessageBox.information(
-                self, self.tr("合并成功"),
-                self.tr("章节已成功合并到:\n{0}").format(message)
-            )
-            self.log_viewer.append_log(self.tr("章节合并成功: {0}").format(message), "INFO")
+            if len(paths) == 1:
+                summary = self.tr("章节已成功合并到:\n{0}").format(paths[0])
+            else:
+                dir_path = os.path.dirname(paths[0]) if paths else ""
+                file_lines = "\n".join(os.path.basename(p) for p in paths)
+                summary = self.tr("已分卷输出 {0} 个文件到目录:\n{1}\n\n文件清单:\n{2}").format(
+                    len(paths), dir_path, file_lines
+                )
+            QMessageBox.information(self, self.tr("合并成功"), summary)
+            self.log_viewer.append_log(self.tr("章节合并成功,产物 {0} 个文件").format(len(paths)), "INFO")
         else:
+            err = paths[0] if paths else self.tr("未知错误")
             QMessageBox.critical(
                 self, self.tr("合并失败"),
-                self.tr("章节合并失败:\n{0}").format(message)
+                self.tr("章节合并失败:\n{0}").format(err)
             )
-            self.log_viewer.append_log(self.tr("章节合并失败: {0}").format(message), "ERROR")
+            self.log_viewer.append_log(self.tr("章节合并失败: {0}").format(err), "ERROR")
 
         # 引用清理由 QThread.finished 触发，见 _attach_thread_lifecycle。
 

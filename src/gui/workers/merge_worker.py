@@ -12,7 +12,7 @@ class MergeWorker(QThread):
     """后台执行章节合并"""
 
     # ---- 信号 ----
-    merge_finished = Signal(bool, str)  # (success, message/path)
+    merge_finished = Signal(bool, list)  # (success, paths_or_error_messages)
     log_message = Signal(str, str)      # (message, level)
 
     def __init__(self, config_path: str, env_path: str):
@@ -75,22 +75,24 @@ class MergeWorker(QThread):
             # ---- 7. 执行合并 ----
             if self._stop_event.is_set():
                 logger.info(QCoreApplication.translate("MergeWorker", "收到停止信号,合并中止。"))
-                self.merge_finished.emit(False, QCoreApplication.translate("MergeWorker", "用户取消"))
+                self.merge_finished.emit(False, [QCoreApplication.translate("MergeWorker", "用户取消")])
                 return
 
             logger.info(QCoreApplication.translate("MergeWorker", "开始合并所有章节..."))
-            merged_path = content_generator.merge_all_chapters()
+            merged_paths = content_generator.merge_all_chapters()
 
-            if merged_path:
-                logger.info(QCoreApplication.translate("MergeWorker", "章节合并成功: {0}").format(merged_path))
-                self.merge_finished.emit(True, merged_path)
+            if merged_paths:
+                logger.info(QCoreApplication.translate(
+                    "MergeWorker", "章节合并成功,产物 {0} 个文件"
+                ).format(len(merged_paths)))
+                self.merge_finished.emit(True, merged_paths)
             else:
                 logger.warning(QCoreApplication.translate("MergeWorker", "章节合并未成功,请检查日志"))
-                self.merge_finished.emit(False, QCoreApplication.translate("MergeWorker", "合并失败,请检查日志"))
+                self.merge_finished.emit(False, [QCoreApplication.translate("MergeWorker", "合并失败,请检查日志")])
 
         except Exception as exc:
             logger.error(QCoreApplication.translate("MergeWorker", "合并异常: {0}").format(exc), exc_info=True)
-            self.merge_finished.emit(False, str(exc))
+            self.merge_finished.emit(False, [str(exc)])
         finally:
             # 移除日志桥接
             if handler is not None:
