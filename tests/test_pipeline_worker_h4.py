@@ -53,7 +53,7 @@ def _make_mocks(target_chapters=5):
     mock_content_generator._length_warnings = {}
     # current_chapter=0 → start_chapter=1,生成全量
     mock_content_generator.current_chapter = 0
-    mock_content_generator.merge_all_chapters.return_value = "/tmp/merged.txt"
+    mock_content_generator.merge_all_chapters.return_value = ["/tmp/merged.txt"]
 
     return mock_ai_config, mock_outline_generator, mock_content_generator
 
