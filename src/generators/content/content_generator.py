@@ -881,18 +881,18 @@ class ContentGenerator:
             cur_bytes += add
         return volumes
 
-    def merge_all_chapters(self, output_filename: Optional[str] = None) -> Optional[str]:
+    def merge_all_chapters(self, output_filename: Optional[str] = None) -> Optional[List[str]]:
         """
-        将所有已生成的章节合并为一个完整的 txt 文件。
+        将所有已生成的章节合并为完整文件,超过阈值自动按章节边界分卷。
 
         Args:
-            output_filename: 原版输出文件名（不含路径），默认使用小说标题。
-                             仿写版文件名固定为 `{novel_title}_仿写版.txt`，
+            output_filename: 原版基础文件名(不含路径)。单文件模式直接使用;
+                             分卷模式以其 stem 为前缀加 '_第N卷.txt'。
+                             仿写版命名固定 `{novel_title}_仿写版[_第N卷].txt`,
                              不受该参数影响。
 
         Returns:
-            合并后的原版文件路径，失败返回 None。
-            仿写版路径仅在日志中体现。
+            成功:所有产物路径列表(原版在前,仿写版在后);失败:None。
         """
         try:
             self._load_outline()
@@ -937,6 +937,8 @@ class ContentGenerator:
                         logger.warning(f"读取原文失败 {filepath}: {e}")
                         original_content = ""
                     if original_content:
+                        # 修复历史脏数据:合并时也剥离 # 首行
+                        original_content = _strip_markdown_heading(original_content)
                         original_parts.append(original_content)
                         original_count += 1
                 else:
@@ -955,6 +957,7 @@ class ContentGenerator:
                         logger.warning(f"读取仿写文件失败 {imitated_path}: {e}")
                         imitated_content = ""
                     if imitated_content:
+                        imitated_content = _strip_markdown_heading(imitated_content)
                         imitated_parts.append(imitated_content)
                         imitated_real_count += 1
                     elif original_content:
@@ -978,29 +981,36 @@ class ContentGenerator:
                 logger.error("未找到任何章节文件，无法合并。")
                 return None
 
-            # ── 写原版 ──
-            merged_content = "\n\n".join(original_parts)
-            output_path = os.path.join(self.output_dir, output_filename)
-            with open(output_path, 'w', encoding='utf-8') as f:
-                f.write(merged_content)
+            # ── 计算分卷阈值 ──
+            mb = self.config.output_config.get("max_volume_size_mb", 2)
+            try:
+                max_bytes = int(float(mb) * 1024 * 1024)
+            except (TypeError, ValueError):
+                logger.warning(f"max_volume_size_mb 配置非法({mb!r}),回退到默认 2MB")
+                max_bytes = 2 * 1024 * 1024
+
             valid_outline_count = len(self.chapter_outlines) - len(missing_outline_slots)
+            written_paths: List[str] = []
+
+            written_paths.extend(self._write_volumes(
+                parts=original_parts, base_filename=output_filename,
+                max_bytes=max_bytes, kind_label="原版"
+            ))
             logger.info(
-                f"已合并 {original_count}/{valid_outline_count} 章到 "
-                f"{output_path}，总字数: {len(merged_content)}"
+                f"已合并原版 {original_count}/{valid_outline_count} 章,产物 {len(written_paths)} 个文件"
             )
 
-            # ── 写仿写版（仅当存在任何仿写文件时）──
             if has_imitated and imitated_parts:
                 try:
-                    imitated_merged = "\n\n".join(imitated_parts)
-                    imitated_output_path = os.path.join(self.output_dir, imitated_filename)
-                    with open(imitated_output_path, 'w', encoding='utf-8') as f:
-                        f.write(imitated_merged)
+                    imitated_paths = self._write_volumes(
+                        parts=imitated_parts, base_filename=imitated_filename,
+                        max_bytes=max_bytes, kind_label="仿写版"
+                    )
+                    written_paths.extend(imitated_paths)
                     logger.info(
                         f"已合并仿写版 {imitated_real_count} 仿写 + "
-                        f"{imitated_fallback_count} 原文 fallback / "
-                        f"{valid_outline_count} 章到 "
-                        f"{imitated_output_path}，总字数: {len(imitated_merged)}"
+                        f"{imitated_fallback_count} 原文 fallback / {valid_outline_count} 章,"
+                        f"产物 {len(imitated_paths)} 个文件"
                     )
                 except Exception as e:
                     # 仿写版失败不影响原版返回
@@ -1008,11 +1018,47 @@ class ContentGenerator:
             elif not has_imitated:
                 logger.info("未检测到任何 _imitated.txt 文件，跳过仿写版输出。")
 
-            return output_path
+            return written_paths
 
         except Exception as e:
             logger.error(f"合并章节时出错: {str(e)}", exc_info=True)
             return None
+
+    def _write_volumes(
+        self, parts: List[str], base_filename: str, max_bytes: int, kind_label: str
+    ) -> List[str]:
+        """根据阈值切分 parts 并落盘。
+
+        - 单卷:沿用 base_filename。
+        - 多卷:`{stem}_第N卷{ext}`,N 从 1 开始。
+        - 单章超阈值:该卷独占,允许略超,日志 WARNING。
+        """
+        volumes = self._split_chapters_by_size(parts, max_bytes)
+        if not volumes:
+            return []
+        stem, ext = os.path.splitext(base_filename)
+        if ext == "":
+            ext = ".txt"
+        written: List[str] = []
+        single = len(volumes) == 1
+        for idx, vol_parts in enumerate(volumes, start=1):
+            name = base_filename if single else f"{stem}_第{idx}卷{ext}"
+            path = os.path.join(self.output_dir, name)
+            payload = "\n\n".join(vol_parts)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(payload)
+            vol_bytes = len(payload.encode("utf-8"))
+            if vol_bytes > max_bytes and len(vol_parts) == 1 and max_bytes > 0:
+                logger.warning(
+                    f"{kind_label}第 {idx} 卷单章 {vol_bytes} 字节超阈值 {max_bytes},"
+                    f"保留章节完整性允许略超"
+                )
+            logger.info(
+                f"写入{kind_label}第 {idx} 卷: {path} "
+                f"({vol_bytes} 字节, {len(vol_parts)} 章)"
+            )
+            written.append(path)
+        return written
 
     def _generate_chapter_content(self, chapter_outline: ChapterOutline, extra_prompt: Optional[str] = None) -> Optional[str]:
         """生成单章的原始内容"""

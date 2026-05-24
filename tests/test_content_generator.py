@@ -228,8 +228,10 @@ class TestMergeAllChapters:
 
         result = generator.merge_all_chapters(output_filename="测试合并.txt")
         assert result is not None
-        assert os.path.exists(result)
-        with open(result, "r", encoding="utf-8") as f:
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert os.path.exists(result[0])
+        with open(result[0], "r", encoding="utf-8") as f:
             content = f.read()
         assert "第1章内容" in content
         assert "第5章内容" in content
@@ -246,7 +248,9 @@ class TestMergeAllChapters:
 
         result = generator.merge_all_chapters(output_filename="部分合并.txt")
         assert result is not None
-        with open(result, "r", encoding="utf-8") as f:
+        assert isinstance(result, list)
+        assert len(result) == 1
+        with open(result[0], "r", encoding="utf-8") as f:
             content = f.read()
         assert "第1章内容" in content
         assert "第3章内容" in content
@@ -289,7 +293,74 @@ class TestMergeAllChapters:
 
         result = generator.merge_all_chapters()
         assert result is not None
-        assert "完整版" in os.path.basename(result)
+        assert isinstance(result, list)
+        assert len(result) == 1
+        assert "完整版" in os.path.basename(result[0])
+
+    def test_merge_strips_markdown_heading_in_volume(self, generator):
+        """合并时读取每章后剥离首行 #(修复历史脏数据)"""
+        generator._load_outline()
+        for outline in generator.chapter_outlines:
+            cleaned = generator._clean_filename(outline.title)
+            filepath = os.path.join(generator.output_dir, f"第{outline.chapter_number}章_{cleaned}.txt")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(f"# 第{outline.chapter_number}章 {outline.title}\n\n正文内容")
+
+        result = generator.merge_all_chapters(output_filename="清理测试.txt")
+        assert result is not None and len(result) == 1
+        with open(result[0], "r", encoding="utf-8") as f:
+            content = f.read()
+        # 首行不再带 #
+        assert not content.lstrip().startswith("#")
+        assert "第1章 第1章标题" in content
+        # 章节间分隔符保留
+        assert "正文内容" in content
+
+    def test_merge_splits_when_over_threshold(self, generator):
+        """总字节超过 max_volume_size_mb 时按章节边界分卷"""
+        generator._load_outline()
+        # 5 章 × 600 字节(中文 200 字) = 3000+ 字节;阈值 1KB → 至少 2 卷
+        generator.config.output_config["max_volume_size_mb"] = 0.001  # ~1KB
+        for outline in generator.chapter_outlines:
+            cleaned = generator._clean_filename(outline.title)
+            filepath = os.path.join(generator.output_dir, f"第{outline.chapter_number}章_{cleaned}.txt")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write("章" * 200)  # 200 中文字 = 600 字节 UTF-8
+
+        result = generator.merge_all_chapters()
+        assert result is not None
+        assert len(result) >= 2
+        for path in result:
+            assert "_第" in os.path.basename(path) and "卷.txt" in os.path.basename(path)
+            assert os.path.exists(path)
+
+    def test_merge_below_threshold_keeps_single_file(self, generator):
+        """总字节小于阈值时保留原命名,不带卷号"""
+        generator._load_outline()
+        generator.config.output_config["max_volume_size_mb"] = 10  # 10MB 远超内容
+        for outline in generator.chapter_outlines:
+            cleaned = generator._clean_filename(outline.title)
+            filepath = os.path.join(generator.output_dir, f"第{outline.chapter_number}章_{cleaned}.txt")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(f"第{outline.chapter_number}章内容")
+
+        result = generator.merge_all_chapters()
+        assert result is not None and len(result) == 1
+        # 文件名不带 _第N卷 后缀
+        assert "_第" not in os.path.basename(result[0])
+
+    def test_merge_split_disabled_when_zero(self, generator):
+        """max_volume_size_mb=0 时无论多大都不分卷"""
+        generator._load_outline()
+        generator.config.output_config["max_volume_size_mb"] = 0
+        for outline in generator.chapter_outlines:
+            cleaned = generator._clean_filename(outline.title)
+            filepath = os.path.join(generator.output_dir, f"第{outline.chapter_number}章_{cleaned}.txt")
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write("章" * 200)
+
+        result = generator.merge_all_chapters()
+        assert result is not None and len(result) == 1
 
 
 class TestStripMarkdownHeading:
