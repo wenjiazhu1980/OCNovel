@@ -12,10 +12,10 @@
 
 | 平台 | 下载链接 | 当前最新 |
 |------|----------|----------|
-| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.21 |
-| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.21 |
+| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.22 |
+| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.22 |
 
-> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu1980/OCNovel/releases)  ·  本次发布：[v1.0.21](https://github.com/wenjiazhu1980/OCNovel/releases/tag/v1.0.21)
+> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu1980/OCNovel/releases)  ·  本次发布：[v1.0.22](https://github.com/wenjiazhu1980/OCNovel/releases/tag/v1.0.22)
 
 > **macOS 用户首次启动**：因应用未经 Apple 公证（Apple Developer Program 收费 $99/年），
 > 解压后请在终端执行一次以下命令清除 quarantine 标记：
@@ -267,7 +267,7 @@ pyinstaller ocnovel_win.spec --clean
 | `novel_config`         | 小说基本信息、写作指南（世界观/角色/剧情/风格）                                                     |
 | `generation_config`    | 重试策略、模型选择、验证开关、人性化参数（Humanizer-zh）、采样参数（Temperature/Top_P）             |
 | `knowledge_base_config`| 参考文件列表、分块大小/重叠、缓存目录                                                               |
-| `output_config`        | 输出格式、编码、输出目录                                                                           |
+| `output_config`        | 输出格式、编码、输出目录、合并分卷阈值（`max_volume_size_mb` 默认 2MB，超过自动按章节边界分卷，便于导入作家助手等写作软件） |
 | `imitation_config`     | 仿写开关、风格源列表、质量控制参数                                                                 |
 
 ## 环境要求
@@ -313,4 +313,17 @@ python -m pytest tests/test_outline_generator.py::TestSpecificCase -v
 2. 解压后运行 `OCNovel.exe`。
 3. 首次启动时，应用会在用户主目录自动创建 `%USERPROFILE%\OCNovel\` 并初始化配置文件。
 4. 编辑 `%USERPROFILE%\OCNovel\.env` 填入 API 密钥后即可使用。
+
+### 3. 合并后为什么会出现 `_第1卷.txt`、`_第2卷.txt` 多个文件？
+
+为了便于导入作家助手、橙瓜等纯文本写作软件（这类软件对单文件大小通常有限制），
+合并产物超过 `output_config.max_volume_size_mb`（默认 **2MB**）时会按章节边界自动分卷：
+
+- 小于阈值 → 仍输出单文件 `{title}_完整版.txt`（与旧版本一致）
+- 超过阈值 → 输出 `{title}_完整版_第1卷.txt` / `_第2卷.txt` 等，每卷 ≤ 2MB
+
+如果不需要分卷，把配置里的 `max_volume_size_mb` 改成 `0` 即可禁用，回到单文件输出。
+
+此外，章节内容首行的 Markdown `#` 标题（LLM 自带输出）会在落盘与合并时自动剥离，
+避免在写作软件里被误识别为正文字符。
 
