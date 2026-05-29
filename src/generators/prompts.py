@@ -741,9 +741,10 @@ def get_chapter_prompt(
     description_simplification = bool(_hum.get("description_simplification", True))
     emotion_enhancement = bool(_hum.get("emotion_enhancement", True))
     enable_humanizer_zh = bool(_hum.get("enable_humanizer_zh", True))  # 默认启用 Humanizer-zh 规则
+    enable_root_cause = bool(_hum.get("enable_root_cause", True))  # 默认启用 AI 味四大根因正向原则
 
-    # 添加增强版人性化写作指导（整合 Humanizer-zh 方法论）
-    base_prompt += f"{chr(10)}{get_enhanced_humanization_prompt(dialogue_ratio_target, enable_humanizer_zh)}"
+    # 添加增强版人性化写作指导（整合 Humanizer-zh 方法论 + 根因原则）
+    base_prompt += f"{chr(10)}{get_enhanced_humanization_prompt(dialogue_ratio_target, enable_humanizer_zh, enable_root_cause)}"
 
     # 添加朱雀AI检测优化
     base_prompt += f"{chr(10)}{get_zhuque_optimization_prompt(dialogue_ratio_target)}"

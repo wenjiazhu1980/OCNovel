@@ -2,6 +2,9 @@
 import json
 import logging
 import os
+import re
+from typing import Optional
+
 from PySide6.QtCore import QThread, Signal
 
 from src.gui.utils.config_io import load_env
@@ -181,15 +184,18 @@ class WritingGuideWorker(QThread):
                     chunks.append(delta)
             text = "".join(chunks).strip()
 
-            # 去除可能的 markdown 代码块标记
-            if text.startswith("```"):
-                text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-            if text.endswith("```"):
-                text = text[:-3].rstrip()
-
-            result = json.loads(text)
-            if not isinstance(result, dict):
-                self.finished_result.emit(False, "模型返回的不是有效的 JSON 对象")
+            result = self._parse_guide_json(text)
+            if result is None:
+                preview = text[:500] if text else "(空响应)"
+                logger.error(
+                    "写作指南 JSON 解析失败,所有清洗策略均无效。原始返回前 500 字符:\n%s",
+                    preview,
+                )
+                self.finished_result.emit(
+                    False,
+                    "JSON 解析失败: 模型返回的不是有效 JSON,已尝试多种清洗策略仍无法恢复。"
+                    "请查看日志中的原始返回片段,或更换更稳定的大纲模型重试。",
+                )
                 return
 
             # [5.3] 在 worker 线程内完成描写侧重去重,
@@ -210,6 +216,97 @@ class WritingGuideWorker(QThread):
                     stream.close()
                 except Exception:
                     pass
+
+    # ------------------------------------------------------------------
+    # 渐进式 JSON 解析:容忍 LLM (尤其是中等参数模型,如 mimo-v2.5-pro)
+    # 返回的不规范输出 — markdown 包裹、前后解释文字、尾随逗号、
+    # 字符串里的裸换行等。策略与 OutlineGenerator._parse_model_response
+    # 保持一致,只针对单一根 object(dict) 适配。
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _parse_guide_json(text: str) -> Optional[dict]:
+        """渐进式解析模型返回的写作指南 JSON
+
+        Returns:
+            解析成功时返回 dict;无法恢复或根节点不是 object 时返回 None。
+        """
+        if not text or not text.strip():
+            return None
+
+        def _strip_markdown(s: str) -> str:
+            s = s.strip()
+            if s.startswith("```"):
+                s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
+                s = s.strip("`\n")
+            return s.strip()
+
+        def _extract_object(s: str) -> str:
+            start = s.find("{")
+            end = s.rfind("}") + 1
+            if start != -1 and end > start:
+                return s[start:end]
+            return s
+
+        cleaned = _strip_markdown(text)
+
+        # 策略1: 直接解析(剥壳 + 提取 {})
+        try:
+            extracted = _extract_object(cleaned)
+            result = json.loads(extracted)
+            if isinstance(result, dict):
+                logger.info("写作指南 JSON 解析成功(直接解析)")
+                return result
+            return None
+        except json.JSONDecodeError:
+            pass
+
+        # 策略2: 修复尾随逗号 + 去重连续逗号
+        try:
+            light = re.sub(r",\s*([}\]])", r"\1", cleaned)
+            light = re.sub(r",+", ",", light)
+            extracted = _extract_object(light)
+            result = json.loads(extracted)
+            if isinstance(result, dict):
+                logger.info("写作指南 JSON 解析成功(轻度清理)")
+                return result
+            return None
+        except json.JSONDecodeError:
+            pass
+
+        # 策略3: 转义字符串内裸换行后扁平化
+        try:
+            def _escape_inner(match):
+                inner = match.group(0)[1:-1]
+                return f'"{json.dumps(inner)[1:-1]}"'
+
+            escaped = re.sub(r'(\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\")', _escape_inner, cleaned)
+            flattened = escaped.replace("\n", " ").replace("\r", "")
+            flattened = re.sub(r",+", ",", flattened)
+            flattened = re.sub(r",\s*([}\]])", r"\1", flattened)
+            extracted = _extract_object(flattened)
+            result = json.loads(extracted)
+            if isinstance(result, dict):
+                logger.info("写作指南 JSON 解析成功(转义+扁平化)")
+                return result
+            return None
+        except json.JSONDecodeError:
+            pass
+
+        # 策略4: 激进清理(去全部换行) — 最后手段,可能丢失原始字符串里的换行
+        try:
+            aggressive = cleaned.replace("\n", " ").replace("\r", "")
+            aggressive = re.sub(r",+", ",", aggressive)
+            aggressive = re.sub(r",\s*([}\]])", r"\1", aggressive)
+            extracted = _extract_object(aggressive)
+            result = json.loads(extracted)
+            if isinstance(result, dict):
+                logger.warning(
+                    "写作指南 JSON 解析成功(激进清理),字符串值内的换行可能已被压平"
+                )
+                return result
+            return None
+        except json.JSONDecodeError:
+            return None
 
     # ------------------------------------------------------------------
     # [5.3] 后台线程内执行描写侧重去重,避免阻塞主线程 UI

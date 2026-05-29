@@ -1477,6 +1477,75 @@ class NovelParamsTab(QWidget):
         except Exception as e:
             _logger.warning(f"自动加载 core_seed.txt 失败: {e}", exc_info=True)
 
+    # ------------------------------------------------------------------
+    # 故事创意持久化:保存配置时,把输入框反向写回 core_seed.txt
+    # 与 _autofill_story_idea_from_core_seed 配对,组成双向同步,避免
+    # outline_generator._generate_core_seed 检测不到种子时用模型重新
+    # 生成,导致用户在 GUI 输入的创意被忽略。
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _persist_story_idea_to_core_seed(
+        output_dir: str,
+        story_idea: str,
+        config_dir: str = "",
+    ) -> str | None:
+        """把故事创意持久化到 output_dir/core_seed.txt
+
+        策略:
+        - 故事创意为空(strip 后)或 output_dir 为空 → 跳过,保留磁盘文件不动
+          (避免误清空用户精心写过的种子)。
+        - 磁盘上 core_seed.txt 已与输入一致 → 跳过(免去无意义 IO 与 mtime 抖动)。
+        - 否则覆盖写入(与加载时 disk → 输入框 的覆盖语义对称)。
+        - 写入异常 → 返回错误字符串,由调用方拼到"保存成功"弹窗里告知用户;
+          不让种子写入失败阻塞 config.json 的整体保存。
+
+        路径解析:
+        - 绝对路径直接用;
+        - 相对路径优先相对 config_dir(让 config.json 移动时仍能找到对应输出目录);
+        - 未提供 config_dir 时相对当前 cwd。
+
+        Args:
+            output_dir: 输出目录(可绝对/相对)。
+            story_idea: 用户在故事创意输入框中的内容。
+            config_dir: config.json 所在目录,用于解析相对 output_dir。
+
+        Returns:
+            None 表示成功或主动跳过(无需提示);str 为写入异常原因。
+        """
+        try:
+            out = (output_dir or "").strip()
+            story = (story_idea or "").strip()
+            if not out or not story:
+                return None
+
+            if os.path.isabs(out):
+                seed_dir = out
+            elif config_dir:
+                seed_dir = os.path.join(config_dir, out)
+            else:
+                seed_dir = out
+
+            os.makedirs(seed_dir, exist_ok=True)
+            seed_path = os.path.join(seed_dir, "core_seed.txt")
+
+            if os.path.isfile(seed_path):
+                try:
+                    with open(seed_path, "r", encoding="utf-8") as f:
+                        if f.read().strip() == story:
+                            return None
+                except Exception:
+                    pass  # 读失败不阻塞写
+
+            with open(seed_path, "w", encoding="utf-8") as f:
+                f.write(story)
+            _logger.info(f"已将故事创意持久化为核心种子: {seed_path}")
+            return None
+        except Exception as e:
+            _logger.warning(
+                f"持久化故事创意到 core_seed.txt 失败: {e}", exc_info=True
+            )
+            return str(e)
+
     # ======================================================================
     # 保存配置
     # ======================================================================
@@ -1616,7 +1685,32 @@ class NovelParamsTab(QWidget):
 
         # 写入文件
         save_config(self._config_path, cfg)
-        QMessageBox.information(self, self.tr("保存成功"), self.tr("配置已保存到 config.json"))
+
+        # 反向同步:把故事创意持久化为 core_seed.txt,与加载时
+        # _autofill_story_idea_from_core_seed 配对,避免下次启动大纲生成时
+        # outline_generator 因检测不到种子文件而用模型重新生成创意。
+        cfg_dir = (
+            os.path.dirname(os.path.abspath(self._config_path))
+            if getattr(self, "_config_path", "")
+            else ""
+        )
+        seed_err = self._persist_story_idea_to_core_seed(
+            self._le_output_dir.text(),
+            self._le_story_idea.text(),
+            config_dir=cfg_dir,
+        )
+        if seed_err:
+            QMessageBox.information(
+                self,
+                self.tr("保存成功"),
+                self.tr(
+                    "配置已保存到 config.json。\n\n"
+                    "但故事创意写入 core_seed.txt 失败:{0}\n"
+                    "下次启动大纲生成时,模型可能会重新生成创意。"
+                ).format(seed_err),
+            )
+        else:
+            QMessageBox.information(self, self.tr("保存成功"), self.tr("配置已保存到 config.json"))
 
     # ======================================================================
     # 目标章节数变化 → 自适应角色数量建议

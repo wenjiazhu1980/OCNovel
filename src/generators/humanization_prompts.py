@@ -418,23 +418,77 @@ def get_chinese_native_writing_rules() -> str:
 """
 
 
+def get_root_cause_principles() -> str:
+    """获取「AI 味四大根因」的正向原则（视角内生 / 反应人格化 / 戏剧性体验 / 节奏自然）
+
+    与黑名单式规则互补：黑名单告诉模型「不要写什么」，本规则告诉模型「从哪里生成」。
+    重点补强现有规则薄弱的两个维度：视角内生、戏剧性体验。
+    """
+    return """
+[AI 味四大根因 · 正向原则]
+
+不靠"禁止列表"围堵 AI 输出，而是从生成的源头改变叙事路径。
+以下四条原则按优先级排列，写作前先在脑内过一遍。
+
+1. **视角内生原则（最重要）**：
+   - 默认禁止"上帝视角 + 事后分析"——即叙述者站在故事外面，向读者解释发生了什么、为何重要、有何意义。
+   - 每一个场景，先选定一个 POV 角色（视角人物），整段叙事必须从这个角色的感官、认知、情绪内部生长出来。
+   - POV 角色不知道的事，叙述里不出现；POV 角色注意不到的细节，叙述里不写。
+   - ❌ "他没注意到，身后的暗影里多了一道目光。"（这是上帝视角作弊，POV 角色不可能"没注意到"自己没注意到的东西）
+   - ✅ 如果要让读者知道有人在窥视，要么切 POV，要么让窥视者留下 POV 角色能察觉的痕迹（一阵风、一声轻响、后颈的寒意）。
+   - ❌ "这是林小凡人生中最重要的一战，因为它决定了未来十年的命运。"（事后分析，叙述者在剧透意义）
+   - ✅ 让林小凡在战斗中本能感到"输了就完了"，意义靠后续剧情自证，不在当下宣告。
+   - 切 POV 必须有明确边界（章节切、空行切、场景切），同一段内禁止 POV 漂移。
+
+2. **反应人格化原则**：
+   - 禁止"角色 X 类型化反应"的模板：受惊就瞳孔骤缩、愤怒就指节发白、震惊就张大嘴、为难就欲言又止。
+   - 同一情境，不同角色应有不同反应——反应本身就是性格的展示。
+   - 反应顺序：先生理（来不及思考的本能）→ 再认知（脑子转过来了）→ 再行为（决定怎么办）。三步不一定都写，但顺序不能乱。
+   - 反应可以是"无反应"：见过大风大浪的角色，遇到震撼场面可能只是沉默地多看一眼。这种"克制"比"瞳孔骤缩"更有力量。
+   - 反应可以是"错位反应"：被骂哭的人忽然笑了，听到噩耗的人先去关心一件小事。错位反应比"标准反应"真实十倍。
+
+3. **戏剧性体验原则**：
+   - 读者要的不是"发生了什么事"，而是"情绪曲线"。一个章节没有铺垫 / 拉扯 / 反转 / 笑点 / 虐点之一，就是 AI 在赶剧情。
+   - **铺垫**：关键反应/反转前，先用 1-2 个不起眼的细节给出伏笔。读者第二次读时能拍大腿"原来这里就埋了"。
+   - **拉扯**：角色想要 A 但被迫做 B；明知是坑还得跳；想说的话咽下去换成另一句。每个关键决定都要有内部摩擦，不能"理所当然地"做选择。
+   - **反转**：读者以为是 A，结果是 B。哪怕只是小反转——以为对方要骂自己，对方却笑了；以为捡到便宜，原来是负债。
+   - **笑点 / 虐点**：每个章节至少要有一处让读者有明确情绪反应的点。情绪不必激烈，但必须有指向。
+   - 检测：写完一章后问自己——"这一章，读者会在哪一句话停下来？"答不上来，就是平铺直叙。
+
+4. **节奏自然原则**（与现有节奏变化规则配合）：
+   - 节奏跟着 POV 角色的心跳走，不跟着字数走。
+   - 角色紧张时，句子自动变短、信息变密、感官变窄（只看见眼前一点）。
+   - 角色松弛时，句子自动变长、可以荡开闲笔、感官展开（听见远处的声音、闻到雨味）。
+   - 禁止"为了节奏而切短句"——如果 POV 角色当下并不紧张，硬切短句就是机械感的来源。
+   - 禁止"为了照顾全员而平均分配反应"——一个场景五个人在场，不必每个人都给一句反应。POV 注意到谁，就写谁。
+"""
+
+
 def get_enhanced_humanization_prompt(
     dialogue_ratio_target: float = 0.45,
-    enable_humanizer_zh: bool = True
+    enable_humanizer_zh: bool = True,
+    enable_root_cause: bool = True
 ) -> str:
-    """获取增强版人性化写作提示词（整合 Humanizer-zh 方法论）
+    """获取增强版人性化写作提示词（整合 Humanizer-zh 方法论 + 根因原则）
 
     Args:
         dialogue_ratio_target: 目标对话比例
         enable_humanizer_zh: 是否启用 Humanizer-zh 规则
+        enable_root_cause: 是否启用「AI 味四大根因」正向原则
     """
     base_prompt = get_humanization_prompt(dialogue_ratio_target)
 
     if not enable_humanizer_zh:
+        # 即使不启用 Humanizer-zh，也允许单独启用根因原则
+        if enable_root_cause:
+            return base_prompt + "\n" + get_root_cause_principles()
         return base_prompt
 
-    # 整合 Humanizer-zh 规则
-    enhanced_prompt = base_prompt + "\n" + get_humanizer_zh_core_rules()
+    # 根因原则置于黑名单之前——先建立"从哪里生成"，再补"不要写什么"
+    enhanced_prompt = base_prompt
+    if enable_root_cause:
+        enhanced_prompt += "\n" + get_root_cause_principles()
+    enhanced_prompt += "\n" + get_humanizer_zh_core_rules()
     enhanced_prompt += "\n" + get_ai_writing_patterns_blacklist()
     enhanced_prompt += "\n" + get_rhythm_variation_rules()
     enhanced_prompt += "\n" + get_quality_self_check_list()
