@@ -552,31 +552,35 @@ class ContentGenerator:
                         raise Exception("原始内容生成失败，返回为空。")
 
                 # 1.5. 字数检测
+                # 策略：偏多不调整（多写不浪费），偏少才触发调整/警告
                 target_length = self.config.generator_config.get("chapter_length", 0)
                 if target_length > 0:
                     actual_length = len(raw_content)
                     deviation = abs(actual_length - target_length) / target_length
+                    is_short = actual_length < target_length
 
-                    if deviation > 0.5:
-                        direction = "偏少" if actual_length < target_length else "偏多"
+                    if is_short and deviation > 0.5:
                         logger.warning(
-                            f"[Chapter {chapter_num}] 字数严重{direction}: "
+                            f"[Chapter {chapter_num}] 字数严重偏少: "
                             f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}），触发字数调整"
                         )
                         raise ChapterLengthError(
-                            f"字数{direction}（{actual_length}/{target_length}，偏差 {deviation:.0%}）",
+                            f"字数偏少（{actual_length}/{target_length}，偏差 {deviation:.0%}）",
                             actual=actual_length, target=target_length, content=raw_content
                         )
-                    elif deviation > 0.2:
-                        direction = "偏少" if actual_length < target_length else "偏多"
+                    elif is_short and deviation > 0.2:
                         logger.warning(
-                            f"[Chapter {chapter_num}] 字数{direction}: "
+                            f"[Chapter {chapter_num}] 字数偏少: "
                             f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}）"
                         )
-                        # 软警告：内容可通过验证但偏差仍显著，让 pipeline_worker 标记 warning
                         soft_warning = (
-                            f"字数{direction}({actual_length}/{target_length},"
+                            f"字数偏少({actual_length}/{target_length},"
                             f"偏差{deviation:.0%})"
+                        )
+                    elif not is_short and deviation > 0.5:
+                        logger.info(
+                            f"[Chapter {chapter_num}] 字数偏多但不调整: "
+                            f"实际 {actual_length} / 目标 {target_length}（偏差 {deviation:.0%}）"
                         )
                     else:
                         logger.info(
