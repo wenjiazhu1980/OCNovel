@@ -195,6 +195,16 @@ class TestOutlinePhaseAndForeshadowing:
         )
         assert "未回收伏笔" not in prompt
 
+    def test_pending_foreshadowing_prompt_keeps_all_passed_items(self):
+        items = [f"第{i}章埋设：长期伏笔{i}" for i in range(1, 13)]
+        prompt = get_outline_prompt(
+            "", "", "", 85, 10,
+            novel_config=self._cfg(), total_chapters=100, current_end_chapter_num=94,
+            pending_foreshadowing=items,
+        )
+        assert "第1章埋设：长期伏笔1" in prompt
+        assert "第12章埋设：长期伏笔12" in prompt
+
     def test_density_hint_present(self):
         prompt = get_outline_prompt(
             "", "", "", 1, 10,

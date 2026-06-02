@@ -379,7 +379,7 @@ def get_outline_prompt(
     if pending_foreshadowing:
         _items = [str(x).strip() for x in pending_foreshadowing if str(x).strip()]
         if _items:
-            _items_display = "\n".join([f"  - {it}" for it in _items[:10]])
+            _items_display = "\n".join([f"  - {it}" for it in _items])
             _min_recover = 1 if _progress_pct <= 0.75 else max(1, min(3, len(_items) // 2))
             _foreshadow_section = (
                 f"\n\n[未回收伏笔（必须在本批次处理或至少触及）]\n"
@@ -555,6 +555,14 @@ def get_chapter_prompt(
         result = []
         for item in items:
             if isinstance(item, dict):
+                content = item.get("内容") or item.get("content") or item.get("desc") or ""
+                chapter = item.get("埋设章节") or item.get("chapter") or ""
+                status = item.get("状态") or item.get("status") or ""
+                if content:
+                    prefix = f"第{chapter}章" if chapter else ""
+                    suffix = f"({status})" if status else ""
+                    result.append(f"{prefix}{content}{suffix}")
+                    continue
                 name = item.get("名称") or item.get("name") or item.get("title") or ""
                 desc = item.get("简介") or item.get("说明") or item.get("desc") or ""
                 if name and desc:
@@ -876,7 +884,8 @@ def get_sync_info_prompt(
 2. 精简表达，去除一切不必要的修饰，确保信息有效的同时使用最少tokens
 3. 只保留对后续故事发展有参考价值的内容
 4. "悬念伏笔"只能保留仍未揭示/未兑现的项；一旦本批次章节中伏笔被回收或兑现，必须把对应文本从"悬念伏笔"中移除，并追加到"已回收伏笔"
-5. 必须仅返回标准的JSON格式，不要添加任何前后缀、说明或标记
+5. 伏笔条目必须优先使用对象结构，至少包含 "内容"、"埋设章节"、"最后出现章节"、"状态"；已回收伏笔还要包含 "回收章节"
+6. 必须仅返回标准的JSON格式，不要添加任何前后缀、说明或标记
 
 现有同步信息：
 {existing_sync_info}
@@ -911,8 +920,12 @@ def get_sync_info_prompt(
     "剧情发展": {{
         "主线梗概": "",
         "重要事件": [],
-        "悬念伏笔": [],
-        "已回收伏笔": [],
+        "悬念伏笔": [
+            {{"内容": "", "埋设章节": 0, "最后出现章节": 0, "状态": "未回收"}}
+        ],
+        "已回收伏笔": [
+            {{"内容": "", "埋设章节": 0, "最后出现章节": 0, "回收章节": 0, "状态": "已回收"}}
+        ],
         "已解决冲突": [],
         "进行中冲突": []
     }},
@@ -1041,6 +1054,14 @@ def get_consistency_check_prompt(
         result = []
         for item in items:
             if isinstance(item, dict):
+                content = item.get("内容") or item.get("content") or item.get("desc") or ""
+                chapter = item.get("埋设章节") or item.get("chapter") or ""
+                status = item.get("状态") or item.get("status") or ""
+                if content:
+                    prefix = f"第{chapter}章" if chapter else ""
+                    suffix = f"({status})" if status else ""
+                    result.append(f"{prefix}{content}{suffix}")
+                    continue
                 # 如果是字典，提取名称和简介
                 name = item.get("名称", "")
                 desc = item.get("简介", item.get("说明", ""))
@@ -1425,4 +1446,3 @@ def get_imitation_prompt(
 现在，请开始仿写。直接输出仿写后的正文，不要包含任何解释或标题。"""
     
     return prompt
-

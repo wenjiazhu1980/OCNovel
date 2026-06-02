@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import time
+import re
 from typing import List, Tuple, Optional
 from ..common.data_structures import ChapterOutline
 from ..common.utils import load_json_file, save_json_file, validate_directory
@@ -29,9 +30,298 @@ class OutlineGenerator:
     def _get_hashable_item(self, item):
         """Returns a hashable representation of an item for uniqueness checks."""
         if isinstance(item, dict):
-            # For dictionaries, we'll try to find a '名称' key, otherwise use its string representation
-            return item.get('名称', str(item))
+            # 优先使用实体/伏笔的稳定文本，避免同一内容因元数据不同重复入库。
+            for key in ("名称", "内容", "描述", "name", "content", "desc", "title"):
+                value = item.get(key)
+                if value:
+                    return str(value)
+            return str(item)
         return item
+
+    @staticmethod
+    def _foreshadow_text(item) -> str:
+        """提取伏笔条目的主体文本，兼容旧字符串与新 dict 结构。"""
+        if item is None:
+            return ""
+        if isinstance(item, str):
+            return item.strip()
+        if isinstance(item, dict):
+            for key in ("内容", "描述", "名称", "content", "desc", "name", "title"):
+                value = item.get(key)
+                if value:
+                    return str(value).strip()
+        return str(item).strip()
+
+    @staticmethod
+    def _coerce_chapter_number(value, default: int = 0) -> int:
+        """把章节号字段安全转换为 int。"""
+        try:
+            if value is None or value == "":
+                return default
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _parse_chapter_from_text(text: str) -> int:
+        """从文本中提取首个“第N章”章节号。"""
+        match = re.search(r"第\s*(\d+)\s*章", text or "")
+        return int(match.group(1)) if match else 0
+
+    @staticmethod
+    def _classify_foreshadow_operation(text: str) -> tuple[str, str]:
+        """识别一条 foreshadowing 操作，返回 (bury/recover/other, body)。"""
+        raw = (text or "").strip()
+        if not raw:
+            return "other", ""
+        match = re.match(r"^\s*([^：:]{1,16})[：:]\s*(.*)$", raw, re.S)
+        prefix = match.group(1) if match else ""
+        body = (match.group(2) if match else raw).strip()
+        recover_keys = ("回收", "兑现", "揭晓", "呼应", "收束", "应验", "揭破")
+        bury_keys = ("埋设", "埋下", "铺垫", "伏笔", "预示", "暗示")
+        if any(key in prefix for key in recover_keys):
+            return "recover", body
+        if any(key in prefix for key in bury_keys):
+            return "bury", body
+        return "other", body
+
+    @staticmethod
+    def _hanzi_bigrams(text: str) -> set:
+        """提取汉字 bigram，用于伏笔回收的宽松匹配。"""
+        bigrams = set()
+        for segment in re.findall(r"[一-鿿]+", text or ""):
+            for i in range(len(segment) - 1):
+                bigrams.add(segment[i:i + 2])
+        return bigrams
+
+    def _foreshadow_matches(self, left: str, right: str) -> bool:
+        """判断两个伏笔描述是否指向同一线索。"""
+        left = (left or "").strip()
+        right = (right or "").strip()
+        if not left or not right:
+            return False
+        if left == right:
+            return True
+        left_numbers = set(re.findall(r"\d+", left))
+        right_numbers = set(re.findall(r"\d+", right))
+        if left_numbers and right_numbers and left_numbers != right_numbers:
+            return False
+        if left in right or right in left:
+            return True
+        return len(self._hanzi_bigrams(left) & self._hanzi_bigrams(right)) >= 2
+
+    def _normalize_foreshadow_item(
+        self,
+        item,
+        status: str = "未回收",
+        default_chapter: int = 0,
+    ) -> Optional[dict]:
+        """将旧字符串伏笔升级为带章节元数据的结构化条目。"""
+        text = self._foreshadow_text(item)
+        if not text:
+            return None
+        if isinstance(item, dict):
+            bury_chapter = self._coerce_chapter_number(
+                item.get("埋设章节") or item.get("first_chapter") or item.get("chapter"),
+                default_chapter,
+            )
+            last_chapter = self._coerce_chapter_number(
+                item.get("最后出现章节") or item.get("last_chapter"),
+                bury_chapter,
+            )
+            entry_status = str(item.get("状态") or item.get("status") or status)
+            entry = dict(item)
+        else:
+            bury_chapter = self._parse_chapter_from_text(text) or default_chapter
+            last_chapter = bury_chapter
+            entry_status = status
+            entry = {}
+
+        entry["内容"] = text
+        entry["埋设章节"] = bury_chapter
+        entry["最后出现章节"] = last_chapter
+        entry["状态"] = "已回收" if entry_status in ("已回收", "recovered", "resolved") else "未回收"
+        if entry["状态"] == "已回收":
+            entry["回收章节"] = self._coerce_chapter_number(
+                entry.get("回收章节") or entry.get("resolved_chapter"),
+                last_chapter,
+            )
+        return entry
+
+    def _normalize_foreshadow_list(
+        self,
+        items,
+        status: str = "未回收",
+        default_chapter: int = 0,
+    ) -> List[dict]:
+        """归一化伏笔列表并按内容去重。"""
+        if items is None:
+            raw_items = []
+        elif isinstance(items, list):
+            raw_items = items
+        else:
+            raw_items = [items]
+
+        result: List[dict] = []
+        for item in raw_items:
+            entry = self._normalize_foreshadow_item(item, status, default_chapter)
+            if not entry:
+                continue
+            existing = next(
+                (old for old in result if self._foreshadow_matches(old["内容"], entry["内容"])),
+                None,
+            )
+            if existing is None:
+                result.append(entry)
+                continue
+            if entry.get("埋设章节") and (
+                not existing.get("埋设章节")
+                or entry["埋设章节"] < existing["埋设章节"]
+            ):
+                existing["埋设章节"] = entry["埋设章节"]
+            existing["最后出现章节"] = max(
+                self._coerce_chapter_number(existing.get("最后出现章节")),
+                self._coerce_chapter_number(entry.get("最后出现章节")),
+            )
+            if entry.get("状态") == "已回收":
+                existing["状态"] = "已回收"
+                existing["回收章节"] = entry.get("回收章节", entry.get("最后出现章节", 0))
+        return result
+
+    def _ensure_sync_info_schema(self) -> None:
+        """补齐 sync_info 结构，并把伏笔列表升级为结构化条目。"""
+        if not isinstance(self.sync_info, dict):
+            self.sync_info = self._get_default_sync_info()
+        self.sync_info.setdefault("剧情发展", {})
+        plot = self.sync_info["剧情发展"]
+        if not isinstance(plot, dict):
+            self.sync_info["剧情发展"] = {}
+            plot = self.sync_info["剧情发展"]
+        plot.setdefault("悬念伏笔", [])
+        plot.setdefault("已回收伏笔", [])
+        plot["悬念伏笔"] = self._normalize_foreshadow_list(
+            plot.get("悬念伏笔"), "未回收"
+        )
+        plot["已回收伏笔"] = self._normalize_foreshadow_list(
+            plot.get("已回收伏笔"), "已回收"
+        )
+        self._remove_resolved_foreshadowing()
+
+    def _remove_resolved_foreshadowing(self) -> None:
+        """从未回收列表移除已经被回收列表覆盖的伏笔。"""
+        plot = self.sync_info.get("剧情发展", {})
+        pending = plot.get("悬念伏笔", [])
+        recovered = plot.get("已回收伏笔", [])
+        plot["悬念伏笔"] = [
+            item for item in pending
+            if not any(
+                self._foreshadow_matches(item.get("内容", ""), done.get("内容", ""))
+                for done in recovered
+            )
+        ]
+
+    def _add_pending_foreshadowing(self, content: str, chapter_num: int) -> None:
+        """登记新埋设的未回收伏笔。"""
+        plot = self.sync_info.setdefault("剧情发展", {})
+        pending = plot.setdefault("悬念伏笔", [])
+        recovered = plot.setdefault("已回收伏笔", [])
+        if any(self._foreshadow_matches(content, item.get("内容", "")) for item in recovered):
+            return
+        existing = next(
+            (item for item in pending if self._foreshadow_matches(content, item.get("内容", ""))),
+            None,
+        )
+        if existing:
+            existing["最后出现章节"] = max(
+                self._coerce_chapter_number(existing.get("最后出现章节")),
+                chapter_num,
+            )
+            return
+        pending.append({
+            "内容": content,
+            "埋设章节": chapter_num,
+            "最后出现章节": chapter_num,
+            "状态": "未回收",
+        })
+
+    def _mark_foreshadowing_recovered(self, content: str, chapter_num: int) -> None:
+        """把匹配的未回收伏笔移入已回收列表。"""
+        plot = self.sync_info.setdefault("剧情发展", {})
+        pending = plot.setdefault("悬念伏笔", [])
+        recovered = plot.setdefault("已回收伏笔", [])
+        matched = [
+            item for item in pending
+            if self._foreshadow_matches(content, item.get("内容", ""))
+        ]
+        if matched:
+            for item in matched:
+                done = dict(item)
+                done["状态"] = "已回收"
+                done["回收章节"] = chapter_num
+                done["最后出现章节"] = chapter_num
+                done["回收说明"] = content
+                if not any(
+                    self._foreshadow_matches(done["内容"], old.get("内容", ""))
+                    for old in recovered
+                ):
+                    recovered.append(done)
+            plot["悬念伏笔"] = [item for item in pending if item not in matched]
+            return
+
+        if not any(self._foreshadow_matches(content, old.get("内容", "")) for old in recovered):
+            recovered.append({
+                "内容": content,
+                "埋设章节": self._parse_chapter_from_text(content),
+                "最后出现章节": chapter_num,
+                "回收章节": chapter_num,
+                "状态": "已回收",
+            })
+
+    def _apply_outline_foreshadowing_to_sync_info(self, batch_start: int, batch_end: int) -> None:
+        """根据本批次章节大纲的 foreshadowing 字段维护长期伏笔索引。"""
+        self._ensure_sync_info_schema()
+        for chapter_num in range(batch_start, batch_end + 1):
+            if chapter_num - 1 >= len(self.chapter_outlines):
+                continue
+            outline = self.chapter_outlines[chapter_num - 1]
+            if not isinstance(outline, ChapterOutline):
+                continue
+            for raw in outline.foreshadowing or []:
+                kind, body = self._classify_foreshadow_operation(str(raw))
+                if not body:
+                    continue
+                if kind == "recover":
+                    self._mark_foreshadowing_recovered(body, chapter_num)
+                elif kind == "bury":
+                    self._add_pending_foreshadowing(body, chapter_num)
+        self._remove_resolved_foreshadowing()
+
+    def _format_foreshadowing_for_prompt(self, entry: dict) -> str:
+        """格式化 prompt 注入项，已知章节时带上埋设章号。"""
+        content = entry.get("内容", "")
+        chapter = self._coerce_chapter_number(entry.get("埋设章节"))
+        return f"第{chapter}章埋设：{content}" if chapter > 0 else content
+
+    def _get_pending_foreshadowing_for_prompt(self, batch_start: int, batch_end: int) -> List[str]:
+        """抽取应注入本批次的未回收伏笔；收束阶段全量注入。"""
+        self._ensure_sync_info_schema()
+        plot = self.sync_info.get("剧情发展", {})
+        pending = [
+            item for item in plot.get("悬念伏笔", [])
+            if item.get("内容")
+        ]
+        pending.sort(key=lambda item: (
+            self._coerce_chapter_number(item.get("埋设章节")) or 10**9,
+            self._coerce_chapter_number(item.get("最后出现章节")) or 10**9,
+            item.get("内容", ""),
+        ))
+        total = (
+            self.config.generator_config.get("target_chapters", 0)
+            or self.config.novel_config.get("target_chapters", 0)
+        )
+        is_closing_stage = total > 0 and batch_end / total >= 0.8
+        selected = pending if is_closing_stage else pending[:10]
+        return [self._format_foreshadowing_for_prompt(item) for item in selected]
 
     @staticmethod
     def _normalize_extended_outline_fields(chapter_data: dict) -> dict:
@@ -599,38 +889,10 @@ class OutlineGenerator:
         core_seed = self._generate_core_seed()
 
         # 抽取未回收伏笔，注入 prompt 以强制本批次处理
-        pending_foreshadowing: List[str] = []
         try:
-            plot_dev = (
-                self.sync_info.get("剧情发展", {})
-                if isinstance(self.sync_info, dict) else {}
+            pending_foreshadowing = self._get_pending_foreshadowing_for_prompt(
+                batch_start_num, batch_end_num
             )
-            raw_fs = plot_dev.get("悬念伏笔", []) if isinstance(plot_dev, dict) else []
-            raw_resolved = plot_dev.get("已回收伏笔", []) if isinstance(plot_dev, dict) else []
-
-            def _to_text(item) -> str:
-                if isinstance(item, str):
-                    return item
-                if isinstance(item, dict):
-                    return str(
-                        item.get("内容") or item.get("描述") or item.get("名称")
-                        or item.get("content") or item.get("desc") or item
-                    )
-                return str(item)
-
-            # 构建已回收集合用于差集过滤，避免把历史已回收伏笔再次当作未回收注入
-            resolved_set = {_to_text(r) for r in raw_resolved if r}
-
-            seen = set()
-            for item in raw_fs:
-                text = _to_text(item).strip()
-                if not text or text in resolved_set or text in seen:
-                    continue
-                seen.add(text)
-                pending_foreshadowing.append(text)
-
-            # 取最早埋设的若干条，避免 prompt 过长
-            pending_foreshadowing = pending_foreshadowing[:10]
         except Exception as e:
             logging.warning(f"抽取未回收伏笔失败，忽略此次注入: {e}")
             pending_foreshadowing = []
@@ -1207,20 +1469,24 @@ class OutlineGenerator:
             if os.path.exists(self.sync_info_file):
                 with open(self.sync_info_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                # 向后兼容：旧文件缺失 已回收伏笔 字段时补齐
+                # 向后兼容：旧文件缺失字段时补齐，并升级伏笔条目结构。
                 if isinstance(data, dict):
-                    plot = data.setdefault("剧情发展", {})
-                    if isinstance(plot, dict) and "已回收伏笔" not in plot:
-                        plot["已回收伏笔"] = []
-                return data
-            return self._get_default_sync_info()
+                    self.sync_info = data
+                    self._ensure_sync_info_schema()
+                    return self.sync_info
+            self.sync_info = self._get_default_sync_info()
+            self._ensure_sync_info_schema()
+            return self.sync_info
         except Exception as e:
             logging.error(f"加载同步信息文件时出错: {str(e)}", exc_info=True)
-            return self._get_default_sync_info()
+            self.sync_info = self._get_default_sync_info()
+            self._ensure_sync_info_schema()
+            return self.sync_info
 
     def _save_sync_info(self) -> bool:
         """保存同步信息到文件"""
         try:
+            self._ensure_sync_info_schema()
             with open(self.sync_info_file, 'w', encoding='utf-8') as f:
                 json.dump(self.sync_info, f, ensure_ascii=False, indent=2)
             return True
@@ -1250,7 +1516,8 @@ class OutlineGenerator:
                 chapter_text += f"关键情节：{', '.join(outline.key_points)}\n"
                 chapter_text += f"涉及角色：{', '.join(outline.characters)}\n"
                 chapter_text += f"场景：{', '.join(outline.settings)}\n"
-                chapter_text += f"冲突：{', '.join(outline.conflicts)}"
+                chapter_text += f"冲突：{', '.join(outline.conflicts)}\n"
+                chapter_text += f"伏笔操作：{', '.join(outline.foreshadowing or [])}"
                 chapter_texts.append(chapter_text)
 
             # 生成更新提示词
@@ -1337,10 +1604,14 @@ class OutlineGenerator:
                 for key in ["重要事件", "悬念伏笔", "已回收伏笔", "已解决冲突", "进行中冲突"]:
                     if key in plot_updates and isinstance(plot_updates[key], list):
                         self._merge_list_unique(self.sync_info["剧情发展"].setdefault(key, []), plot_updates[key])
-            
+
             # 前情提要
             if "前情提要" in updated_sync_info and isinstance(updated_sync_info["前情提要"], list):
                 self._merge_list_unique(self.sync_info.setdefault("前情提要", []), updated_sync_info["前情提要"])
+
+            # 用本批次大纲的结构化 foreshadowing 字段校正模型输出，避免长期伏笔被遗漏。
+            self._ensure_sync_info_schema()
+            self._apply_outline_foreshadowing_to_sync_info(batch_start, batch_end)
 
             # 最后更新章节和最后更新时间由内部逻辑设定，不依赖模型输出
             self.sync_info["最后更新章节"] = batch_end
@@ -1407,6 +1678,8 @@ class OutlineGenerator:
                         event = f"第{chapter_num}章：{outline.title}"
                         if event not in self.sync_info["剧情发展"]["重要事件"]:
                             self.sync_info["剧情发展"]["重要事件"].append(event)
+
+            self._apply_outline_foreshadowing_to_sync_info(batch_start, batch_end)
             
             return self._save_sync_info()
             

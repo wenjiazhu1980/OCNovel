@@ -469,6 +469,8 @@ def audit_recovery_rate(chapters: List[dict], hang_warn_ratio: float = 0.4) -> L
 # LLM 语义复核层（需传入有 .generate(prompt) 方法的模型）
 # =====================================================================
 
+AUDIT_LLM_GENERATE_KWARGS = {"temperature": 0}
+
 def _extract_json(text: str):
     """从 LLM 输出中提取首个 JSON 对象，容忍 markdown 围栏与前后缀文字。"""
     if not text:
@@ -520,7 +522,7 @@ def llm_review_task_closure(chapters: List[dict], model,
                             candidate_threshold: int = 1) -> List[Finding]:
     """用 LLM 对系统任务闭环做语义裁决，补足算法因母题复用/顺带提及导致的假闭环漏报。
 
-    model: 任意具备 generate(prompt) -> str 的对象（项目内 BaseModel 子类，测试可传 mock）。
+    model: 任意具备 generate(prompt, **kwargs) -> str 的对象（项目内 BaseModel 子类，测试可传 mock）。
     """
     return llm_review_task_closure_with_stats(
         chapters, model, candidate_threshold
@@ -575,7 +577,7 @@ def llm_review_task_closure_with_stats(
         stats["llm_calls"] += 1
         candidate_chapters = [cn for cn, _ in cands]
         try:
-            raw = model.generate(prompt)
+            raw = model.generate(prompt, **AUDIT_LLM_GENERATE_KWARGS)
         except Exception as e:
             stats["llm_call_failures"] += 1
             findings.append(Finding(

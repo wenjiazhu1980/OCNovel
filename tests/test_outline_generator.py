@@ -154,6 +154,67 @@ class TestOutlineGenerator:
         result = generator._get_hashable_item({"名称": "测试"})
         assert result == "测试"
 
+    def test_sync_info_migrates_legacy_foreshadowing_strings(self, generator):
+        generator.sync_info = {
+            "剧情发展": {
+                "悬念伏笔": ["第3章玉佩发光的秘密"],
+                "已回收伏笔": ["第5章神秘老者身份揭晓"],
+            }
+        }
+
+        generator._ensure_sync_info_schema()
+
+        pending = generator.sync_info["剧情发展"]["悬念伏笔"]
+        recovered = generator.sync_info["剧情发展"]["已回收伏笔"]
+        assert pending[0]["内容"] == "第3章玉佩发光的秘密"
+        assert pending[0]["埋设章节"] == 3
+        assert pending[0]["状态"] == "未回收"
+        assert recovered[0]["回收章节"] == 5
+        assert recovered[0]["状态"] == "已回收"
+
+    def test_outline_foreshadowing_updates_pending_and_recovered_index(self, generator):
+        generator.sync_info = generator._get_default_sync_info()
+        generator.chapter_outlines = [
+            ChapterOutline(
+                1, "埋伏", ["玉佩发光"], ["主角"], ["村口"], ["追兵"],
+                foreshadowing=["埋设：玉佩发光暗示主角身世"]
+            ),
+            ChapterOutline(
+                2, "揭晓", ["身世揭晓"], ["主角"], ["祠堂"], ["真相"],
+                foreshadowing=["回收：玉佩发光揭示主角身世"]
+            ),
+        ]
+
+        generator._apply_outline_foreshadowing_to_sync_info(1, 1)
+        pending = generator.sync_info["剧情发展"]["悬念伏笔"]
+        assert len(pending) == 1
+        assert pending[0]["内容"] == "玉佩发光暗示主角身世"
+        assert pending[0]["埋设章节"] == 1
+
+        generator._apply_outline_foreshadowing_to_sync_info(2, 2)
+        assert generator.sync_info["剧情发展"]["悬念伏笔"] == []
+        recovered = generator.sync_info["剧情发展"]["已回收伏笔"]
+        assert len(recovered) == 1
+        assert recovered[0]["内容"] == "玉佩发光暗示主角身世"
+        assert recovered[0]["回收章节"] == 2
+        assert recovered[0]["状态"] == "已回收"
+
+    def test_closing_stage_injects_all_pending_foreshadowing(self, generator):
+        generator.config.generator_config["target_chapters"] = 100
+        generator.sync_info = generator._get_default_sync_info()
+        generator.sync_info["剧情发展"]["悬念伏笔"] = [
+            {"内容": f"长期伏笔{i}", "埋设章节": i, "最后出现章节": i, "状态": "未回收"}
+            for i in range(1, 13)
+        ]
+
+        early = generator._get_pending_foreshadowing_for_prompt(40, 50)
+        closing = generator._get_pending_foreshadowing_for_prompt(85, 90)
+
+        assert len(early) == 10
+        assert len(closing) == 12
+        assert closing[0] == "第1章埋设：长期伏笔1"
+        assert closing[-1] == "第12章埋设：长期伏笔12"
+
     def test_generate_outline_success(self, generator, mock_outline_model):
         """测试成功生成大纲"""
         response_data = [

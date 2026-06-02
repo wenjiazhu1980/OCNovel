@@ -315,6 +315,7 @@ class TestLLMReview:
         findings = llm_review_task_closure(self._motif_chapters(), model)
         assert any(f.rule_id == "O3-LLM" and "老李头" in f.message for f in findings)
         assert model.generate.called
+        assert model.generate.call_args.kwargs["temperature"] == 0
 
     def test_respects_closed_verdict(self):
         model = MagicMock()
@@ -356,4 +357,5 @@ class TestLLMReview:
         assert result.stats["llm_calls"] == 1
         assert result.stats["llm_findings"] == 1
         assert result.stats["open_tasks"] == 1
+        assert model.generate.call_args.kwargs["temperature"] == 0
         assert any(f.rule_id == "O3-LLM" and f.severity == "fatal" for f in result.findings)
