@@ -453,3 +453,154 @@ class TestProgressTabRegen:
         assert tab.btn_regen.isEnabled() is False
 
         tab._worker = None
+
+
+# ---------------------------------------------------------------------------
+# ProgressTab 大纲审计复核入口测试
+# ---------------------------------------------------------------------------
+class TestProgressTabOutlineAudit:
+    """测试手动大纲审计复核按钮"""
+
+    def _make_tab(self, qapp, tmp_path, with_outline=False):
+        config_path = str(tmp_path / "config.json")
+        env_path = str(tmp_path / ".env")
+        output_dir = tmp_path / "output"
+        output_dir.mkdir(exist_ok=True)
+
+        cfg = {
+            "novel_config": {"target_chapters": 5},
+            "output_config": {"output_dir": str(output_dir)},
+        }
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f)
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.write("")
+
+        if with_outline:
+            with open(output_dir / "outline.json", "w", encoding="utf-8") as f:
+                json.dump([
+                    {
+                        "chapter_number": 1,
+                        "title": "第一章",
+                        "key_points": ["系统发布任务：清剿黑风寨"],
+                        "characters": ["主角"],
+                        "settings": ["山村"],
+                        "conflicts": ["匪患"],
+                    }
+                ], f, ensure_ascii=False)
+
+        from src.gui.tabs.progress_tab import ProgressTab
+        return ProgressTab(config_path, env_path)
+
+    def test_button_exists(self, qapp, tmp_path):
+        """ProgressTab 初始化后应包含大纲审计按钮"""
+        tab = self._make_tab(qapp, tmp_path)
+        assert hasattr(tab, "btn_outline_audit")
+        assert "大纲审计复核" in tab.btn_outline_audit.text()
+
+    def test_running_task_blocks_outline_audit(self, qapp, tmp_path):
+        """已有任务运行时不应创建审计 worker"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True)
+        tab._worker = MagicMock()
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.warning") as mock_warning:
+            tab._on_run_outline_audit()
+
+        mock_warning.assert_called_once()
+        assert tab._outline_audit_worker is None
+        tab._worker = None
+
+    def test_missing_outline_blocks_outline_audit(self, qapp, tmp_path):
+        """缺少 outline.json 时不应启动审计"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=False)
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.warning") as mock_warning:
+            tab._on_run_outline_audit()
+
+        mock_warning.assert_called_once()
+        assert tab._outline_audit_worker is None
+
+    def test_start_outline_audit_creates_worker_and_busy_state(self, qapp, tmp_path):
+        """正常启动时应创建 worker 并进入忙碌状态"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True)
+        running_states = []
+        tab.pipeline_running_changed.connect(running_states.append)
+
+        mock_worker = MagicMock()
+        mock_worker.audit_finished.connect = MagicMock()
+        mock_worker.log_message.connect = MagicMock()
+        mock_worker.finished.connect = MagicMock()
+        mock_worker.start = MagicMock()
+        mock_worker.isRunning.return_value = True
+
+        from PySide6.QtWidgets import QMessageBox
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.question",
+                   return_value=QMessageBox.Yes) as mock_question, \
+             patch("src.gui.tabs.progress_tab.OutlineAuditWorker",
+                   return_value=mock_worker) as mock_worker_cls:
+            tab._on_run_outline_audit()
+
+        mock_question.assert_called_once()
+        mock_worker_cls.assert_called_once_with(
+            config_path=tab._config_path,
+            env_path=tab._env_path,
+        )
+        assert tab._outline_audit_worker is mock_worker
+        assert tab.btn_outline_audit.isEnabled() is False
+        assert "审计中" in tab.btn_outline_audit.text()
+        assert tab.btn_start.isEnabled() is False
+        assert tab.btn_outline_only.isEnabled() is False
+        assert tab.btn_regen.isEnabled() is False
+        assert tab.btn_refresh.isEnabled() is False
+        assert tab.btn_merge.isEnabled() is False
+        assert tab.btn_marketing.isEnabled() is False
+        assert tab.btn_stop.isEnabled() is True
+        assert running_states == [True]
+        mock_worker.start.assert_called_once()
+
+    def test_outline_audit_finished_restores_success_state(self, qapp, tmp_path):
+        """审计成功完成后应恢复按钮状态"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True)
+        tab.btn_outline_audit.setEnabled(False)
+        tab.btn_outline_audit.setText("⏳  审计中...")
+        tab.btn_start.setEnabled(False)
+        tab.btn_outline_only.setEnabled(False)
+        tab.btn_merge.setEnabled(False)
+        tab.btn_marketing.setEnabled(False)
+        tab.btn_stop.setEnabled(True)
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.information") as mock_info:
+            tab._on_outline_audit_finished(True, "done")
+
+        mock_info.assert_called_once()
+        assert tab.btn_outline_audit.isEnabled() is True
+        assert "大纲审计复核" in tab.btn_outline_audit.text()
+        assert tab.btn_start.isEnabled() is True
+        assert tab.btn_outline_only.isEnabled() is True
+        assert tab.btn_refresh.isEnabled() is True
+        assert tab.btn_merge.isEnabled() is True
+        assert tab.btn_marketing.isEnabled() is True
+        assert tab.btn_stop.isEnabled() is False
+
+    def test_outline_audit_finished_restores_failure_state(self, qapp, tmp_path):
+        """审计失败完成后也应恢复按钮状态"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True)
+        tab.btn_outline_audit.setEnabled(False)
+        tab.btn_start.setEnabled(False)
+        tab.btn_outline_only.setEnabled(False)
+        tab.btn_merge.setEnabled(False)
+        tab.btn_marketing.setEnabled(False)
+        tab.btn_stop.setEnabled(True)
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.critical") as mock_critical:
+            tab._on_outline_audit_finished(False, "bad")
+
+        mock_critical.assert_called_once()
+        assert tab.btn_outline_audit.isEnabled() is True
+        assert tab.btn_start.isEnabled() is True
+        assert tab.btn_outline_only.isEnabled() is True
+        assert tab.btn_refresh.isEnabled() is True
+        assert tab.btn_merge.isEnabled() is True
+        assert tab.btn_marketing.isEnabled() is True
+        assert tab.btn_stop.isEnabled() is False

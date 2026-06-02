@@ -1,4 +1,4 @@
-# CLAUDE.md - OCNovel
+# AGENTS.md - OCNovel
 
 ## Project Overview
 
@@ -13,10 +13,10 @@ ocnovel.spec / ocnovel_win.spec  # PyInstaller macOS / Windows 打包配置
 src/
   config/
     config.py                    # Config类，加载config.json + .env
-    ai_config.py                 # AIConfig类，多模型配置(Claude/Gemini/OpenAI)
+    ai_config.py                 # AIConfig类，多模型配置(Codex/Gemini/OpenAI)
   models/
     base_model.py                # BaseModel ABC: generate() + embed()
-    claude_model.py              # Anthropic Claude 实现
+    claude_model.py              # Anthropic Codex 实现
     gemini_model.py              # Google Gemini 实现
     gemini_safety_config.py      # Gemini 安全策略配置
     openai_model.py              # OpenAI 兼容实现
@@ -56,7 +56,7 @@ data/                            # 运行时数据（gitignored）
 - **Config layering**: `config.json`（小说参数） + `.env`（API密钥/敏感配置） + `AIConfig`（模型默认值）。`config.json`中的`model_config`优先级高于AIConfig defaults。
 - **Pipeline**: outline → content → finalize，通过`auto`命令串联（CLI 和 GUI `pipeline_worker` 共用）。
 - **Retry/Fallback**: tenacity重试 + 备用模型机制。
-- **Knowledge Base**: 文本分块 → 嵌入(OpenAI 兼容 Embedding) → FAISS 向量检索 → Reranker API。Claude 不支持嵌入，需额外配置 OpenAI 兼容的嵌入模型。
+- **Knowledge Base**: 文本分块 → 嵌入(OpenAI 兼容 Embedding) → FAISS 向量检索 → Reranker API。Codex 不支持嵌入，需额外配置 OpenAI 兼容的嵌入模型。
 - **GUI**: PySide6 三 Tab 界面（模型配置 / 小说参数 / 创作进度），`pipeline_worker` 后台线程运行生成流水线，`log_handler` 将 `logging` 桥接到 Qt Signal 实时输出。支持中英双语切换（i18n .qm 文件）。
 - **Sensitive data sanitization**: `_sanitize_config_for_logging()` 过滤API key日志输出。
 - **稀疏大纲与自动补洞**: `outline.json` 支持 `None` 占位的稀疏列表（`b8267c7`），生成失败章节不丢空槽。`_outline_discontinuous` 检测缺洞后由 `OutlineGenerator.patch_missing_chapters()` 单一权威实现补洞（多轮重试 + 一致性检查 + 即时落盘）。CLI 工具 `tools/fill_outline_gaps.py` 与 `pipeline_worker` 均薄封装调用此方法。

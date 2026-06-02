@@ -522,6 +522,9 @@ class OutlineGenerator:
                     if not all_batches_successful:
                         all_batches_successful = True
 
+            # ---- 全书结构审计（只读报告，不阻断生成）----
+            self._run_outline_audit()
+
             return all_batches_successful
 
         except InterruptedError:
@@ -531,7 +534,54 @@ class OutlineGenerator:
             logging.error(f"生成大纲主流程发生未预期错误：{str(e)}", exc_info=True)
             return False
 
-    def _generate_batch(self, batch_start_num: int, batch_end_num: int, 
+    def _run_outline_audit(self) -> None:
+        """全书生成后跑大纲全局审计，落盘报告 + 日志提示。
+
+        只读报告，**绝不阻断生成流程**；任何异常都被吞掉（审计是可选增强）。
+        由 generation_config.outline_audit_enabled 控制（默认开启）。
+        """
+        if not self.config.generation_config.get("outline_audit_enabled", True):
+            return
+        try:
+            import dataclasses
+            from .outline_auditor import run_audit, serialize_finding
+
+            chapters = [
+                dataclasses.asdict(c) if c is not None else None
+                for c in self.chapter_outlines
+            ]
+            findings = run_audit(chapters)
+            fatal = [f for f in findings if f.severity == "fatal"]
+            warning = [f for f in findings if f.severity == "warning"]
+            logging.info(
+                f"[大纲审计] 完成：共 {len(findings)} 处提示"
+                f"（fatal {len(fatal)} / warning {len(warning)}）"
+            )
+            for f in fatal[:20]:
+                logging.warning(f"[大纲审计:{f.rule_id}] {f.message}")
+
+            report_path = os.path.join(self.output_dir, "outline_audit_report.json")
+            with open(report_path, "w", encoding="utf-8") as fp:
+                json.dump({
+                    "total": len(findings),
+                    "fatal": len(fatal),
+                    "warning": len(warning),
+                    "llm_enabled": False,
+                    "llm_stats": None,
+                    "findings": [serialize_finding(f) for f in findings],
+                }, fp, ensure_ascii=False, indent=2)
+
+            if fatal:
+                outline_path = os.path.join(self.output_dir, "outline.json")
+                logging.warning(
+                    f"[大纲审计] 发现 {len(fatal)} 处疑似剧情未闭环/重名冲突，详见 {report_path}。"
+                    f"不阻断生成；建议人工复核，或运行 "
+                    f"python tools/audit_outline.py --outline {outline_path} --llm --config config.json"
+                )
+        except Exception as e:
+            logging.warning(f"[大纲审计] 执行失败（不影响大纲生成）：{e}")
+
+    def _generate_batch(self, batch_start_num: int, batch_end_num: int,
                        novel_type: str, theme: str, style: str,
                        extra_prompt: Optional[str], 
                        successful_outlines_in_run: List[ChapterOutline]) -> bool:
