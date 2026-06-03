@@ -459,6 +459,18 @@ def main():
             if actual_start_chapter_num > end_chapter:
                  content_success = True # Nothing to do, considered success
             else:
+                 # 大纲质量闸门（确认有正文要生成后、内容生成前）：算法审计 + LLM 复核，
+                 # 有 fatal 自动修订写回 outline.json 并重审，仍 fatal 则中止、不进正文。
+                 # 放在「全书已完成」判断之后，避免已写完的书重跑被存量大纲拦在 return。
+                 from src.generators.outline.outline_quality_gate import run_quality_gate_for_pipeline
+                 gate = run_quality_gate_for_pipeline(config, content_generator, outline_model)
+                 if not gate.passed:
+                     print(
+                         f"大纲质量闸门未通过：仍有 {gate.remaining_fatal} 处 fatal，停止流程。"
+                         "详见输出目录下 outline_quality_gate_report.json。"
+                     )
+                     return
+
                  # 2. 生成内容 (ContentGenerator now handles finalization internally)
                  # The generate_content call will handle chapters from generator.current_chapter up to the end of the outline
                  # We rely on the loaded outline length to determine the end point.

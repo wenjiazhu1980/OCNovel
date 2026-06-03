@@ -139,6 +139,10 @@
       "outline_gap_max_retries": 2,
       "outline_gap_retry_delay": 3,
 
+      "outline_quality_gate_enabled": true,
+      "outline_quality_gate_llm_review": true,
+      "outline_quality_gate_max_rounds": 1,
+
       "outline_context_chapters": 10,
       "outline_detail_chapters": 5,
       "model_timeout": 60,

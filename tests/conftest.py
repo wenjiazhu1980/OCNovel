@@ -103,6 +103,9 @@ class MockConfig:
             "max_retries": 1,
             "retry_delay": 0,
             "validation": {"enabled": False},
+            # 阻断式大纲质量闸门默认在测试桩里关闭，避免对 MagicMock 大纲触发 asdict；
+            # 闸门本身由 test_outline_quality_gate.py 与 test_pipeline_worker_quality_gate.py 专门覆盖。
+            "outline_quality_gate_enabled": False,
             "batch_size": 5,
             "outline_batch_size": 10,
             "outline_context_chapters": 5,

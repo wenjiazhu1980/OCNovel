@@ -269,6 +269,19 @@ class PipelineWorker(QThread):
                     self.pipeline_finished.emit(True)
                     return
 
+            # 大纲质量闸门（确认有正文要生成后、逐章生成前）：算法审计 + LLM 复核，
+            # 有 fatal 自动修订写回 outline.json 并重审，仍 fatal 则中止、不进正文。
+            # 必须放在「全书已完成」判断之后，否则已写完的书重跑会被存量大纲拦在 emit(False)。
+            from src.generators.outline.outline_quality_gate import run_quality_gate_for_pipeline
+            gate = run_quality_gate_for_pipeline(config, content_generator, outline_model)
+            if not gate.passed:
+                logger.error(QCoreApplication.translate(
+                    "PipelineWorker",
+                    "大纲质量闸门未通过：仍有 {0} 处 fatal，流水线中止。详见 outline_quality_gate_report.json",
+                ).format(gate.remaining_fatal))
+                self.pipeline_finished.emit(False)
+                return
+
             # ---- 10. 逐章生成 ----
             # 确定要生成的章节列表
             if self._target_chapters_list:
