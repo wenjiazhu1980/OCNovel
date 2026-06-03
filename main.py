@@ -73,6 +73,16 @@ def main():
     # 定稿处理命令
     finalize_parser = subparsers.add_parser('finalize', help='处理章节定稿')
     finalize_parser.add_argument('--chapter', type=int, required=True, help='要处理的章节号')
+
+    # 根据审计报告修订大纲
+    revise_outline_parser = subparsers.add_parser('revise-outline', help='根据审计报告修订小说大纲')
+    revise_outline_parser.add_argument('--outline', type=str, help='outline.json 路径，默认使用配置输出目录')
+    revise_outline_parser.add_argument('--audit-report', type=str, help='outline_audit_report.json 路径，默认与 outline 同目录')
+    revise_outline_parser.add_argument('--output-report', type=str, help='修订报告输出路径，默认与 outline 同目录')
+    revise_outline_parser.add_argument('--include-warning', action='store_true', help='除 fatal 外也纳入 warning 级发现')
+    revise_outline_parser.add_argument('--rules', type=str, help='只处理指定规则，逗号分隔，例如 O3,O3-LLM,O4')
+    revise_outline_parser.add_argument('--dry-run', action='store_true', help='只生成修订报告，不写回 outline.json')
+    revise_outline_parser.add_argument('--json', action='store_true', help='JSON 输出结果')
     
     # 自动生成命令（包含完整流程）
     auto_parser = subparsers.add_parser('auto', help='自动执行完整生成流程')
@@ -288,6 +298,43 @@ def main():
             # Finalizer is already instantiated
             success = finalizer.finalize_chapter(args.chapter)
             print("章节定稿处理成功！" if success else "章节定稿处理失败，请查看日志文件了解详细信息。")
+
+        elif args.command == 'revise-outline':
+            from src.generators.outline.outline_reviser import revise_outline_file
+
+            output_dir = config.output_config.get("output_dir", "data/output")
+            outline_path = args.outline or os.path.join(output_dir, "outline.json")
+            if not os.path.isabs(outline_path):
+                outline_path = os.path.abspath(outline_path)
+            audit_report_path = args.audit_report or os.path.join(
+                os.path.dirname(outline_path), "outline_audit_report.json"
+            )
+            severities = ("fatal", "warning") if args.include_warning else ("fatal",)
+            rules = [item.strip() for item in args.rules.split(",") if item.strip()] if args.rules else None
+            report = revise_outline_file(
+                outline_path=outline_path,
+                audit_report_path=audit_report_path,
+                model=outline_model,
+                output_report_path=args.output_report,
+                severities=severities,
+                rules=rules,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            else:
+                stats = report.get("stats", {})
+                print(
+                    "大纲修订完成："
+                    f"actionable {stats.get('actionable_findings', 0)} / "
+                    f"requested {stats.get('requested_revisions', 0)} / "
+                    f"applied {stats.get('applied_revisions', 0)}"
+                )
+                if report.get("dry_run"):
+                    print("dry-run 模式，未写回 outline.json")
+                elif report.get("backup_path"):
+                    print(f"已备份原大纲到: {report['backup_path']}")
+                print(f"修订报告: {report.get('revision_report')}")
             
         elif args.command == 'auto':
             # 处理 Humanizer-zh 开关

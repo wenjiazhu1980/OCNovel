@@ -175,6 +175,71 @@ class TestParseGuideJson:
         assert "world_building" in result
         assert result["world_building"]["social_system"] == "异常事务局"
 
+    def test_parse_handles_chinese_quotes_and_fullwidth_punctuation(self):
+        """部分模型会把 JSON 结构符号输出成中文全角标点"""
+        from src.gui.workers.writing_guide_worker import WritingGuideWorker
+
+        text = """｛
+  “world_building”： ｛
+    “magic_system”： “心相显化”，
+    “social_system”： “异常事务局”，
+    “background”： “现代都市”
+  ｝，
+  “style_guide”： ｛
+    “tone”： “热血搞笑”，
+    “description_focus”： ［“战斗反差”，“都市烟火”，“人物成长”］
+  ｝
+｝"""
+        result = WritingGuideWorker._parse_guide_json(text)
+
+        assert isinstance(result, dict)
+        assert result["world_building"]["magic_system"] == "心相显化"
+        assert result["style_guide"]["description_focus"] == ["战斗反差", "都市烟火", "人物成长"]
+
+    def test_parse_handles_single_quoted_python_style_dict(self):
+        """模型偶尔会返回 Python dict 风格的单引号结构"""
+        from src.gui.workers.writing_guide_worker import WritingGuideWorker
+
+        text = "{'style_guide': {'description_focus': ['A', 'B', 'C'], 'tone': '明快'}}"
+        result = WritingGuideWorker._parse_guide_json(text)
+
+        assert isinstance(result, dict)
+        assert result["style_guide"]["description_focus"] == ["A", "B", "C"]
+        assert result["style_guide"]["tone"] == "明快"
+
+    def test_parse_handles_js_comments_and_unquoted_keys(self):
+        """模型有时会输出类 JS 对象: 注释 + 未加引号 key"""
+        from src.gui.workers.writing_guide_worker import WritingGuideWorker
+
+        text = """{
+  // 世界观
+  world_building: {
+    magic_system: "心相显化",
+    social_system: "异常事务局",
+    background: "现代都市"
+  },
+  /* 风格 */
+  style_guide: {
+    tone: "热血搞笑",
+    description_focus: ["A", "B", "C"]
+  }
+}"""
+        result = WritingGuideWorker._parse_guide_json(text)
+
+        assert isinstance(result, dict)
+        assert result["world_building"]["social_system"] == "异常事务局"
+        assert result["style_guide"]["description_focus"] == ["A", "B", "C"]
+
+    def test_parse_ignores_braces_in_explanation_before_json(self):
+        """前置说明里的大括号不应破坏真正 JSON 对象提取"""
+        from src.gui.workers.writing_guide_worker import WritingGuideWorker
+
+        text = "说明: {这里不是 JSON}\n" + _to_json(_VALID_GUIDE)
+        result = WritingGuideWorker._parse_guide_json(text)
+
+        assert isinstance(result, dict)
+        assert result["world_building"]["background"] == "灵气微复苏的现代都市"
+
     def test_parse_rejects_non_object_root(self):
         """根节点必须是 object,数组要返回 None(否则上层 isinstance(result, dict) 会失败)"""
         from src.gui.workers.writing_guide_worker import WritingGuideWorker

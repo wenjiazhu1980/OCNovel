@@ -1,4 +1,5 @@
 """后台线程：调用 AI 模型自动生成写作指南"""
+import ast
 import json
 import logging
 import os
@@ -236,7 +237,7 @@ class WritingGuideWorker(QThread):
         def _strip_markdown(s: str) -> str:
             s = s.strip()
             if s.startswith("```"):
-                s = re.sub(r"^```[a-zA-Z]*\n?", "", s)
+                s = re.sub(r"^```\s*[a-zA-Z0-9_-]*\s*\n?", "", s)
                 s = s.strip("`\n")
             return s.strip()
 
@@ -247,66 +248,206 @@ class WritingGuideWorker(QThread):
                 return s[start:end]
             return s
 
-        cleaned = _strip_markdown(text)
+        def _candidate_objects(s: str) -> list[str]:
+            """返回文本内平衡的大括号对象候选,忽略字符串里的大括号。"""
+            candidates: list[str] = []
+            start: Optional[int] = None
+            depth = 0
+            quote: Optional[str] = None
+            escaped = False
 
-        # 策略1: 直接解析(剥壳 + 提取 {})
-        try:
-            extracted = _extract_object(cleaned)
-            result = json.loads(extracted)
-            if isinstance(result, dict):
-                logger.info("写作指南 JSON 解析成功(直接解析)")
-                return result
+            for idx, ch in enumerate(s):
+                if quote is not None:
+                    if escaped:
+                        escaped = False
+                    elif ch == "\\":
+                        escaped = True
+                    elif ch == quote:
+                        quote = None
+                    continue
+
+                if ch in ("'", '"'):
+                    quote = ch
+                    continue
+                if ch == "{":
+                    if depth == 0:
+                        start = idx
+                    depth += 1
+                elif ch == "}" and depth > 0:
+                    depth -= 1
+                    if depth == 0 and start is not None:
+                        candidates.append(s[start:idx + 1])
+                        start = None
+
+            if candidates:
+                # 优先尝试更完整的对象;前置说明里的 {示例} 通常较短且会解析失败。
+                return sorted(candidates, key=len, reverse=True)
+
+            extracted = _extract_object(s)
+            return [extracted] if extracted else [s]
+
+        def _try_json(s: str, strategy: str) -> Optional[dict]:
+            for candidate in _candidate_objects(s):
+                try:
+                    result = json.loads(candidate)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(result, dict):
+                    logger.info("写作指南 JSON 解析成功(%s)", strategy)
+                    return result
             return None
-        except json.JSONDecodeError:
-            pass
 
-        # 策略2: 修复尾随逗号 + 去重连续逗号
-        try:
-            light = re.sub(r",\s*([}\]])", r"\1", cleaned)
-            light = re.sub(r",+", ",", light)
-            extracted = _extract_object(light)
-            result = json.loads(extracted)
-            if isinstance(result, dict):
-                logger.info("写作指南 JSON 解析成功(轻度清理)")
-                return result
+        def _try_literal_eval(s: str, strategy: str) -> Optional[dict]:
+            for candidate in _candidate_objects(s):
+                try:
+                    result = ast.literal_eval(candidate)
+                except (SyntaxError, ValueError):
+                    continue
+                if isinstance(result, dict):
+                    logger.info("写作指南 JSON 解析成功(%s)", strategy)
+                    return result
             return None
-        except json.JSONDecodeError:
-            pass
 
-        # 策略3: 转义字符串内裸换行后扁平化
-        try:
+        def _normalize_json_like_punctuation(s: str) -> str:
+            table = str.maketrans({
+                "\ufeff": "",
+                "｛": "{",
+                "｝": "}",
+                "［": "[",
+                "］": "]",
+                "（": "(",
+                "）": ")",
+                "：": ":",
+                "，": ",",
+                "“": '"',
+                "”": '"',
+                "‘": "'",
+                "’": "'",
+            })
+            return s.translate(table)
+
+        def _strip_js_comments(s: str) -> str:
+            out: list[str] = []
+            quote: Optional[str] = None
+            escaped = False
+            i = 0
+            while i < len(s):
+                ch = s[i]
+                nxt = s[i + 1] if i + 1 < len(s) else ""
+
+                if quote is not None:
+                    out.append(ch)
+                    if escaped:
+                        escaped = False
+                    elif ch == "\\":
+                        escaped = True
+                    elif ch == quote:
+                        quote = None
+                    i += 1
+                    continue
+
+                if ch in ("'", '"'):
+                    quote = ch
+                    out.append(ch)
+                    i += 1
+                    continue
+
+                if ch == "/" and nxt == "/":
+                    i += 2
+                    while i < len(s) and s[i] not in "\r\n":
+                        i += 1
+                    if i < len(s):
+                        out.append(s[i])
+                        i += 1
+                    continue
+
+                if ch == "/" and nxt == "*":
+                    i += 2
+                    while i + 1 < len(s) and not (s[i] == "*" and s[i + 1] == "/"):
+                        i += 1
+                    if i + 1 < len(s):
+                        i += 2
+                    else:
+                        i = len(s)
+                    out.append(" ")
+                    continue
+
+                out.append(ch)
+                i += 1
+
+            return "".join(out)
+
+        def _repair_commas(s: str) -> str:
+            repaired = re.sub(r",\s*([}\]])", r"\1", s)
+            repaired = re.sub(r",\s*,+", ",", repaired)
+            return repaired
+
+        def _quote_unquoted_keys(s: str) -> str:
+            return re.sub(
+                r'([{\[,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:',
+                r'\1"\2":',
+                s,
+            )
+
+        def _escape_string_newlines(s: str) -> str:
             def _escape_inner(match):
                 inner = match.group(0)[1:-1]
                 return f'"{json.dumps(inner)[1:-1]}"'
 
-            escaped = re.sub(r'(\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\")', _escape_inner, cleaned)
-            flattened = escaped.replace("\n", " ").replace("\r", "")
-            flattened = re.sub(r",+", ",", flattened)
-            flattened = re.sub(r",\s*([}\]])", r"\1", flattened)
-            extracted = _extract_object(flattened)
-            result = json.loads(extracted)
-            if isinstance(result, dict):
-                logger.info("写作指南 JSON 解析成功(转义+扁平化)")
-                return result
-            return None
-        except json.JSONDecodeError:
-            pass
+            return re.sub(r'(\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\")', _escape_inner, s)
 
-        # 策略4: 激进清理(去全部换行) — 最后手段,可能丢失原始字符串里的换行
-        try:
-            aggressive = cleaned.replace("\n", " ").replace("\r", "")
-            aggressive = re.sub(r",+", ",", aggressive)
-            aggressive = re.sub(r",\s*([}\]])", r"\1", aggressive)
-            extracted = _extract_object(aggressive)
-            result = json.loads(extracted)
-            if isinstance(result, dict):
+        cleaned = _strip_markdown(text)
+
+        # 策略1: 直接解析(剥壳 + 提取 {})
+        result = _try_json(cleaned, "直接解析")
+        if result is not None:
+            return result
+
+        # 策略2: 修复尾随逗号 + 去重连续逗号
+        light = _repair_commas(cleaned)
+        result = _try_json(light, "轻度清理")
+        if result is not None:
+            return result
+
+        # 策略3: 修复中文/全角 JSON-like 标点与 JS 注释
+        normalized = _repair_commas(_strip_js_comments(_normalize_json_like_punctuation(cleaned)))
+        result = _try_json(normalized, "中文标点/注释清理")
+        if result is not None:
+            return result
+
+        # 策略4: Python dict 风格兜底(单引号、尾随逗号等)
+        result = _try_literal_eval(normalized, "Python 字面量兜底")
+        if result is not None:
+            return result
+
+        # 策略5: 类 JS 对象兜底(未加引号 key)
+        keyed = _quote_unquoted_keys(normalized)
+        result = _try_json(keyed, "未加引号 key 修复")
+        if result is not None:
+            return result
+        result = _try_literal_eval(keyed, "未加引号 key + Python 字面量兜底")
+        if result is not None:
+            return result
+
+        # 策略6: 转义字符串内裸换行后扁平化
+        for base in (cleaned, normalized, keyed):
+            escaped = _escape_string_newlines(base)
+            flattened = _repair_commas(escaped.replace("\n", " ").replace("\r", ""))
+            result = _try_json(flattened, "转义+扁平化")
+            if result is not None:
+                return result
+
+        # 策略7: 激进清理(去全部换行) — 最后手段,可能丢失原始字符串里的换行
+        for base in (cleaned, normalized, keyed):
+            aggressive = _repair_commas(base.replace("\n", " ").replace("\r", ""))
+            result = _try_json(aggressive, "激进清理")
+            if result is not None:
                 logger.warning(
                     "写作指南 JSON 解析成功(激进清理),字符串值内的换行可能已被压平"
                 )
                 return result
-            return None
-        except json.JSONDecodeError:
-            return None
+
+        return None
 
     # ------------------------------------------------------------------
     # [5.3] 后台线程内执行描写侧重去重,避免阻塞主线程 UI

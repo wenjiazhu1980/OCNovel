@@ -55,6 +55,7 @@ from src.generators.outline.outline_auditor import (  # noqa: E402
     audit_recovery_rate,
     llm_review_task_closure,
     llm_review_task_closure_with_stats,
+    merge_llm_task_review_findings,
     run_audit,
     serialize_finding,
     _ALL_RULES,
@@ -111,7 +112,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
         llm_result = llm_review_task_closure_with_stats(chapters, model)
         llm_stats = llm_result.stats
-        findings.extend(llm_result.findings)
+        findings = merge_llm_task_review_findings(findings, llm_result)
 
     fatal = [f for f in findings if f.severity == "fatal"]
     warning = [f for f in findings if f.severity == "warning"]

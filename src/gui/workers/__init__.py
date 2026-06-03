@@ -3,3 +3,4 @@ from .connection_tester import ConnectionTesterWorker
 from .writing_guide_worker import WritingGuideWorker
 from .outline_worker import OutlineWorker
 from .outline_audit_worker import OutlineAuditWorker
+from .outline_revision_worker import OutlineRevisionWorker

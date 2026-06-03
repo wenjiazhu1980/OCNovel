@@ -39,6 +39,7 @@ class LLMReviewResult:
     """LLM 复核结果与运行统计。"""
     findings: List[Finding]
     stats: Dict[str, int]
+    superseded_task_keys: Optional[set] = None
 
 
 def serialize_finding(finding: Finding) -> Dict:
@@ -312,11 +313,89 @@ def audit_entities(
 # O3 系统任务闭环
 # =====================================================================
 
-_TASK_PUBLISH_RE = re.compile(
-    r"系统[^。；\n]{0,8}(?:发布|更新|下达|推送|布置|追加)[^。；\n]{0,6}任务[：:]?\s*"
-    r"['‘“「]?([^。；\n'’”」]{4,40})"
+_TASK_MARKER_RE = re.compile(
+    r"系统[^。；\n]{0,32}(?:发布|更新|下达|推送|布置|追加|弹出|触发|出现|浮现)[^。；\n]{0,18}(?:新)?任务(?!完成|达成|办结|结算|完结)|"
+    r"系统任务(?:弹出|出现|浮现|触发)"
 )
-_TASK_DONE_RE = re.compile(r"任务(?:完成|达成|办结|结算|完结)|完成[^。；\n]{0,4}任务")
+_TASK_METADATA_RE = re.compile(
+    r"(?:任务奖励|奖励|评估|风险等级|警告|同时提示|并提示|系统提示)[：:]"
+)
+_TASK_DONE_RE = re.compile(
+    r"任务(?:完成|达成|办结|结算|完结)|完成[^。；\n]{0,8}任务|"
+    r"(?:至此)?正式办结|办结的结果|顺利进行|平静顺利|顺利完成|"
+    r"最后的?[‘']?净化|初步解决|暂时解决|彻底解决|关键修复|"
+    r"成功(?:净化|调解|引导|化解|清理|稳定)|"
+    r"回收[：:][^。\n]{0,120}(?:第\d+章|任务|事件|线索|伏笔)"
+)
+
+
+def _split_context_units(text: str) -> List[str]:
+    """按大纲条目/句段拆分文本，保留较长 key point 的完整相关上下文。"""
+    units: List[str] = []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        units.append(line)
+    return units
+
+
+def _trim_task_metadata(desc: str) -> str:
+    """去掉奖励/评估等非任务目标信息，保留任务主体。"""
+    desc = (desc or "").strip(" \t\n\r：:'‘’“”「」")
+    m = _TASK_METADATA_RE.search(desc)
+    if m and m.start() >= 4:
+        desc = desc[:m.start()]
+    return desc.strip(" \t\n\r。；;，,：:'‘’“”「」")
+
+
+def _capture_task_description(text: str, start: int) -> str:
+    """从任务标记后捕获完整任务句段，尽量保留中文引号/括号/编号复合任务。"""
+    tail = (text or "")[start:]
+    title = ""
+    title_match = re.match(r"\s*[：:]\s*【([^】]{1,40})】\s*(?:[—\-–-]{1,2})?", tail)
+    if title_match:
+        title = title_match.group(1).strip()
+        tail = tail[title_match.end():]
+    stripped = tail.lstrip()
+    if stripped.startswith(("：", ":")):
+        tail = stripped[1:]
+    tail = tail.lstrip(" \t，,:：")
+    if not tail:
+        return title
+
+    # 如果任务以引号包裹，优先截到“后接标点/行尾”的右引号，避免被内部名词引号截断。
+    if tail[0] in "‘“「'\"":
+        close_chars = {"‘": "’", "“": "”", "「": "」", "'": "'", '"': '"'}
+        close = close_chars[tail[0]]
+        for i, ch in enumerate(tail[1:], 1):
+            if ch != close:
+                continue
+            nxt = tail[i + 1:i + 2]
+            if not nxt or nxt in "。；;，,、）)]】》":
+                desc = _trim_task_metadata(tail[1:i])
+                return f"{title}：{desc}" if title and title not in desc else desc
+
+    # 无明确外层引号时取整条大纲条目；复合编号任务常用分号连接，不能按第一个分号截断。
+    desc = re.split(r"\n", tail, maxsplit=1)[0]
+    desc = _trim_task_metadata(desc)
+    return f"{title}：{desc}" if title and title not in desc else desc
+
+
+def _extract_published_tasks_from_text(text: str) -> List[str]:
+    """提取一个章节文本中的系统任务描述。"""
+    tasks: List[str] = []
+    for unit in _split_context_units(text):
+        for m in _TASK_MARKER_RE.finditer(unit):
+            desc = _capture_task_description(unit, m.end())
+            if len(_hanzi_bigrams(desc)) >= 2:
+                tasks.append(desc)
+    return tasks
+
+
+def _task_key(chapter: int, desc: str) -> tuple:
+    """生成任务去重键；同章同任务由 LLM 结果覆盖算法 O3 结果。"""
+    return chapter, "".join(re.findall(r"[一-鿿A-Za-z0-9]+", desc or ""))[:80]
 
 
 def _chapter_fulltext(ch: dict) -> str:
@@ -325,6 +404,18 @@ def _chapter_fulltext(ch: dict) -> str:
     parts += ch.get("key_points", []) or []
     parts += ch.get("foreshadowing", []) or []
     return "\n".join(parts)
+
+
+def _relevant_context(text: str, task_kw: set, limit: int = 1200) -> str:
+    """提取与任务/完成信号相关的完整条目，而不是固定截取前 N 字。"""
+    selected: List[str] = []
+    for unit in _split_context_units(text):
+        if _TASK_DONE_RE.search(unit) or len(task_kw & _hanzi_bigrams(unit)) >= 1:
+            selected.append(unit)
+    if not selected:
+        selected = _split_context_units(text)[:2]
+    context = "\n".join(selected).strip()
+    return context[:limit]
 
 
 def audit_task_closure(chapters: List[dict], match_threshold: int = 2) -> List[Finding]:
@@ -336,8 +427,7 @@ def audit_task_closure(chapters: List[dict], match_threshold: int = 2) -> List[F
             continue
         n = ch.get("chapter_number")
         text = _chapter_fulltext(ch)
-        for m in _TASK_PUBLISH_RE.finditer(text):
-            desc = m.group(1).strip()
+        for desc in _extract_published_tasks_from_text(text):
             published.append((n, desc, _hanzi_bigrams(desc)))
         if _TASK_DONE_RE.search(text):
             completion.append((n, _hanzi_bigrams(text)))
@@ -360,6 +450,10 @@ def audit_task_closure(chapters: List[dict], match_threshold: int = 2) -> List[F
                     f"第{n}章发布的系统任务疑似未闭环"
                     f"（后续无关键词匹配的'任务完成'）：{desc[:40]}"
                 ),
+                evidence={
+                    "task_description": desc,
+                    "task_key": _task_key(n, desc)[1],
+                },
             ))
     return findings
 
@@ -470,6 +564,9 @@ def audit_recovery_rate(chapters: List[dict], hang_warn_ratio: float = 0.4) -> L
 # =====================================================================
 
 AUDIT_LLM_GENERATE_KWARGS = {"temperature": 0}
+AUDIT_LLM_PROMPT_MAX_CHARS = 60000
+AUDIT_LLM_MAX_CANDIDATES = 32
+AUDIT_LLM_CANDIDATE_CONTEXT_LIMIT = 1000
 
 def _extract_json(text: str):
     """从 LLM 输出中提取首个 JSON 对象，容忍 markdown 围栏与前后缀文字。"""
@@ -487,7 +584,7 @@ def _extract_json(text: str):
 
 def _candidate_completions(task_kw: set, chapters: List[dict],
                            task_chapter: int, threshold: int = 1):
-    """宽松召回候选'任务完成'章（bigram≥threshold），含可能误配项，交由 LLM 裁决。"""
+    """宽松召回候选闭环章，含可能误配项，交由 LLM 裁决。"""
     cands = []
     for ch in chapters:
         if not ch:
@@ -497,23 +594,72 @@ def _candidate_completions(task_kw: set, chapters: List[dict],
             continue
         text = _chapter_fulltext(ch)
         if _TASK_DONE_RE.search(text) and len(task_kw & _hanzi_bigrams(text)) >= threshold:
-            cands.append((n, text))
+            cands.append((n, _relevant_context(text, task_kw)))
     return cands
 
 
-def _build_closure_prompt(task_chapter: int, task_desc: str, candidates) -> str:
+def _limit_candidate_completions(
+    candidates,
+    task_kw: set,
+    max_candidates: int = AUDIT_LLM_MAX_CANDIDATES,
+    context_limit: int = AUDIT_LLM_CANDIDATE_CONTEXT_LIMIT,
+):
+    """限制发给 LLM 的候选闭环上下文，避免单个任务 prompt 爆长。"""
+    if len(candidates) <= max_candidates:
+        return [(n, text[:context_limit]) for n, text in candidates]
+
+    earliest = candidates[:4]
+    scored = []
+    for index, (chapter, text) in enumerate(candidates):
+        overlap = len(task_kw & _hanzi_bigrams(text))
+        done_signal = 1 if _TASK_DONE_RE.search(text) else 0
+        distance = max(0, int(chapter or 0))
+        scored.append((overlap, done_signal, -distance, -index, chapter, text))
+
+    top = [
+        (chapter, text)
+        for _overlap, _done, _distance, _index, chapter, text
+        in sorted(scored, reverse=True)[:max_candidates]
+    ]
+
+    selected = {}
+    for chapter, text in earliest + top:
+        selected.setdefault(chapter, text)
+        if len(selected) >= max_candidates:
+            break
+
+    return [
+        (chapter, selected[chapter][:context_limit])
+        for chapter in sorted(selected)
+    ]
+
+
+def _build_closure_prompt(
+    task_chapter: int,
+    task_desc: str,
+    publish_context: str,
+    candidates,
+    omitted_count: int = 0,
+) -> str:
     blocks = "\n\n".join(
-        f"[第{n}章片段]\n{text[:300]}" for n, text in candidates
+        f"[第{n}章候选闭环片段]\n{text}" for n, text in candidates
     ) or "（全书后续无任何疑似'任务完成'片段）"
+    if omitted_count > 0:
+        blocks += f"\n\n（另有 {omitted_count} 个低相关候选片段已省略，避免提示词过长。）"
     return f"""你在审核一部长篇小说大纲的"任务闭环"。
 
 [待审任务] 第{task_chapter}章发布：{task_desc}
 
-[后续疑似"任务完成"的片段]
+[发布章相关上下文]
+{publish_context}
+
+[后续疑似"任务完成/回收/收口"的片段]
 {blocks}
 
 判断：上述任务是否真的被完成/办结？
-关键：要区分"完成的是同类但不同对象的任务"——若任务针对甲角色，而完成的只是乙角色的同类事件，则此任务【未闭环】。
+关键：
+1. 要区分"完成的是同类但不同对象的任务"——若任务针对甲角色，而完成的只是乙角色的同类事件，则此任务【未闭环】。
+2. "正式办结 / 顺利完成 / 平静顺利 / 初步解决 / 关键修复 / 回收第N章任务"都可以作为闭环证据，但只在对象与目标一致时成立。
 
 只输出 JSON（不要多余文字）：{{"closed": true 或 false, "reason": "简短理由"}}"""
 
@@ -545,6 +691,10 @@ def _empty_llm_stats() -> Dict[str, int]:
         "open_tasks": 0,
         "uncertain_tasks": 0,
         "candidate_completion_chapters": 0,
+        "candidate_completion_chapters_sent": 0,
+        "candidate_completion_chapters_omitted": 0,
+        "llm_prompt_over_budget": 0,
+        "llm_prompt_max_chars": 0,
     }
 
 
@@ -560,22 +710,54 @@ def llm_review_task_closure_with_stats(
             continue
         n = ch.get("chapter_number")
         text = _chapter_fulltext(ch)
-        for m in _TASK_PUBLISH_RE.finditer(text):
-            published.append((n, m.group(1).strip(), _hanzi_bigrams(m.group(1))))
+        for desc in _extract_published_tasks_from_text(text):
+            published.append((n, desc, _hanzi_bigrams(desc), _relevant_context(text, _hanzi_bigrams(desc))))
 
     findings: List[Finding] = []
     stats = _empty_llm_stats()
     stats["published_tasks"] = len(published)
-    for n, desc, kw in published:
+    superseded_task_keys = set()
+    for n, desc, kw, publish_context in published:
         if not kw:
             stats["skipped_tasks"] += 1
             continue
         cands = _candidate_completions(kw, chapters, n, candidate_threshold)
+        limited_cands = _limit_candidate_completions(cands, kw)
+        omitted_count = max(0, len(cands) - len(limited_cands))
         stats["candidate_completion_chapters"] += len(cands)
-        prompt = _build_closure_prompt(n, desc, cands)
+        stats["candidate_completion_chapters_sent"] += len(limited_cands)
+        stats["candidate_completion_chapters_omitted"] += omitted_count
+        prompt = _build_closure_prompt(n, desc, publish_context, limited_cands, omitted_count)
+        stats["llm_prompt_max_chars"] = max(stats["llm_prompt_max_chars"], len(prompt))
+        if len(prompt) > AUDIT_LLM_PROMPT_MAX_CHARS:
+            stats["llm_prompt_over_budget"] += 1
+            limited_cands = _limit_candidate_completions(
+                limited_cands,
+                kw,
+                max_candidates=12,
+                context_limit=500,
+            )
+            omitted_count = max(0, len(cands) - len(limited_cands))
+            prompt = _build_closure_prompt(n, desc, publish_context[:1200], limited_cands, omitted_count)
+            stats["llm_prompt_max_chars"] = max(stats["llm_prompt_max_chars"], len(prompt))
+        if len(prompt) > AUDIT_LLM_PROMPT_MAX_CHARS:
+            limited_cands = [
+                (cn, text[:400])
+                for cn, text in limited_cands[:8]
+            ]
+            omitted_count = max(0, len(cands) - len(limited_cands))
+            prompt = _build_closure_prompt(
+                n,
+                desc[:1200],
+                publish_context[:800],
+                limited_cands,
+                omitted_count,
+            )
+            stats["llm_prompt_max_chars"] = max(stats["llm_prompt_max_chars"], len(prompt))
         stats["llm_reviewed_tasks"] += 1
         stats["llm_calls"] += 1
         candidate_chapters = [cn for cn, _ in cands]
+        key = _task_key(n, desc)
         try:
             raw = model.generate(prompt, **AUDIT_LLM_GENERATE_KWARGS)
         except Exception as e:
@@ -585,6 +767,7 @@ def llm_review_task_closure_with_stats(
                 f"第{n}章任务 LLM 复核调用失败，需人工确认：{desc[:40]}（{e}）",
                 evidence={
                     "task_description": desc,
+                    "task_key": key[1],
                     "candidate_chapters": candidate_chapters,
                     "error": str(e),
                 },
@@ -599,6 +782,7 @@ def llm_review_task_closure_with_stats(
                 f"第{n}章任务 LLM 返回无法解析，需人工确认：{desc[:40]}",
                 evidence={
                     "task_description": desc,
+                    "task_key": key[1],
                     "candidate_chapters": candidate_chapters,
                     "raw_response": str(raw)[:500],
                 },
@@ -606,6 +790,7 @@ def llm_review_task_closure_with_stats(
             continue
         closed = verdict.get("closed")
         if closed is False:
+            superseded_task_keys.add(key)
             stats["open_tasks"] += 1
             findings.append(Finding(
                 "O3-LLM", "fatal", "任务闭环(LLM复核)", n,
@@ -613,6 +798,7 @@ def llm_review_task_closure_with_stats(
                 f"｜理由：{str(verdict.get('reason', ''))[:60]}",
                 evidence={
                     "task_description": desc,
+                    "task_key": key[1],
                     "candidate_chapters": candidate_chapters,
                     "llm_closed": False,
                     "llm_reason": str(verdict.get("reason", "")),
@@ -625,18 +811,60 @@ def llm_review_task_closure_with_stats(
                 f"第{n}章任务 LLM 未给明确闭环判定，需人工确认：{desc[:40]}",
                 evidence={
                     "task_description": desc,
+                    "task_key": key[1],
                     "candidate_chapters": candidate_chapters,
                     "llm_closed": closed,
                     "llm_reason": str(verdict.get("reason", "")),
                 },
             ))
         else:
+            superseded_task_keys.add(key)
             stats["closed_tasks"] += 1
 
     stats["llm_findings"] = len(findings)
     stats["llm_fatal_findings"] = len([f for f in findings if f.severity == "fatal"])
     stats["llm_warning_findings"] = len([f for f in findings if f.severity == "warning"])
-    return LLMReviewResult(findings=findings, stats=stats)
+    return LLMReviewResult(
+        findings=findings,
+        stats=stats,
+        superseded_task_keys=superseded_task_keys,
+    )
+
+
+def _finding_task_key(finding: Finding) -> Optional[tuple]:
+    """从 O3/O3-LLM finding 中恢复任务键，用于合并算法与 LLM 结论。"""
+    if finding.rule_id not in ("O3", "O3-LLM") or finding.chapter is None:
+        return None
+    evidence = finding.evidence or {}
+    desc = evidence.get("task_description")
+    if desc:
+        return _task_key(finding.chapter, str(desc))
+    task_key = evidence.get("task_key")
+    if task_key:
+        return finding.chapter, str(task_key)
+    return None
+
+
+def merge_llm_task_review_findings(
+    findings: List[Finding],
+    llm_result: LLMReviewResult,
+) -> List[Finding]:
+    """合并算法审计与 LLM 复核结果，避免同一任务 O3/O3-LLM 重复计数。"""
+    superseded = set(llm_result.superseded_task_keys or set())
+    if not superseded:
+        for finding in llm_result.findings:
+            if finding.rule_id == "O3-LLM" and finding.severity == "fatal":
+                key = _finding_task_key(finding)
+                if key:
+                    superseded.add(key)
+
+    merged = [
+        finding
+        for finding in findings
+        if not (finding.rule_id == "O3" and _finding_task_key(finding) in superseded)
+    ]
+    merged.extend(llm_result.findings)
+    return merged
 
 
 # =====================================================================

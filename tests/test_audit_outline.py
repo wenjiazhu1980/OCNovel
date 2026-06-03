@@ -26,6 +26,7 @@ from tools.audit_outline import (  # noqa: E402
     main,
     llm_review_task_closure,
     llm_review_task_closure_with_stats,
+    merge_llm_task_review_findings,
 )
 
 
@@ -183,6 +184,82 @@ class TestO3TaskClosure:
         ]
         findings = audit_task_closure(chapters)
         assert not any(f.rule_id == "O3" and "黑风寨" in f.message for f in findings)
+
+    def test_preserves_quoted_task_and_same_chapter_completion(self):
+        chapters = [
+            _ch(2, key_points=[
+                "系统发布新任务：处理‘变质的羁绊之物’。",
+                "王建国用旧打火机微光触碰毛绒玩具，灰暗气息消散。任务完成，获得少量家气奖励。",
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" and "羁绊之物" in f.message for f in findings)
+
+    def test_semantic_closure_phrase_counts_as_closed(self):
+        chapters = [
+            _ch(16, key_points=[
+                "系统发布任务：‘净化旧礼堂‘阴影’，保障社区‘喜丧’顺利进行。评估：中低强度怨念集合。’",
+                "王建国在白事前夜独自用强化熏香和微弱家气进行了最后的‘净化’。次日白事，平静顺利。",
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" and "旧礼堂" in f.message for f in findings)
+
+    def test_recovery_reference_counts_as_task_closure(self):
+        chapters = [
+            _ch(28, key_points=[
+                "系统发布升级任务：‘深化‘家’之连接。目标：与至少三位核心‘家人’建立稳定的‘羁绊网络’。’",
+            ]),
+            _ch(37, foreshadowing=[
+                "回收：第28章羁绊网络任务，本章在危机后完成关键修复。",
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" and "羁绊网络" in f.message for f in findings)
+
+    def test_detects_system_popup_new_task_format(self):
+        chapters = [
+            _ch(21, key_points=[
+                "陈渊接获残破情报，得知封锁在即，系统界面弹出新任务：【困局求生】——'在封锁中维持三百人温饱三十日，奖励：解锁初级盐铁兑换权限。'"
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert any(f.rule_id == "O3" and "困局求生" in f.evidence["task_description"] for f in findings)
+        assert any("温饱三十日" in f.evidence["task_description"] for f in findings)
+        assert not any(f.evidence["task_description"].endswith("盐铁兑换权限") for f in findings)
+
+    def test_system_popup_new_task_can_be_closed_by_recovery_reference(self):
+        chapters = [
+            _ch(21, key_points=[
+                "陈渊接获残破情报，得知封锁在即，系统界面弹出新任务：【困局求生】——'在封锁中维持三百人温饱三十日，奖励：解锁初级盐铁兑换权限。'"
+            ]),
+            _ch(30, foreshadowing=[
+                "回收：第21章困局求生任务，本章正式办结，封锁期间三百人温饱目标完成。"
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" and "困局求生" in f.message for f in findings)
+
+    def test_does_not_treat_task_completion_popup_as_new_task(self):
+        chapters = [
+            _ch(68, key_points=[
+                "系统在陈渊宣布'我们做到了'的瞬间弹出金色光幕——'前置任务完成。千人心安里程碑达成。系统升级中...'"
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" for f in findings)
 
 
 class TestO4Identity:
@@ -359,3 +436,75 @@ class TestLLMReview:
         assert result.stats["open_tasks"] == 1
         assert model.generate.call_args.kwargs["temperature"] == 0
         assert any(f.rule_id == "O3-LLM" and f.severity == "fatal" for f in result.findings)
+
+    def test_llm_review_detects_system_popup_new_task_format(self):
+        model = MagicMock()
+        model.generate.return_value = '{"closed": true, "reason": "后续已闭环"}'
+        chapters = [
+            _ch(21, key_points=[
+                "陈渊接获残破情报，得知封锁在即，系统界面弹出新任务：【困局求生】——'在封锁中维持三百人温饱三十日，奖励：解锁初级盐铁兑换权限。'"
+            ]),
+            _ch(30, key_points=["封锁结束，三百人温饱目标完成，任务完成。"]),
+        ]
+
+        result = llm_review_task_closure_with_stats(chapters, model)
+
+        assert result.stats["published_tasks"] == 1
+        assert result.stats["llm_calls"] == 1
+        assert "困局求生" in model.generate.call_args.args[0]
+
+    def test_prompt_includes_relevant_context_beyond_first_300_chars(self):
+        model = MagicMock()
+        model.generate.return_value = '{"closed": false, "reason": "测试"}'
+        long_prefix = "铺垫" * 180
+        chapters = [
+            _ch(1, key_points=["系统发布任务：清剿盘踞东郊的黑风寨匪患"]),
+            _ch(3, key_points=[
+                f"{long_prefix}主角最终荡平黑风寨匪患，任务完成，关键证据在此。"
+            ]),
+        ]
+
+        llm_review_task_closure(chapters, model)
+
+        prompt = model.generate.call_args.args[0]
+        assert "关键证据在此" in prompt
+
+    def test_prompt_limits_many_candidate_completion_contexts(self):
+        model = MagicMock()
+        model.generate.return_value = '{"closed": true, "reason": "已完成"}'
+        chapters = [_ch(1, key_points=["系统发布任务：清剿盘踞东郊的黑风寨匪患"])]
+        for n in range(2, 130):
+            chapters.append(_ch(n, key_points=[
+                "黑风寨匪患" + ("铺垫" * 700) + "任务完成，候选闭环片段。"
+            ]))
+
+        result = llm_review_task_closure_with_stats(chapters, model)
+
+        prompt = model.generate.call_args.args[0]
+        assert len(prompt) < 65536
+        assert result.stats["candidate_completion_chapters"] > result.stats["candidate_completion_chapters_sent"]
+        assert result.stats["candidate_completion_chapters_omitted"] > 0
+        assert "已省略" in prompt
+
+    def test_merge_removes_algorithm_o3_when_llm_says_closed(self):
+        model = MagicMock()
+        model.generate.return_value = '{"closed": true, "reason": "已完成"}'
+        chapters = [
+            _ch(1, key_points=["系统发布任务：寻找黑风寨密信"]),
+            _ch(3, key_points=["主角在山路继续追查"]),
+        ]
+        algorithm_findings = [
+            Finding(
+                "O3",
+                "fatal",
+                "系统任务闭环",
+                1,
+                "第1章发布的系统任务疑似未闭环：寻找黑风寨密信",
+                evidence={"task_description": "寻找黑风寨密信"},
+            )
+        ]
+
+        llm_result = llm_review_task_closure_with_stats(chapters, model)
+        merged = merge_llm_task_review_findings(algorithm_findings, llm_result)
+
+        assert not any(f.rule_id == "O3" for f in merged)

@@ -461,7 +461,7 @@ class TestProgressTabRegen:
 class TestProgressTabOutlineAudit:
     """测试手动大纲审计复核按钮"""
 
-    def _make_tab(self, qapp, tmp_path, with_outline=False):
+    def _make_tab(self, qapp, tmp_path, with_outline=False, with_audit_report=False):
         config_path = str(tmp_path / "config.json")
         env_path = str(tmp_path / ".env")
         output_dir = tmp_path / "output"
@@ -488,6 +488,22 @@ class TestProgressTabOutlineAudit:
                         "conflicts": ["匪患"],
                     }
                 ], f, ensure_ascii=False)
+
+        if with_audit_report:
+            with open(output_dir / "outline_audit_report.json", "w", encoding="utf-8") as f:
+                json.dump({
+                    "total": 1,
+                    "fatal": 1,
+                    "warning": 0,
+                    "findings": [
+                        {
+                            "rule": "O3-LLM",
+                            "severity": "fatal",
+                            "chapter": 1,
+                            "message": "任务未闭环",
+                        }
+                    ],
+                }, f, ensure_ascii=False)
 
         from src.gui.tabs.progress_tab import ProgressTab
         return ProgressTab(config_path, env_path)
@@ -576,6 +592,110 @@ class TestProgressTabOutlineAudit:
         mock_info.assert_called_once()
         assert tab.btn_outline_audit.isEnabled() is True
         assert "大纲审计复核" in tab.btn_outline_audit.text()
+        assert tab.btn_start.isEnabled() is True
+        assert tab.btn_outline_only.isEnabled() is True
+        assert tab.btn_refresh.isEnabled() is True
+        assert tab.btn_merge.isEnabled() is True
+        assert tab.btn_marketing.isEnabled() is True
+        assert tab.btn_stop.isEnabled() is False
+
+    def test_revision_button_exists(self, qapp, tmp_path):
+        """ProgressTab 初始化后应包含大纲修订按钮"""
+        tab = self._make_tab(qapp, tmp_path)
+        assert hasattr(tab, "btn_outline_revision")
+        assert "修订大纲" in tab.btn_outline_revision.text()
+
+    def test_action_bar_buttons_keep_visible_gaps(self, qapp, tmp_path):
+        """操作按钮应保留可见间距，避免默认窗口宽度下相邻按钮粘连"""
+        tab = self._make_tab(qapp, tmp_path)
+        tab.resize(1100, 700)
+        tab.show()
+        qapp.processEvents()
+
+        assert all(layout.spacing() >= 12 for layout in tab._action_bar_layouts)
+
+        button_rows = [
+            [tab.btn_open_output, tab.btn_refresh, tab.btn_regen],
+            [tab.btn_merge, tab.btn_marketing, tab.btn_outline_audit, tab.btn_outline_revision],
+        ]
+        for buttons in button_rows:
+            gaps = []
+            for left, right in zip(buttons, buttons[1:]):
+                left_rect = left.geometry()
+                right_rect = right.geometry()
+                gaps.append(right_rect.x() - (left_rect.x() + left_rect.width()))
+
+            assert min(gaps) >= 12
+
+    def test_missing_audit_report_blocks_outline_revision(self, qapp, tmp_path):
+        """缺少审计报告时不应启动修订"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True, with_audit_report=False)
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.warning") as mock_warning:
+            tab._on_revise_outline_from_audit()
+
+        mock_warning.assert_called_once()
+        assert tab._outline_revision_worker is None
+
+    def test_start_outline_revision_creates_worker_and_busy_state(self, qapp, tmp_path):
+        """正常启动修订时应创建 worker 并进入忙碌状态"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True, with_audit_report=True)
+        running_states = []
+        tab.pipeline_running_changed.connect(running_states.append)
+
+        mock_worker = MagicMock()
+        mock_worker.revision_finished.connect = MagicMock()
+        mock_worker.log_message.connect = MagicMock()
+        mock_worker.finished.connect = MagicMock()
+        mock_worker.start = MagicMock()
+        mock_worker.isRunning.return_value = True
+
+        from PySide6.QtWidgets import QMessageBox
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.question",
+                   return_value=QMessageBox.Yes) as mock_question, \
+             patch("src.gui.tabs.progress_tab.OutlineRevisionWorker",
+                   return_value=mock_worker) as mock_worker_cls:
+            tab._on_revise_outline_from_audit()
+
+        mock_question.assert_called_once()
+        mock_worker_cls.assert_called_once_with(
+            config_path=tab._config_path,
+            env_path=tab._env_path,
+        )
+        assert tab._outline_revision_worker is mock_worker
+        assert tab.btn_outline_revision.isEnabled() is False
+        assert "修订中" in tab.btn_outline_revision.text()
+        assert tab.btn_outline_audit.isEnabled() is False
+        assert tab.btn_start.isEnabled() is False
+        assert tab.btn_outline_only.isEnabled() is False
+        assert tab.btn_regen.isEnabled() is False
+        assert tab.btn_refresh.isEnabled() is False
+        assert tab.btn_merge.isEnabled() is False
+        assert tab.btn_marketing.isEnabled() is False
+        assert tab.btn_stop.isEnabled() is True
+        assert running_states == [True]
+        mock_worker.start.assert_called_once()
+
+    def test_outline_revision_finished_restores_success_state(self, qapp, tmp_path):
+        """修订完成后应恢复按钮状态"""
+        tab = self._make_tab(qapp, tmp_path, with_outline=True, with_audit_report=True)
+        tab.btn_outline_revision.setEnabled(False)
+        tab.btn_outline_revision.setText("⏳  修订中...")
+        tab.btn_outline_audit.setEnabled(False)
+        tab.btn_start.setEnabled(False)
+        tab.btn_outline_only.setEnabled(False)
+        tab.btn_merge.setEnabled(False)
+        tab.btn_marketing.setEnabled(False)
+        tab.btn_stop.setEnabled(True)
+
+        with patch("src.gui.tabs.progress_tab.QMessageBox.information") as mock_info:
+            tab._on_outline_revision_finished(True, "done")
+
+        mock_info.assert_called_once()
+        assert tab.btn_outline_revision.isEnabled() is True
+        assert "修订大纲" in tab.btn_outline_revision.text()
+        assert tab.btn_outline_audit.isEnabled() is True
         assert tab.btn_start.isEnabled() is True
         assert tab.btn_outline_only.isEnabled() is True
         assert tab.btn_refresh.isEnabled() is True

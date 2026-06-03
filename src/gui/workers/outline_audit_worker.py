@@ -115,6 +115,7 @@ class OutlineAuditWorker(QThread):
 
             from src.generators.outline.outline_auditor import (
                 llm_review_task_closure_with_stats,
+                merge_llm_task_review_findings,
                 run_audit,
             )
 
@@ -136,7 +137,7 @@ class OutlineAuditWorker(QThread):
             ))
             outline_model = create_model(outline_model_config, context="OutlineAuditWorker")
             llm_result = llm_review_task_closure_with_stats(chapters, outline_model)
-            findings.extend(llm_result.findings)
+            findings = merge_llm_task_review_findings(findings, llm_result)
             logger.info(QCoreApplication.translate(
                 "OutlineAuditWorker",
                 "LLM 复核统计：发布任务 {0} 个，实际调用 {1} 次，发现 {2} 处，调用失败 {3} 次",
