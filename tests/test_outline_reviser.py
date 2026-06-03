@@ -5,6 +5,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from src.generators.outline.outline_reviser import (
+    _build_revision_prompt,
     apply_revisions,
     parse_revision_response,
     revise_outline_file,
@@ -206,3 +207,71 @@ def test_cli_revise_outline_dry_run_json(tmp_path, capsys):
     assert rc == 0
     assert data["dry_run"] is True
     assert data["stats"]["applied_revisions"] == 1
+
+
+def _large_outline(n=200):
+    """构造字段较饱满的大纲，模拟真实 400 章规模下单章 compact 后的体积。"""
+    chapters = []
+    for i in range(1, n + 1):
+        chapters.append({
+            "chapter_number": i,
+            "title": f"第{i}章标题",
+            "key_points": [
+                f"关键点{i}-{j}：一段足够长的章节关键情节描述文字用来撑大上下文体积测试"
+                for j in range(12)
+            ],
+            "characters": [f"角色{k}号人物" for k in range(6)],
+            "settings": [f"场景地点{i}"],
+            "conflicts": [f"核心冲突{i}", f"次要冲突{i}"],
+            "foreshadowing": [f"伏笔线索{i}-{j}" for j in range(5)],
+        })
+    return chapters
+
+
+def test_build_revision_prompt_respects_char_budget_with_many_fatal():
+    """大量 fatal（上下文章节累加爆炸）时 prompt 不应超过模型层 65536 硬截断。
+
+    回归：400 章规模下 7 个 O3-LLM fatal 累加上下文达 59 章，prompt 撑到 ~90K，
+    被 openai_model 砍尾部 27%，恰好丢掉末尾 [输出格式] 说明 → 修订响应无法解析。
+    修复后 context 受字符预算约束、输出格式前置，prompt 落在硬截断线内且核心章节保留。
+    """
+    chapters = _large_outline(200)
+    core_chapters = [10, 35, 60, 85, 110, 135, 160, 185]
+    findings = [
+        {
+            "rule": "O3-LLM",
+            "severity": "fatal",
+            "chapter": c,
+            "message": f"第{c}章发布的系统任务长期未闭环，需要补收束动作",
+            "evidence": {"candidate_chapters": list(range(c, c + 20))},
+        }
+        for c in core_chapters
+    ]
+
+    prompt = _build_revision_prompt(chapters, findings)
+
+    # 不触发模型层 65536 硬截断
+    assert len(prompt) <= 65536, f"prompt 长度 {len(prompt)} 仍超过硬截断线"
+    # 关键指令与输出格式不被丢弃（截断曾砍掉这块）
+    assert "输出格式" in prompt
+    assert '"summary"' in prompt
+    assert '"revisions"' in prompt
+    # 每个 fatal 的核心章节仍保留在上下文中（保证可被修订）
+    for c in core_chapters:
+        assert f'"chapter_number": {c}' in prompt, f"核心章节 {c} 被裁掉了"
+
+
+def test_build_revision_prompt_small_input_unchanged_behavior():
+    """小规模输入不触发裁剪：上下文章节与输出格式都完整。"""
+    chapters = _large_outline(10)
+    findings = [{
+        "rule": "O3-LLM", "severity": "fatal", "chapter": 3,
+        "message": "第3章任务未闭环",
+        "evidence": {"candidate_chapters": [4, 5]},
+    }]
+
+    prompt = _build_revision_prompt(chapters, findings)
+
+    assert len(prompt) <= 65536
+    assert "输出格式" in prompt
+    assert '"chapter_number": 3' in prompt

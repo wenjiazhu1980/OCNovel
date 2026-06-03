@@ -21,6 +21,9 @@ REVISION_MAX_FINDINGS_PER_CALL = 8
 REVISION_MAX_CONTEXT_CANDIDATES_PER_FINDING = 8
 REVISION_TEXT_LIMIT = 700
 REVISION_LIST_LIMIT = 10
+# _build_revision_prompt 目标字符上限，刻意小于模型层 65536 硬截断，留余量给
+# 数组缩进与省略标注，避免上下文累加撑爆 prompt 导致尾部 [输出格式] 被砍掉。
+REVISION_PROMPT_CHAR_BUDGET = 58000
 
 _ALLOWED_FIELDS = {
     "title",
@@ -109,14 +112,22 @@ def select_actionable_findings(
     return selected
 
 
-def _context_chapter_numbers(findings: Iterable[dict], max_chapter: int) -> List[int]:
-    """根据 finding 与 evidence 选择给 LLM 的上下文章节号。"""
-    nums = set()
+def _context_chapter_numbers(findings: Iterable[dict], max_chapter: int) -> Tuple[List[int], List[int]]:
+    """按优先级返回给 LLM 的上下文章节号，分两级便于预算紧张时分层裁剪：
+
+    - core：各 finding 的 chapter±1（直接修订目标，必须尽量保留）
+    - extra：chapter+2 与 evidence 候选/样本/首尾章节（背景参考，可优先省略）
+    """
+    core = set()
+    extra = set()
     for finding in findings:
         chapter = finding.get("chapter")
         if isinstance(chapter, int) and chapter > 0:
-            nums.update(n for n in (chapter - 1, chapter, chapter + 1, chapter + 2)
-                        if 1 <= n <= max_chapter)
+            for n in (chapter - 1, chapter, chapter + 1):
+                if 1 <= n <= max_chapter:
+                    core.add(n)
+            if 1 <= chapter + 2 <= max_chapter:
+                extra.add(chapter + 2)
         evidence = finding.get("evidence") or {}
         for key in ("candidate_chapters", "sample_occurrences"):
             values = list(evidence.get(key, []) or [])
@@ -124,12 +135,13 @@ def _context_chapter_numbers(findings: Iterable[dict], max_chapter: int) -> List
                 values = values[:REVISION_MAX_CONTEXT_CANDIDATES_PER_FINDING]
             for n in values:
                 if isinstance(n, int) and 1 <= n <= max_chapter:
-                    nums.add(n)
+                    extra.add(n)
         for key in ("first_chapter", "last_chapter"):
             n = evidence.get(key)
             if isinstance(n, int) and 1 <= n <= max_chapter:
-                nums.add(n)
-    return sorted(nums)
+                extra.add(n)
+    extra -= core
+    return sorted(core), sorted(extra)
 
 
 def _shorten_text(value, limit: int = REVISION_TEXT_LIMIT) -> str:
@@ -173,8 +185,8 @@ def _compact_chapter(chapter: dict) -> dict:
 def _build_revision_prompt(chapters: List[dict], findings: List[dict]) -> str:
     by_num = {_chapter_number(ch): ch for ch in chapters if _chapter_number(ch) is not None}
     max_chapter = max(by_num) if by_num else 0
-    context_nums = _context_chapter_numbers(findings, max_chapter)
-    context = [_compact_chapter(by_num[n]) for n in context_nums if n in by_num]
+    core_nums, extra_nums = _context_chapter_numbers(findings, max_chapter)
+
     compact_findings = []
     for idx, finding in enumerate(findings, 1):
         compact_findings.append({
@@ -186,7 +198,9 @@ def _build_revision_prompt(chapters: List[dict], findings: List[dict]) -> str:
             "evidence": _compact_prompt_value(finding.get("evidence", {})),
         })
 
-    return f"""你是长篇小说大纲编辑。请根据审计结果，对 outline.json 做必要且最小的修订。
+    # 指令、输出格式、审计发现统一前置：即便上下文过长触发模型层硬截断，
+    # 这些关键信息也不会被砍掉（旧实现把输出格式放末尾，超长时丢失导致修订失败）。
+    header = f"""你是长篇小说大纲编辑。请根据审计结果，对 outline.json 做必要且最小的修订。
 
 要求：
 1. 只修订能直接解决 fatal 问题的章节；不要重写整本大纲。
@@ -194,12 +208,6 @@ def _build_revision_prompt(chapters: List[dict], findings: List[dict]) -> str:
 3. 如果确实缺少闭环，请在最合适的现有章节中补上收束动作、后果或 foreshadowing 回收项。
 4. 保持章节号不变，保持未涉及字段不变。
 5. 只输出 JSON，不要输出解释性文字。
-
-[审计发现]
-{json.dumps(compact_findings, ensure_ascii=False, indent=2)}
-
-[可修订章节上下文]
-{json.dumps(context, ensure_ascii=False, indent=2)}
 
 输出格式：
 {{
@@ -215,7 +223,41 @@ def _build_revision_prompt(chapters: List[dict], findings: List[dict]) -> str:
       }}
     }}
   ]
-    }}"""
+}}
+
+[审计发现]
+{json.dumps(compact_findings, ensure_ascii=False, indent=2)}
+
+[可修订章节上下文]
+"""
+
+    # 上下文章节受字符预算约束：core（修订目标）优先纳入，extra（背景）次之，
+    # 超预算的章节省略并在末尾标注，确保整体 prompt 落在模型层硬截断线内。
+    budget = REVISION_PROMPT_CHAR_BUDGET - len(header)
+    selected: List[Tuple[int, dict]] = []
+    used = 0
+    omitted = 0
+    for n in core_nums + extra_nums:
+        ch = by_num.get(n)
+        if ch is None:
+            continue
+        compact = _compact_chapter(ch)
+        piece_len = len(json.dumps(compact, ensure_ascii=False, indent=2)) + 2
+        if selected and used + piece_len > budget:
+            omitted += 1
+            continue
+        selected.append((n, compact))
+        used += piece_len
+
+    selected.sort(key=lambda item: item[0])
+    context = [compact for _, compact in selected]
+    context_json = json.dumps(context, ensure_ascii=False, indent=2)
+    if omitted:
+        context_json += (
+            f"\n（注：因长度限制省略 {omitted} 章背景上下文，"
+            "已优先保留与审计发现直接相关的章节）"
+        )
+    return header + context_json
 
 
 def _batched_findings(findings: List[dict], batch_size: int = REVISION_MAX_FINDINGS_PER_CALL):
