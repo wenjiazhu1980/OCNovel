@@ -4,7 +4,7 @@ import time
 import concurrent.futures
 from typing import Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_fixed
-from .base_model import BaseModel
+from .base_model import BaseModel, truncate_prompt_preserving_ends
 import logging
 import os
 
@@ -200,16 +200,15 @@ class ClaudeModel(BaseModel):
         logging.info(f"开始生成文本，模型: {self.model_name}, 提示词长度: {len(prompt)}, temperature: {temperature}")
 
         try:
-            # 如果提示词太长，进行截断
+            # 如果提示词太长，保留首尾截断（避免砍掉尾部的输出格式等关键信息）
             max_prompt_length = 180000  # Claude 支持更长的上下文
             if len(prompt) > max_prompt_length:
                 original_length = len(prompt)
-                truncated_chars = original_length - max_prompt_length
+                prompt = truncate_prompt_preserving_ends(prompt, max_prompt_length)
                 logging.warning(
-                    f"提示词过长 ({original_length} 字符)，截断到 {max_prompt_length} 字符。"
-                    f"丢失尾部 {truncated_chars} 字符（占比 {truncated_chars/original_length*100:.1f}%）"
+                    f"提示词过长 ({original_length} 字符)，已保留首尾截断到 {len(prompt)} 字符"
+                    f"（省略中间约 {(original_length - len(prompt)) / original_length * 100:.1f}%）"
                 )
-                prompt = prompt[:max_prompt_length]
 
             content = self._cancellable_call(
                 self._generate_with_claude_api,

@@ -4,7 +4,7 @@ import time
 import concurrent.futures
 from typing import Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_fixed, wait_exponential
-from .base_model import BaseModel
+from .base_model import BaseModel, truncate_prompt_preserving_ends
 from .openai_compat_mixin import OpenAICompatMixin
 import logging
 import json
@@ -331,16 +331,15 @@ class OpenAIModel(OpenAICompatMixin, BaseModel):
     def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: float = 1.0, top_p: Optional[float] = None) -> str:
         """使用网络管理客户端进行文本生成"""
         try:
-            # 如果提示词太长，进行截断
+            # 如果提示词太长，保留首尾截断（避免砍掉尾部的输出格式等关键信息）
             max_prompt_length = 65536  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
                 original_length = len(prompt)
-                truncated_chars = original_length - max_prompt_length
+                prompt = truncate_prompt_preserving_ends(prompt, max_prompt_length)
                 logging.warning(
-                    f"[网络客户端] 提示词过长 ({original_length} 字符)，截断到 {max_prompt_length} 字符。"
-                    f"丢失尾部 {truncated_chars} 字符（占比 {truncated_chars/original_length*100:.1f}%）"
+                    f"[网络客户端] 提示词过长 ({original_length} 字符)，已保留首尾截断到 {len(prompt)} 字符"
+                    f"（省略中间约 {(original_length - len(prompt)) / original_length * 100:.1f}%）"
                 )
-                prompt = prompt[:max_prompt_length]
 
             messages = [{"role": "user", "content": prompt}]
 
@@ -520,16 +519,15 @@ class OpenAIModel(OpenAICompatMixin, BaseModel):
         
         # 回退到原始实现
         try:
-            # 如果提示词太长，进行截断
+            # 如果提示词太长，保留首尾截断（避免砍掉尾部的输出格式等关键信息）
             max_prompt_length = 65536  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
                 original_length = len(prompt)
-                truncated_chars = original_length - max_prompt_length
+                prompt = truncate_prompt_preserving_ends(prompt, max_prompt_length)
                 logging.warning(
-                    f"[原始客户端] 提示词过长 ({original_length} 字符)，截断到 {max_prompt_length} 字符。"
-                    f"丢失尾部 {truncated_chars} 字符（占比 {truncated_chars/original_length*100:.1f}%）"
+                    f"[原始客户端] 提示词过长 ({original_length} 字符)，已保留首尾截断到 {len(prompt)} 字符"
+                    f"（省略中间约 {(original_length - len(prompt)) / original_length * 100:.1f}%）"
                 )
-                prompt = prompt[:max_prompt_length]
             
             content = self._cancellable_call(
                 self._generate_with_compatible_api,

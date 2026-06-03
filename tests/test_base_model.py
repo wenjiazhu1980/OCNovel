@@ -5,7 +5,7 @@
 
 import pytest
 import numpy as np
-from src.models.base_model import BaseModel
+from src.models.base_model import BaseModel, truncate_prompt_preserving_ends
 
 
 class ConcreteModel(BaseModel):
@@ -65,3 +65,34 @@ class TestBaseModel:
         """不能直接实例化 BaseModel"""
         with pytest.raises(TypeError):
             BaseModel({"api_key": "k", "model_name": "m"})
+
+
+class TestTruncatePromptPreservingEnds:
+    """保首尾智能截断：超长 prompt 保留头部指令与尾部输出格式，省略中间。"""
+
+    def test_short_prompt_unchanged(self):
+        p = "短内容不需要截断"
+        assert truncate_prompt_preserving_ends(p, 1000) == p
+
+    def test_exact_boundary_unchanged(self):
+        p = "z" * 100
+        assert truncate_prompt_preserving_ends(p, 100) == p
+
+    def test_preserves_head_and_tail(self):
+        head = "【系统指令】你是大纲编辑，必须遵守以下要求。"
+        tail = "【输出格式】只输出 JSON，不要解释。"
+        prompt = head + ("中间参考资料" * 5000) + tail
+        out = truncate_prompt_preserving_ends(prompt, 2000)
+        assert len(out) <= 2000
+        # 旧实现 prompt[:max] 会丢掉 tail；保首尾应同时保住两端
+        assert out.startswith("【系统指令】")
+        assert out.endswith("不要解释。")
+        assert "省略" in out
+
+    def test_respects_max_length(self):
+        out = truncate_prompt_preserving_ends("x" * 100000, 65536)
+        assert len(out) <= 65536
+
+    def test_tiny_max_falls_back_to_head(self):
+        out = truncate_prompt_preserving_ends("y" * 1000, 20)
+        assert len(out) <= 20
