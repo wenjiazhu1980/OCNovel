@@ -17,7 +17,6 @@ from src.gui.workers.merge_worker import MergeWorker
 from src.gui.workers.outline_worker import OutlineWorker
 from src.gui.workers.outline_audit_worker import OutlineAuditWorker
 from src.gui.workers.outline_revision_worker import OutlineRevisionWorker
-from src.gui.utils.log_handler import SignalLogHandler
 from src.gui.utils.config_io import load_config
 
 

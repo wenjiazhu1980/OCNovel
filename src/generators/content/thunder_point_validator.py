@@ -323,7 +323,7 @@ class ThunderPointValidator:
         if len(sentences) >= 20:
             lengths = [len(s) for s in sentences]
             avg = sum(lengths) / len(lengths)
-            variance = sum((l - avg) ** 2 for l in lengths) / len(lengths)
+            variance = sum((length - avg) ** 2 for length in lengths) / len(lengths)
             std = variance ** 0.5
             if std < 8:
                 findings.append(f"句长标准差 {std:.1f}（< 8），节奏机械，缺乏长短句变化")

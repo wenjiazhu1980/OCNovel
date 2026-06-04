@@ -1,8 +1,7 @@
 import os
 import logging
 import time
-from typing import Optional, List, Any, Dict
-import math
+from typing import Optional, List, Any
 
 
 class ChapterLengthError(Exception):
@@ -15,10 +14,8 @@ class ChapterLengthError(Exception):
 from .consistency_checker import ConsistencyChecker
 from .validators import LogicValidator, DuplicateValidator
 from ..common.data_structures import ChapterOutline
-from ..common.utils import load_json_file, save_json_file, validate_directory
+from ..common.utils import load_json_file, validate_directory
 import re
-from logging.handlers import RotatingFileHandler
-import sys
 import json
 from ..prompts import (
     get_chapter_prompt,
@@ -26,7 +23,6 @@ from ..prompts import (
     get_knowledge_search_prompt
 )
 import numpy as np
-import functools
 
 # Get a logger specific to this module
 logger = logging.getLogger(__name__)
@@ -61,29 +57,29 @@ class ContentGenerator:
         self.finalizer = finalizer
         self.cancel_checker = None  # 可选：外部注入的取消检查回调，返回 True 表示应取消
         self._length_warnings: dict = {}  # {chapter_num: "字数超标(4624/2500,偏差85%)"} 供 pipeline_worker 读取
-        
+
         # 新增：缓存计数器和同步信息生成器
         self.chapters_since_last_cache = 0
         self.content_kb_dir = os.path.join(self.output_dir, "content_kb")
         self.sync_info_file = os.path.join(self.output_dir, "sync_info.json")
-        
+
         # 验证并创建缓存目录
         os.makedirs(self.content_kb_dir, exist_ok=True)
-        
+
         # 初始化重生成相关的属性
         self.target_chapter = None
         self.external_prompt = None
-        
+
         # 初始化验证器和检查器
         self.consistency_checker = ConsistencyChecker(content_model, self.output_dir)
         self.logic_validator = LogicValidator(content_model)
         self.duplicate_validator = DuplicateValidator(content_model)
-        
+
         # 验证并创建输出目录
         validate_directory(self.output_dir)
         # 加载现有大纲和进度
         self._load_progress()
-        
+
         # 初始化知识库
         self._init_knowledge_base()
 
@@ -1071,7 +1067,7 @@ class ContentGenerator:
             logger.info(f"开始为第 {chapter_num} 章生成原始内容...")
             context = self._get_context_for_chapter(chapter_num)
             references = self._get_references_for_chapter(chapter_outline)
-            
+
             # 获取故事设定和同步信息
             story_config = self.config.novel_config if hasattr(self.config, 'novel_config') else None
             sync_info = self._load_sync_info()
@@ -1345,11 +1341,11 @@ class ContentGenerator:
             if not hasattr(self.knowledge_base, 'is_built') or not self.knowledge_base.is_built:
                 logging.warning("知识库未构建，跳过检索")
                 return references
-                
+
             if not hasattr(self.knowledge_base, 'index') or self.knowledge_base.index is None:
                 logging.warning("知识库索引不存在，跳过检索")
                 return references
-            
+
             # 生成检索关键词
             search_prompt = get_knowledge_search_prompt(
                 chapter_number=chapter_outline.chapter_number,
@@ -1365,20 +1361,20 @@ class ContentGenerator:
 
             # 添加日志，记录搜索提示词
             logger.info(f"搜索提示词: {search_prompt[:100]}...，长度: {len(search_prompt)}")
-            
+
             # 检查知识库对象
             logger.info(f"知识库对象类型: {type(self.knowledge_base)}")
             logger.info(f"知识库是否已构建: {getattr(self.knowledge_base, 'is_built', False)}")
             logger.info(f"知识库索引类型: {type(getattr(self.knowledge_base, 'index', None))}")
-            
+
             # 调用知识库检索
             logger.info("开始调用知识库搜索方法...")
             relevant_knowledge = self.knowledge_base.search(search_prompt, k=15)
-            
+
             # 检查返回结果
             logger.info(f"知识库搜索返回结果类型: {type(relevant_knowledge)}")
             logger.info(f"知识库搜索返回结果长度: {len(relevant_knowledge) if relevant_knowledge else 0}")
-            
+
             if relevant_knowledge and isinstance(relevant_knowledge, list):
                 # 按比例分配：plot 占 40%，character 占 30%，setting 占 30%
                 total = len(relevant_knowledge)
@@ -1404,7 +1400,7 @@ class ContentGenerator:
                 if not kb_files:
                     logger.warning("配置中未找到知识库参考文件路径")
                     return
-                
+
                 # 检查文件是否存在
                 existing_files = []
                 for file_path in kb_files:
@@ -1412,7 +1408,7 @@ class ContentGenerator:
                         existing_files.append(file_path)
                     else:
                         logger.warning(f"参考文件不存在: {file_path}")
-                
+
                 if existing_files:
                     logger.info("开始构建知识库...")
                     self.knowledge_base.build_from_files(existing_files)
@@ -1506,14 +1502,14 @@ class ContentGenerator:
             if all_content:
                 logger.info(f"成功读取最近章节内容，总字数: {len(all_content)}，开始生成同步信息")
                 prompt = self._create_sync_info_prompt(all_content)
-                
+
                 # 使用指定的模型或默认使用content_model
                 model_to_use = sync_model if sync_model is not None else self.content_model
-                
+
                 # 增加重试机制和错误处理
                 max_retries = 5  # 增加重试次数
                 sync_info = None
-                
+
                 for attempt in range(max_retries):
                     try:
                         sync_info = model_to_use.generate(prompt)
@@ -1533,25 +1529,25 @@ class ContentGenerator:
                             return
                         # 等待一段时间后重试
                         time.sleep(10 * (attempt + 1))  # 递增等待时间
-                
+
                 if not sync_info:
                     logger.warning("模型返回空的同步信息，使用降级方案")
                     self._fallback_sync_info_update()
                     return
-                
+
                 try:
                     # 尝试提取JSON部分 - 有时模型会生成额外文本
                     json_start = sync_info.find('{')
                     json_end = sync_info.rfind('}') + 1
-                    
+
                     if json_start >= 0 and json_end > json_start:
                         json_content = sync_info[json_start:json_end]
                         logger.info(f"提取到JSON内容，长度: {len(json_content)}")
                         sync_info_dict = json.loads(json_content)
-                        
+
                         # 应用进度保护逻辑
                         sync_info_dict = self._apply_progress_protection(sync_info_dict, self.current_chapter)
-                        
+
                         logger.info(f"成功解析同步信息JSON，准备写入文件: {self.sync_info_file}")
                         with open(self.sync_info_file, 'w', encoding='utf-8') as f:
                             json.dump(sync_info_dict, f, ensure_ascii=False, indent=2)
@@ -1583,11 +1579,11 @@ class ContentGenerator:
     def _should_protect_progress(self, current_generating_chapter: int, existing_progress: int) -> bool:
         """
         判断是否需要保护现有进度
-        
+
         Args:
             current_generating_chapter: 当前正在生成的章节号
             existing_progress: 现有同步信息中的进度
-        
+
         Returns:
             bool: True表示需要保护现有进度，False表示可以更新进度
         """
@@ -1596,7 +1592,7 @@ class ContentGenerator:
             # 如果现有进度为空，则不需要保护
             logger.info(f"现有进度为空，正常更新进度为 {current_generating_chapter}")
             return False
-        
+
         # 确保输入参数为整数类型，处理更多异常情况
         try:
             # 处理字符串类型的章节号
@@ -1605,47 +1601,47 @@ class ContentGenerator:
                 if not current_generating_chapter:
                     logger.warning("最后更新章节号为空字符串，无法比较进度，不保护现有进度")
                     return False
-            
+
             if isinstance(existing_progress, str):
                 existing_progress = existing_progress.strip()
                 if not existing_progress:
                     logger.warning("现有进度为空字符串，正常更新进度")
                     return False
-            
+
             current_generating_chapter = int(current_generating_chapter)
             existing_progress = int(existing_progress)
-            
+
             # 验证章节号的合理性
             if current_generating_chapter < 0:
                 logger.warning(f"最后更新章节号无效 ({current_generating_chapter})，不保护现有进度")
                 return False
-            
+
             if existing_progress < 0:
                 logger.warning(f"现有进度无效 ({existing_progress})，正常更新进度")
                 return False
-                
+
         except (ValueError, TypeError) as e:
             logger.warning(f"章节号格式错误，无法比较进度: current={current_generating_chapter}, existing={existing_progress}, error={e}，不保护现有进度")
             return False
-        
+
         # 如果当前生成章节小于现有进度，则需要保护现有进度
         should_protect = current_generating_chapter < existing_progress
-        
+
         if should_protect:
             logger.info(f"进度保护触发：当前生成章节 {current_generating_chapter} < 现有进度 {existing_progress}，保护现有进度")
         else:
             logger.info(f"进度正常更新：当前生成章节 {current_generating_chapter} >= 现有进度 {existing_progress}，更新进度")
-        
+
         return should_protect
 
     def _apply_progress_protection(self, sync_info_dict: dict, current_chapter: int) -> dict:
         """
         应用进度保护到同步信息字典
-        
+
         Args:
             sync_info_dict: 同步信息字典（可能来自模型生成）
             current_chapter: 当前生成的章节号
-        
+
         Returns:
             dict: 应用进度保护后的同步信息字典
         """
@@ -1654,12 +1650,12 @@ class ContentGenerator:
             if not isinstance(sync_info_dict, dict):
                 logger.warning(f"sync_info_dict不是字典类型: {type(sync_info_dict)}，创建新字典")
                 sync_info_dict = {}
-            
+
             # 加载现有同步信息以获取真实的当前进度
             existing_sync_info = self._load_sync_info()
             # 处理现有进度的各种异常情况，兼容旧版字段
             existing_progress = existing_sync_info.get("最后更新章节", existing_sync_info.get("当前章节"))
-            
+
             # 处理现有进度的各种异常情况
             if existing_progress is not None:
                 try:
@@ -1674,16 +1670,16 @@ class ContentGenerator:
                     elif not isinstance(existing_progress, int):
                         logger.warning(f"现有进度类型异常: {type(existing_progress)}，尝试转换为整数")
                         existing_progress = int(existing_progress)
-                    
+
                     # 验证现有进度的合理性
                     if existing_progress is not None and existing_progress < 0:
                         logger.warning(f"现有进度值无效 ({existing_progress})，视为无现有进度")
                         existing_progress = None
-                        
+
                 except (ValueError, TypeError) as e:
                     logger.warning(f"现有进度格式错误，无法解析: {existing_sync_info.get('最后更新章节')} - {e}，视为无现有进度")
                     existing_progress = None
-            
+
             # 判断是否需要保护进度
             if self._should_protect_progress(current_chapter, existing_progress):
                 # 保护现有进度，使用现有同步信息中的进度
@@ -1693,10 +1689,10 @@ class ContentGenerator:
                 # 正常更新进度
                 sync_info_dict["最后更新章节"] = current_chapter
                 logger.info(f"正常更新进度：从 {existing_progress} 更新为 {current_chapter}")
-            
+
             # 始终更新"最后更新时间"字段
             sync_info_dict["最后更新时间"] = time.strftime("%Y-%m-%d %H:%M:%S")
-            
+
             # 确保向后兼容性：保留其他现有字段（如果存在）
             if existing_sync_info:
                 for key, value in existing_sync_info.items():
@@ -1704,28 +1700,28 @@ class ContentGenerator:
                         # 保留现有字段，但不覆盖新生成的字段
                         sync_info_dict[key] = value
                         logger.debug(f"保留现有字段: {key}")
-            
+
             return sync_info_dict
-            
+
         except Exception as e:
             logger.error(f"应用进度保护时出错: {str(e)}", exc_info=True)
             # 出错时确保返回有效的字典，并设置基本字段
             if not isinstance(sync_info_dict, dict):
                 sync_info_dict = {}
-            
+
             # 尝试保留原有的sync_info_dict内容
             try:
                 # 确保至少有基本字段
                 sync_info_dict["最后更新章节"] = current_chapter
                 sync_info_dict["最后更新时间"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                
+
                 # 尝试从现有文件中恢复其他字段以保持向后兼容性
                 existing_sync_info = self._load_sync_info()
                 if existing_sync_info:
                     for key, value in existing_sync_info.items():
                         if key not in sync_info_dict and key != "最后更新章节":
                             sync_info_dict[key] = value
-                            
+
             except Exception as recovery_error:
                 logger.error(f"恢复同步信息字段时也出错: {recovery_error}")
                 # 最后的保底措施
@@ -1733,7 +1729,7 @@ class ContentGenerator:
                     "最后更新章节": current_chapter,
                     "最后更新时间": time.strftime("%Y-%m-%d %H:%M:%S")
                 }
-            
+
             return sync_info_dict
 
     def _fallback_sync_info_update(self) -> None:
@@ -1743,11 +1739,11 @@ class ContentGenerator:
         """
         try:
             logger.info("使用降级方案更新同步信息")
-            
+
             # 使用已有的_load_sync_info方法加载现有同步信息
             # 这个方法已经处理了各种异常情况
             existing_sync_info = self._load_sync_info()
-            
+
             # 如果加载失败，创建基本的同步信息结构
             if not existing_sync_info:
                 logger.info("创建新的同步信息结构")
@@ -1759,17 +1755,17 @@ class ContentGenerator:
                     "剧情发展": {},
                     "前情提要": []
                 }
-            
+
             # 应用进度保护逻辑
             existing_sync_info = self._apply_progress_protection(existing_sync_info, self.current_chapter)
-            
+
             # 确保必要字段存在
             if "前情提要" not in existing_sync_info:
                 existing_sync_info["前情提要"] = []
             elif not isinstance(existing_sync_info["前情提要"], list):
                 logger.warning(f"'前情提要'字段类型异常: {type(existing_sync_info['前情提要'])}，重置为空列表")
                 existing_sync_info["前情提要"] = []
-            
+
             # 获取最近完成的章节信息
             recent_chapters = []
             try:
@@ -1782,7 +1778,7 @@ class ContentGenerator:
                             logger.warning(f"第{chapter_num}章大纲信息缺失或无效")
             except Exception as e:
                 logger.warning(f"获取最近章节信息时出错: {e}")
-            
+
             # 添加新的前情提要
             if recent_chapters:
                 summary = f"最近完成章节：{', '.join(recent_chapters)}"
@@ -1792,29 +1788,29 @@ class ContentGenerator:
                         logger.debug(f"添加前情提要: {summary}")
                 except Exception as e:
                     logger.warning(f"添加前情提要时出错: {e}")
-            
+
             # 确保其他基本字段存在
             basic_fields = {
                 "世界观": {},
                 "人物设定": {},
                 "剧情发展": {}
             }
-            
+
             for field, default_value in basic_fields.items():
                 if field not in existing_sync_info:
                     existing_sync_info[field] = default_value
                     logger.debug(f"添加缺失字段: {field}")
-            
+
             # 保存更新后的同步信息
             try:
                 # 确保输出目录存在
                 os.makedirs(os.path.dirname(self.sync_info_file), exist_ok=True)
-                
+
                 # 先写入临时文件，然后重命名，避免写入过程中出错导致文件损坏
                 temp_file = self.sync_info_file + ".tmp"
                 with open(temp_file, 'w', encoding='utf-8') as f:
                     json.dump(existing_sync_info, f, ensure_ascii=False, indent=2)
-                
+
                 # 原子性地替换文件
                 if os.path.exists(temp_file):
                     if os.path.exists(self.sync_info_file):
@@ -1826,13 +1822,13 @@ class ContentGenerator:
                             logger.debug(f"已备份原同步信息文件到 {backup_file}")
                         except Exception as backup_error:
                             logger.warning(f"备份原文件失败: {backup_error}")
-                    
+
                     # 替换文件
                     os.replace(temp_file, self.sync_info_file)
                     logger.info(f"降级方案同步信息更新完成，文件大小: {os.path.getsize(self.sync_info_file)} 字节")
                 else:
                     logger.error("临时文件创建失败，无法保存同步信息")
-                    
+
             except OSError as e:
                 logger.error(f"保存同步信息文件时发生系统错误: {e}")
                 # 尝试直接写入（不使用临时文件）
@@ -1843,10 +1839,10 @@ class ContentGenerator:
                 except Exception as direct_write_error:
                     logger.error(f"直接写入也失败: {direct_write_error}")
                     raise
-            
+
         except Exception as e:
             logger.error(f"降级方案也失败了: {str(e)}", exc_info=True)
-            
+
             # 最后的保底措施：创建最基本的同步信息文件
             try:
                 minimal_sync_info = {
@@ -1854,13 +1850,13 @@ class ContentGenerator:
                     "最后更新时间": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "前情提要": [f"降级方案生成 - 最后更新章节: {self.current_chapter}"]
                 }
-                
+
                 os.makedirs(os.path.dirname(self.sync_info_file), exist_ok=True)
                 with open(self.sync_info_file, 'w', encoding='utf-8') as f:
                     json.dump(minimal_sync_info, f, ensure_ascii=False, indent=2)
-                
+
                 logger.info("已创建最基本的同步信息文件作为保底措施")
-                
+
             except Exception as final_error:
                 logger.error(f"保底措施也失败了: {final_error}")
                 # 此时已经无法创建同步信息文件，但不应该影响主要功能
@@ -1919,43 +1915,43 @@ class ContentGenerator:
         if not os.path.exists(self.sync_info_file):
             logger.info(f"同步信息文件 {self.sync_info_file} 不存在，返回空字典（首次运行或文件被删除）")
             return {}
-        
+
         try:
             # 检查文件权限
             if not os.access(self.sync_info_file, os.R_OK):
                 logger.error(f"同步信息文件 {self.sync_info_file} 无读取权限，返回空字典")
                 return {}
-            
+
             with open(self.sync_info_file, 'r', encoding='utf-8') as f:
                 content = f.read()
-                
+
                 # 处理空文件的情况
                 if not content.strip():
                     logger.warning(f"同步信息文件 {self.sync_info_file} 为空，返回空字典")
                     return {}
-                
+
                 # 尝试解析 JSON 内容
                 try:
                     sync_info = json.loads(content)
-                    
+
                     # 验证解析结果是否为字典
                     if not isinstance(sync_info, dict):
                         logger.error(f"同步信息文件内容不是字典格式: {type(sync_info)}，返回空字典")
                         return {}
-                    
+
                     # 处理"最后更新章节"字段的各种异常情况（兼容旧版"当前章节"）
                     if "最后更新章节" in sync_info or "当前章节" in sync_info:
                         current_chapter = sync_info.get("最后更新章节", sync_info.get("当前章节"))
-                        
+
                         # 处理字段值为None的情况
                         if current_chapter is None:
                             logger.warning("同步信息中'最后更新章节'字段为None，保持原样")
-                        
+
                         # 处理字段值为空字符串的情况
                         elif isinstance(current_chapter, str) and not current_chapter.strip():
                             logger.warning("同步信息中'最后更新章节'字段为空字符串，设置为None")
                             sync_info["最后更新章节"] = None
-                        
+
                         # 处理字段值为非数字字符串的情况
                         elif isinstance(current_chapter, str):
                             try:
@@ -1970,7 +1966,7 @@ class ContentGenerator:
                             except ValueError:
                                 logger.warning(f"同步信息中'最后更新章节'字段无法转换为整数: '{current_chapter}'，设置为None")
                                 sync_info["最后更新章节"] = None
-                        
+
                         # 处理字段值为浮点数的情况
                         elif isinstance(current_chapter, float):
                             if current_chapter.is_integer() and current_chapter >= 0:
@@ -1979,29 +1975,29 @@ class ContentGenerator:
                             else:
                                 logger.warning(f"同步信息中'最后更新章节'字段为无效浮点数: {current_chapter}，设置为None")
                                 sync_info["最后更新章节"] = None
-                        
+
                         # 处理字段值为布尔类型的情况
                         elif isinstance(current_chapter, bool):
                             logger.warning(f"同步信息中'最后更新章节'字段为布尔类型: {current_chapter}，设置为None")
                             sync_info["最后更新章节"] = None
-                        
+
                         # 处理字段值为其他类型的情况
                         elif not isinstance(current_chapter, int):
                             logger.warning(f"同步信息中'最后更新章节'字段类型异常: {type(current_chapter)}，设置为None")
                             sync_info["最后更新章节"] = None
-                        
+
                         # 处理字段值为负数的情况
                         elif isinstance(current_chapter, int) and current_chapter < 0:
                             logger.warning(f"同步信息中'最后更新章节'字段值无效: {current_chapter}，设置为None")
                             sync_info["最后更新章节"] = None
-                    
+
                     logger.debug(f"成功加载同步信息，包含 {len(sync_info)} 个字段")
                     return sync_info
-                    
+
                 except json.JSONDecodeError as e:
                     # 处理 JSON 解析错误
                     logger.error(f"解析同步信息文件 {self.sync_info_file} 失败: {e}")
-                    
+
                     # 保存错误内容以便调试（可选）
                     try:
                         error_file = self.sync_info_file + ".error"
@@ -2010,24 +2006,24 @@ class ContentGenerator:
                         logger.info(f"已保存损坏的同步信息内容到 {error_file} 以供调试")
                     except Exception as write_err:
                         logger.warning(f"无法保存错误内容到调试文件: {write_err}")
-                    
+
                     return {}
-                    
+
         except UnicodeDecodeError as e:
             # 处理文件编码错误
             logger.error(f"同步信息文件 {self.sync_info_file} 编码错误: {e}，返回空字典")
             return {}
-            
+
         except PermissionError as e:
             # 处理权限错误
             logger.error(f"读取同步信息文件 {self.sync_info_file} 权限不足: {e}，返回空字典")
             return {}
-            
+
         except OSError as e:
             # 处理其他系统级错误（如磁盘空间不足、文件系统错误等）
             logger.error(f"读取同步信息文件 {self.sync_info_file} 时发生系统错误: {e}，返回空字典")
             return {}
-            
+
         except Exception as e:
             # 处理其他未预期的错误
             logger.error(f"读取同步信息文件 {self.sync_info_file} 时发生未知错误: {e}，返回空字典", exc_info=True)
@@ -2044,7 +2040,8 @@ if __name__ == "__main__":
         import json
     except ImportError:
         logger.warning("无法导入实际的 Config 类，将使用占位符。")
-        class Config: pass
+        class Config:
+            pass
         # Define re and json locally if import fails (less likely but for completeness)
         import re
         import json
@@ -2070,26 +2067,26 @@ if __name__ == "__main__":
         def search(self, query: str, k: int = 5) -> List[str]:
             """搜索相关内容"""
             logger.debug(f"[MockKB] Searching for: {query}")
-            
+
             if not self.index:
                 logger.error("知识库索引未构建")
                 raise ValueError("Knowledge base not built yet")
-            
+
             # 安全地记录索引类型，不访问.d属性
             logger.info(f"知识库索引类型: {type(self.index)}")
-            
+
             query_vector = self.embedding_model.embed(query)
-            
+
             if query_vector is None:
                 logger.error("嵌入模型返回空向量")
                 return []
-            
+
             logger.info(f"查询向量类型: {type(query_vector)}, 长度: {len(query_vector)}")
-            
+
             # 搜索最相似的文本块
             query_vector_array = np.array([query_vector]).astype('float32')
             logger.info(f"处理后的查询向量数组形状: {query_vector_array.shape}")
-            
+
             try:
                 logger.info(f"调用faiss搜索，参数: 向量形状={query_vector_array.shape}, k={k}")
                 distances, indices = self.index.search(query_vector_array, k)
@@ -2097,7 +2094,7 @@ if __name__ == "__main__":
             except Exception as e:
                 logger.error(f"faiss搜索失败: {str(e)}", exc_info=True)
                 raise
-            
+
             # 返回相关文本内容
             results = []
             for idx in indices[0]:
@@ -2105,7 +2102,7 @@ if __name__ == "__main__":
                     results.append(self.chunks[idx].content)
                 else:
                     logger.warning(f"索引越界: idx={idx}, chunks长度={len(self.chunks)}")
-            
+
             logger.info(f"返回结果数量: {len(results)}")
             return results
 
@@ -2216,11 +2213,11 @@ if __name__ == "__main__":
                         format='%(asctime)s - %(name)s - %(levelname)s - [%(module)s.%(funcName)s:%(lineno)d] - %(message)s',
                         handlers=[logging.FileHandler(os.path.join(log_dir, "content_gen_test.log"), encoding='utf-8', mode='w'),
                                   logging.StreamHandler()])
-    
+
     # Get the named logger AFTER basicConfig is called
-    logger = logging.getLogger(__name__) 
-    
-    logger.info(f"--- 开始独立测试 content_generator.py ---") # Now uses the configured logger
+    logger = logging.getLogger(__name__)
+
+    logger.info("--- 开始独立测试 content_generator.py ---") # Now uses the configured logger
     logger.info(f"命令行参数: {args}") # Now uses the configured logger
 
     # 初始化 Mock 对象
@@ -2279,4 +2276,4 @@ if __name__ == "__main__":
         print("结果：", "成功！" if success else "失败。")
         print(f'请查看日志文件 "{os.path.join(log_dir, "content_gen_test.log")}" 了解详细信息。')
 
-    logger.info("--- 独立测试 content_generator.py 结束 ---") # Now uses the configured logger 
+    logger.info("--- 独立测试 content_generator.py 结束 ---") # Now uses the configured logger

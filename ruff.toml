@@ -1,0 +1,11 @@
+# Ruff 配置——与 .github/workflows/ci.yml 的 lint 命令协同
+# CI 命令：ruff check src/ --select E,F,W --ignore E501
+# 说明：命令行 --select/--ignore 会覆盖此处的 select/ignore，但 per-file-ignores
+#       属独立配置、不被覆盖，会叠加生效，专用于豁免下列合法工程模式。
+
+[lint.per-file-ignores]
+# __init__.py 的导入是有意的 re-export（聚合子模块公共 API），并非未用导入
+"**/__init__.py" = ["F401"]
+# 下列文件的 import 不在文件顶部，是为规避循环导入 / 依赖顺序的延迟导入，属合理写法
+"src/generators/content/content_generator.py" = ["E402"]
+"src/knowledge_base/knowledge_base.py" = ["E402"]

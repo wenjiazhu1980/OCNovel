@@ -4,7 +4,7 @@
 专门用于生成降低AI浓度的提示词
 """
 
-from typing import Dict, Optional
+from typing import Dict
 
 
 def get_humanization_prompt(dialogue_ratio_target: float = 0.45) -> str:

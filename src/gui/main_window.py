@@ -2,9 +2,9 @@
 import os
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QStatusBar, QLabel,
-    QMenuBar, QFileDialog, QMessageBox,
+    QFileDialog, QMessageBox,
 )
-from PySide6.QtCore import Qt, QEvent, QSettings
+from PySide6.QtCore import QEvent, QSettings
 from PySide6.QtGui import QFont, QAction
 
 from .tabs.model_config_tab import ModelConfigTab

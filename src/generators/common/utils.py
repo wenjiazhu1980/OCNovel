@@ -1,15 +1,14 @@
 import os
 import json
 import logging
-import sys # 引入 sys 模块以访问 stdout
 from logging.handlers import RotatingFileHandler # 推荐使用 RotatingFileHandler 以防日志文件过大
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional, Any
 from opencc import OpenCC
 
 def setup_logging(log_dir: str, clear_logs: bool = False):
     """设置日志系统"""
     root_logger = logging.getLogger()
-    
+
     # 清理所有现有的处理器，避免重复
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)

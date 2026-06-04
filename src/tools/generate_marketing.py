@@ -51,7 +51,7 @@ def load_chapter_summaries(summary_file):
     if not os.path.exists(summary_file):
         logging.warning(f"摘要文件不存在: {summary_file}")
         return []
-        
+
     try:
         with open(summary_file, 'r', encoding='utf-8') as f:
             summaries = json.load(f)
@@ -68,22 +68,22 @@ def main():
     parser.add_argument("--keywords", nargs="+", help="额外的关键词")
     parser.add_argument("--characters", nargs="+", help="主要角色名")
     args = parser.parse_args()
-    
+
     try:
         setup_logging()
         logging.info("开始生成小说营销内容...")
-        
+
         # 加载配置
         config = Config()  # 不传递参数
         logging.info("配置加载完成")
-        
+
         # 创建内容生成模型
         content_model = create_model(config.model_config["content_model"])
         logging.info("AI模型初始化完成")
-        
+
         # 创建标题生成器
         generator = TitleGenerator(content_model, args.output_dir)
-        
+
         # 加载章节摘要
         chapter_summaries = []
         if args.summary_file:
@@ -94,7 +94,7 @@ def main():
             if os.path.exists(summary_file):
                 chapter_summaries = load_chapter_summaries(summary_file)
                 logging.info(f"已从默认位置加载 {len(chapter_summaries)} 条章节摘要")
-        
+
         # 准备小说配置
         novel_config = {
             "type": config.novel_config.get("type", "玄幻"),
@@ -102,37 +102,37 @@ def main():
             "keywords": args.keywords or config.novel_config.get("keywords", []),
             "main_characters": args.characters or config.novel_config.get("main_characters", [])
         }
-        
+
         # 一键生成所有营销内容
         result = generator.one_click_generate(novel_config, chapter_summaries)
-        
+
         logging.info("营销内容生成完成！")
         logging.info(f"结果已保存到：{result['saved_file']}")
-        
+
         # 打印生成的内容摘要
         print("\n===== 生成的营销内容摘要 =====")
         print("\n【标题方案】")
         for platform, title in result["titles"].items():
             print(f"{platform}: {title}")
-            
+
         print("\n【故事梗概】")
         print(result["summary"])
-        
+
         print("\n【封面提示词】")
         for platform, prompt in result["cover_prompts"].items():
             print(f"{platform}: {prompt}")
-        
+
         if "cover_images" in result and result["cover_images"]:
             print("\n【封面图片】")
             for platform, image_path in result["cover_images"].items():
                 print(f"{platform}: {image_path}")
-        
+
         print("\n【已保存到】")
         print(result["saved_file"])
-        
+
     except Exception as e:
         logging.error(f"生成营销内容时出错: {str(e)}")
         raise
 
 if __name__ == "__main__":
-    main() 
+    main()

@@ -1,5 +1,4 @@
 """Tab2: 小说参数配置 — 编辑 config.json 中的小说相关参数"""
-import json
 import logging
 import os
 from PySide6.QtWidgets import (
@@ -206,7 +205,8 @@ class NovelParamsTab(QWidget):
         outer.addLayout(count_bar)
 
         # --- 世界观 ---
-        wb_grp = QGroupBox(self.tr("世界观")); wb_grp.setProperty("cssClass", "inner")
+        wb_grp = QGroupBox(self.tr("世界观"))
+        wb_grp.setProperty("cssClass", "inner")
         wb_form = _expanding_form(wb_grp)
         self._te_magic = _make_text_edit(4)
         self._te_social = _make_text_edit(4)
@@ -217,7 +217,8 @@ class NovelParamsTab(QWidget):
         outer.addWidget(wb_grp)
 
         # --- 主角设定 ---
-        prot_grp = QGroupBox(self.tr("主角设定")); prot_grp.setProperty("cssClass", "inner")
+        prot_grp = QGroupBox(self.tr("主角设定"))
+        prot_grp.setProperty("cssClass", "inner")
         prot_form = _expanding_form(prot_grp)
         self._te_prot_bg = _make_text_edit(3)
         self._te_prot_personality = _make_text_edit(3)
@@ -228,7 +229,8 @@ class NovelParamsTab(QWidget):
         outer.addWidget(prot_grp)
 
         # --- 配角 & 反派（结构化列表 + 详情表单）---
-        roles_grp = QGroupBox(self.tr("配角与反派")); roles_grp.setProperty("cssClass", "inner")
+        roles_grp = QGroupBox(self.tr("配角与反派"))
+        roles_grp.setProperty("cssClass", "inner")
         roles_outer = QVBoxLayout(roles_grp)
 
         # 配角编辑器
@@ -258,7 +260,8 @@ class NovelParamsTab(QWidget):
         outer.addWidget(roles_grp)
 
         # --- 剧情结构 ---
-        plot_grp = QGroupBox(self.tr("剧情结构")); plot_grp.setProperty("cssClass", "inner")
+        plot_grp = QGroupBox(self.tr("剧情结构"))
+        plot_grp.setProperty("cssClass", "inner")
         plot_form = _expanding_form(plot_grp)
         # 第一幕
         self._te_setup = _make_text_edit(3)
@@ -298,7 +301,8 @@ class NovelParamsTab(QWidget):
         outer.addWidget(plot_grp)
 
         # --- 风格指南 ---
-        style_grp = QGroupBox(self.tr("风格指南")); style_grp.setProperty("cssClass", "inner")
+        style_grp = QGroupBox(self.tr("风格指南"))
+        style_grp.setProperty("cssClass", "inner")
         style_form = _expanding_form(style_grp)
         self._te_tone = _make_text_edit(3)
         self._te_pacing = _make_text_edit(3)

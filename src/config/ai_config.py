@@ -126,7 +126,7 @@ class AIConfig:
         }
         # 验证配置
         self._validate_config()
-    
+
     def _validate_config(self):
         """验证配置是否有效（按需验证，仅检查关键配置的格式正确性）"""
         # 记录各 provider 的配置状态，但不强制所有 provider 都必须配置
@@ -161,7 +161,7 @@ class AIConfig:
 
         import logging
         logging.info(f"Detected configured AI providers: {', '.join(configured_providers)}")
-    
+
     def get_claude_config(self, model_type: str = "content") -> Dict[str, Any]:
         """获取 Claude 模型配置（Anthropic 官方 API）"""
         if model_type not in self.claude_config["models"]:
@@ -304,7 +304,7 @@ class AIConfig:
             config["fallback_enabled"] = False
 
         return config
-    
+
     def get_model_config(self, model_type: str) -> Dict[str, Any]:
         """获取指定类型的模型配置"""
         if model_type.startswith("claude"):

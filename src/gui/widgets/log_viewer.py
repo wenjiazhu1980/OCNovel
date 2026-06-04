@@ -1,7 +1,6 @@
 """日志查看器组件：基于 QPlainTextEdit 的彩色日志显示"""
 from PySide6.QtWidgets import QPlainTextEdit
 from PySide6.QtGui import QFont, QTextCharFormat, QColor, QTextCursor
-from PySide6.QtCore import Qt
 
 from ..theme import Theme
 

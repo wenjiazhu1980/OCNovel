@@ -5,14 +5,13 @@ import logging
 import os
 import threading
 from typing import Optional, Dict, Any
-from tenacity import retry, stop_after_attempt, wait_exponential
 from .base_model import BaseModel
 from .openai_compat_mixin import OpenAICompatMixin
 
 # 导入网络管理相关模块
 try:
-    from ..network.config import PoolConfig
-    from ..network.model_client import ModelHTTPClient, ModelClientFactory
+    from ..network.config import PoolConfig  # noqa: F401  # 可用性探测，import 即目的
+    from ..network.model_client import ModelHTTPClient, ModelClientFactory  # noqa: F401
     from ..network.errors import NetworkError, TimeoutError, ConnectionError
     NETWORK_AVAILABLE = True
 except ImportError:
@@ -25,7 +24,7 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
     # 类级别的锁，保护 genai.configure() 全局状态
     _configure_lock = threading.Lock()
     _configured_api_key: Optional[str] = None
-    
+
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self._validate_config()
@@ -57,14 +56,14 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
                     genai.configure(api_key=self.api_key)
                     GeminiModel._configured_api_key = self.api_key
                     logging.debug("genai.configure() 已更新 API Key")
-            
+
             # 导入安全配置管理器
             from .gemini_safety_config import GeminiSafetyConfig
-            
+
             # 获取安全设置
             content_type = config.get('content_type', 'creative')
             self.safety_settings = GeminiSafetyConfig.get_safety_settings_for_content_type(content_type)
-            
+
             self.model = genai.GenerativeModel(
                 self.model_name,
                 safety_settings=self.safety_settings
@@ -192,7 +191,7 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
             logging.info("当前客户端不支持 Responses API，自动使用 Chat Completions")
 
         return self._generate_with_chat_api(client, model_name, prompt, max_tokens, temperature=temperature, top_p=top_p)
-    
+
     def _use_network_client_for_generation(self, prompt: str, max_tokens: Optional[int] = None, temperature: Optional[float] = None, top_p: Optional[float] = None) -> str:
         """使用网络管理客户端进行文本生成（仅用于OpenAI兼容API）"""
         if self.is_gemini_official:
@@ -214,17 +213,17 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
 
             # 使用网络管理客户端
             response_data = self.network_client.chat_completion(**request_kwargs)
-            
+
             content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
             if content is None:
                 raise Exception("模型返回空内容")
-                
+
             logging.info(f"网络管理客户端生成成功，返回内容长度: {len(content)}")
             return content
-            
+
         except (NetworkError, TimeoutError, ConnectionError) as e:
             logging.error(f"网络管理客户端生成失败: {str(e)}")
-            
+
             # 如果配置了备用网络客户端，尝试使用
             if self.fallback_network_client:
                 logging.warning("尝试使用备用网络客户端...")
@@ -235,17 +234,17 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
                         max_tokens=max_tokens,
                         temperature=_temp
                     )
-                    
+
                     content = response_data.get('choices', [{}])[0].get('message', {}).get('content')
                     if content is None:
                         raise Exception("备用模型返回空内容")
-                        
+
                     logging.info(f"备用网络客户端生成成功，返回内容长度: {len(content)}")
                     return content
-                    
+
                 except Exception as fallback_error:
                     logging.error(f"备用网络客户端也失败了: {str(fallback_error)}")
-            
+
             # 重新抛出原始异常
             raise e
         except Exception as e:
@@ -280,16 +279,16 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
                         generation_config=generation_config,
                         request_options={"timeout": self.timeout}
                     )
-                    
+
                     # 直接处理响应
                     from .gemini_safety_config import GeminiSafetyConfig
-                    
+
                     # 检查响应是否有效
                     if not response or not response.candidates:
                         raise Exception("模型返回空响应或无候选结果")
-                    
+
                     candidate = response.candidates[0]
-                    
+
                     # 记录安全评级
                     if hasattr(candidate, 'safety_ratings') and candidate.safety_ratings:
                         safety_ratings = {}
@@ -297,23 +296,23 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
                             safety_ratings[rating.category.name] = rating.probability.name
                         GeminiSafetyConfig.log_safety_ratings(safety_ratings)
                         logging.info(f"安全评级: {safety_ratings}")
-                    
+
                     # 检查完成原因
                     finish_reason = candidate.finish_reason.name if hasattr(candidate, 'finish_reason') else 'UNKNOWN'
                     logging.info(f"完成原因: {finish_reason}")
-                    
+
                     # 提取内容
                     if hasattr(candidate, 'content') and candidate.content and hasattr(candidate.content, 'parts'):
                         content_parts = []
                         for part in candidate.content.parts:
                             if hasattr(part, 'text') and part.text:
                                 content_parts.append(part.text)
-                        
+
                         if content_parts:
                             content = ''.join(content_parts)
                             logging.info(f"Gemini模型调用成功，内容长度: {len(content)}")
                             return content
-                    
+
                     # 如果没有内容，提供详细错误信息
                     error_msg = f"模型返回空响应 - 完成原因: {finish_reason}"
                     if finish_reason == 'SAFETY':
@@ -322,7 +321,7 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
                         error_msg += "\n建议: 响应长度超过限制，请尝试增加max_tokens参数"
                     elif finish_reason == 'RECITATION':
                         error_msg += "\n建议: 内容可能涉及版权问题，请修改提示词"
-                    
+
                     raise Exception(error_msg)
                 except Exception as e:
                     last_exception = e
@@ -386,7 +385,7 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
                     return self._use_network_client_for_generation(prompt, max_tokens, temperature=effective_temperature, top_p=effective_top_p)
                 except Exception as e:
                     logging.warning(f"网络管理客户端失败，回退到原始客户端: {str(e)}")
-            
+
             # 回退到原始OpenAI客户端
             if not self.openai_client:
                 raise Exception("OpenAI兼容API客户端未初始化，无法调用自定义模型")
@@ -411,7 +410,7 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
 
     def embed(self, text: str) -> np.ndarray:
         raise NotImplementedError("Embedding is not supported in Gemini model yet")
-    
+
     def close(self):
         """关闭模型客户端"""
         if NETWORK_AVAILABLE:
@@ -420,7 +419,7 @@ class GeminiModel(OpenAICompatMixin, BaseModel):
             if self.fallback_network_client:
                 self.fallback_network_client.close()
         logging.debug("Gemini model clients closed")
-    
+
     def __del__(self):
         """析构函数，确保资源清理"""
         try:

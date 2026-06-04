@@ -1,5 +1,4 @@
 """后台合并 Worker:在 QThread 中执行章节合并"""
-import os
 import logging
 import threading
 from PySide6.QtCore import QThread, Signal, QCoreApplication

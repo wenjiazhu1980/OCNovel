@@ -1,14 +1,8 @@
 from typing import Dict, List, NamedTuple, Optional, Tuple
-import dataclasses # 导入 dataclasses 以便类型提示
 import json
-import os
-import logging
 from .humanization_prompts import (
-    get_humanization_prompt,
     get_chinese_punctuation_rules,
     get_zhuque_optimization_prompt,
-    generate_adaptive_humanization_prompt,
-    get_rewrite_prompt_for_high_ai_content,
     get_enhanced_humanization_prompt,
 )
 
@@ -258,17 +252,17 @@ def get_outline_prompt(
     arc_config: Optional[Dict] = None,
 ) -> str:
     """生成用于创建小说大纲的提示词"""
-    
+
     # 从调用方传入的配置中获取故事设定，避免导入期读取默认配置文件
     effective_novel_config = novel_config or {}
     writing_guide = effective_novel_config.get("writing_guide", {})
-    
+
     # 提取关键设定
     world_building = writing_guide.get("world_building", {})
     character_guide = writing_guide.get("character_guide", {})
     plot_structure = writing_guide.get("plot_structure", {})
     style_guide = writing_guide.get("style_guide", {})
-    
+
     # 构建全局进度信息
     _end_ch = current_end_chapter_num if current_end_chapter_num > 0 else (current_start_chapter_num + current_batch_size - 1)
     _total = total_chapters if total_chapters > 0 else _end_ch
@@ -517,7 +511,7 @@ def get_outline_prompt(
 
 
 def get_chapter_prompt(
-    outline: Dict, 
+    outline: Dict,
     references: Dict,
     extra_prompt: str = "",
     context_info: str = "",
@@ -527,15 +521,15 @@ def get_chapter_prompt(
     chapter_length: int = 0
 ) -> str:
     """生成用于创建章节内容的提示词"""
-    
+
     # 获取基本信息
     novel_number = outline.get('chapter_number', 0)
     chapter_title = outline.get('title', '未知')
-    
+
     # 格式化关键情节点
     key_points_list = outline.get('key_points', [])
     key_points_display = chr(10).join([f"- {point}" for point in key_points_list])
-    
+
     # 其他信息
     characters = ', '.join(outline.get('characters', []))
     settings = ', '.join(outline.get('settings', []))
@@ -579,7 +573,7 @@ def get_chapter_prompt(
                 result.append(str(item))
         return ', '.join(result) if result else default
 
-    base_prompt = f"""你是一名专业网文作者，熟知起点中文网、番茄小说网、晋江文学城的网文创作技巧，你的文笔节奏、表达富于变化，语句总是超出预测，同时扣人心弦。你特别擅长创作节奏紧凑、对话生动、且极具人性化特色的网络小说。"""
+    base_prompt = """你是一名专业网文作者，熟知起点中文网、番茄小说网、晋江文学城的网文创作技巧，你的文笔节奏、表达富于变化，语句总是超出预测，同时扣人心弦。你特别擅长创作节奏紧凑、对话生动、且极具人性化特色的网络小说。"""
 
     # 添加故事设定信息（如果提供）
     if story_config:
@@ -587,13 +581,13 @@ def get_chapter_prompt(
         world_building = writing_guide.get("world_building", {})
         character_guide = writing_guide.get("character_guide", {})
         style_guide = writing_guide.get("style_guide", {})
-        
+
         # 安全获取描写重点
         focus_list = style_guide.get('description_focus', [])
         focus_1 = focus_list[0] if len(focus_list) > 0 else '[描写的第一个侧重点，如：战斗场面、世界观奇观、人物内心等]'
         focus_2 = focus_list[1] if len(focus_list) > 1 else '[描写的第二个侧重点，如：势力间的权谋博弈、神秘氛围的营造等]'
         focus_3 = focus_list[2] if len(focus_list) > 2 else '[描写的第三个侧重点，如：主角的成长与反思、配角群像的刻画等]'
-        
+
         base_prompt += f"""
 
 [故事设定]
@@ -630,7 +624,7 @@ def get_chapter_prompt(
         world_info = sync_info.get("世界观", {})
         character_info = sync_info.get("人物设定", {})
         plot_info = sync_info.get("剧情发展", {})
-        
+
         base_prompt += f"""
 
 [故事进展信息]
@@ -678,7 +672,7 @@ def get_chapter_prompt(
         foreshadow_display = chr(10).join([f"  - {item}" for item in foreshadowing])
         snowflake_extras.append(f"伏笔操作:\n{foreshadow_display}")
     if snowflake_extras:
-        base_prompt += f"\n\n[叙事规划]\n" + chr(10).join(snowflake_extras)
+        base_prompt += "\n\n[叙事规划]\n" + chr(10).join(snowflake_extras)
 
     base_prompt += f"""
 
@@ -778,7 +772,7 @@ def get_chapter_prompt(
 3. **情绪节奏感**：同一场景内情绪要有起伏变化，不能一直维持同一种情绪状态
 4. **共情触发点**：每章至少设置1-2个能让读者产生代入感的情感瞬间（尴尬、心酸、热血、感动）
 5. **情感留白**：关键情感高潮处适当留白，用省略号、短句、沉默代替直白表述，给读者想象空间"""
-    
+
     # 添加中文标点符号规范
     base_prompt += f"{chr(10)}{get_chinese_punctuation_rules()}"
 
@@ -873,7 +867,7 @@ def get_sync_info_prompt(
     current_chapter: int = 0
 ) -> str:
     """生成用于创建/更新同步信息的提示词
-    
+
     Args:
         story_content: 新增的故事内容
         existing_sync_info: 现有的同步信息（JSON字符串）
@@ -1045,7 +1039,7 @@ def get_consistency_check_prompt(
     world_info = sync_info.get("世界观", {})
     character_info_dict = sync_info.get("人物设定", {})
     plot_info = sync_info.get("剧情发展", {})
-    
+
     # 安全处理列表字段，确保能处理字典和字符串混合的情况
     def safe_join_list(items, default=""):
         """安全地连接列表，处理字典和字符串混合的情况"""
@@ -1076,7 +1070,7 @@ def get_consistency_check_prompt(
             else:
                 result.append(str(item))
         return ", ".join(result) if result else default
-    
+
     return f"""请检查章节内容的一致性：
 
 [同步信息]
@@ -1182,30 +1176,30 @@ def get_knowledge_search_prompt(
     """生成用于知识库检索的提示词，过滤低相关性内容"""
     # 生成关键词组合逻辑
     keywords = []
-    
+
     # 1. 优先使用用户指导中的术语
     if user_guidance:
         keywords.extend(user_guidance.split())
-    
+
     # 2. 添加章节核心要素
     keywords.extend([f"章节{chapter_number}", chapter_title])
     keywords.extend(characters_involved)
     keywords.extend(key_items)
     keywords.extend([scene_location])
-    
+
     # 3. 补充扩展概念（如伏笔、章节作用等）
     keywords.extend([chapter_role, chapter_purpose, foreshadowing])
-    
+
     # 去重并过滤抽象词汇
     keywords = list(set([k for k in keywords if k and len(k) > 1]))
-    
+
     # 生成检索词组合
     search_terms = []
     for i in range(0, len(keywords), 2):
         group = keywords[i:i+2]
         if group:
             search_terms.append(".".join(group))
-    
+
     return "\n".join(search_terms[:5])  # 返回最多5组检索词
 
 
@@ -1314,13 +1308,13 @@ def get_style_check_prompt(
     """生成用于检查章节写作风格的提示词"""
     writing_guide = novel_config.get("writing_guide", {})
     style_guide = writing_guide.get("style_guide", {})
-    
+
     # 获取风格指南
     tone = style_guide.get("tone", "")
     pov = style_guide.get("pov", "")
     narrative_style = style_guide.get("narrative_style", "")
     language_style = style_guide.get("language_style", "")
-    
+
     return f"""请检查章节内容的写作风格：
 
 [风格指南]
@@ -1404,17 +1398,17 @@ def get_imitation_prompt(
 ) -> str:
     """
     生成用于仿写任务的提示词
-    
+
     Args:
         original_text: 需要被重写的原始文本
         style_examples: 从风格范文中提取的、用于模仿的文本片段
         extra_prompt: 用户额外的指令
     """
-    
+
     # 将风格范例格式化
     separator = "\n\n---\n\n"
     formatted_examples = separator.join(style_examples)
-    
+
     prompt = f"""你是一位顶级的文体学家和模仿大师。你的任务是严格按照提供的「风格范例」，重写「原始文本」。
 
 核心要求：
@@ -1444,5 +1438,5 @@ def get_imitation_prompt(
 ------
 
 现在，请开始仿写。直接输出仿写后的正文，不要包含任何解释或标题。"""
-    
+
     return prompt

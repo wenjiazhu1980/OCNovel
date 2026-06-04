@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable
 
 import numpy as np
 

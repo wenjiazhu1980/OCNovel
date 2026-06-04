@@ -44,4 +44,4 @@ class Character:
     position: str = "普通弟子"    # 职务，默认为普通弟子
     emotions_history: List[str] = field(default_factory=list)  # 情绪历史记录
     states_history: List[str] = field(default_factory=list)    # 状态历史记录
-    descriptions_history: List[str] = field(default_factory=list)  # 描述历史记录 
+    descriptions_history: List[str] = field(default_factory=list)  # 描述历史记录

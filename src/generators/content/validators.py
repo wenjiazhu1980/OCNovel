@@ -13,24 +13,24 @@ from .. import prompts
 
 class LogicValidator:
     """逻辑严密性验证器"""
-    
+
     def __init__(self, content_model):
         self.content_model = content_model
-    
+
     def check_logic(
-        self, 
-        chapter_content: str, 
-        chapter_outline: Dict, 
+        self,
+        chapter_content: str,
+        chapter_outline: Dict,
         sync_info: Optional[str] = None
     ) -> Tuple[str, bool]:
         """
         检查章节内容的逻辑严密性
-        
+
         Args:
             chapter_content: 章节内容
             chapter_outline: 章节大纲
             sync_info: 同步信息（可选）
-            
+
         Returns:
             tuple: (验证报告, 是否需要修改)
         """
@@ -39,7 +39,7 @@ class LogicValidator:
             chapter_outline=chapter_outline,
             sync_info=sync_info
         )
-        
+
         try:
             check_result = self.content_model.generate(prompt)
             # 使用正则提取 [修改必要性] 结构化字段，精确匹配，避免子串误判
@@ -58,7 +58,7 @@ class LogicValidator:
 
 class DuplicateValidator:
     """重复文字验证器"""
-    
+
     def __init__(self, content_model):
         self.content_model = content_model
         self.min_duplicate_length = 50  # 最小重复文字长度
@@ -67,7 +67,7 @@ class DuplicateValidator:
         self.max_scan_chars = 6000
         self.window_stride = 5
         self.max_report_items = 50
-    
+
     def check_duplicates(
         self,
         chapter_content: str,
@@ -76,34 +76,34 @@ class DuplicateValidator:
     ) -> Tuple[str, bool]:
         """
         检查章节内容的重复文字
-        
+
         Args:
             chapter_content: 当前章节内容
             prev_content: 上一章内容
             next_content: 下一章内容
-            
+
         Returns:
             tuple: (验证报告, 是否需要修改)
         """
         # 1. 检查章节内部重复
         internal_duplicates = self._find_internal_duplicates(chapter_content)
-        
+
         # 2. 检查与前后章节的重复
         cross_chapter_duplicates = self._find_cross_chapter_duplicates(
             chapter_content, prev_content, next_content
         )
-        
+
         # 3. 生成验证报告
         report = self._generate_report(internal_duplicates, cross_chapter_duplicates)
-        
+
         # 4. 判断是否需要修改
         needs_revision = (
             len(internal_duplicates) > 0 or
             len(cross_chapter_duplicates) > 0
         )
-        
+
         return report, needs_revision
-    
+
     def _find_internal_duplicates(self, content: str) -> List[Tuple[str, int, int]]:
         """查找章节内部的重复文字"""
         duplicates = []
@@ -133,7 +133,7 @@ class DuplicateValidator:
                     break
 
         return duplicates
-    
+
     def _find_cross_chapter_duplicates(
         self,
         current_content: str,
@@ -191,7 +191,7 @@ class DuplicateValidator:
                 break
 
         return duplicates
-    
+
     def _generate_report(
         self,
         internal_duplicates: List[Tuple[str, int, int]],
@@ -199,7 +199,7 @@ class DuplicateValidator:
     ) -> str:
         """生成验证报告"""
         report = "重复文字验证报告\n\n"
-        
+
         # 内部重复报告
         if internal_duplicates:
             report += "1. 章节内部重复：\n"
@@ -208,7 +208,7 @@ class DuplicateValidator:
                 report += f"  位置：{start1} 和 {start2}\n"
         else:
             report += "1. 章节内部重复：未发现\n"
-        
+
         # 跨章节重复报告
         if cross_chapter_duplicates:
             report += "\n2. 跨章节重复：\n"
@@ -218,9 +218,9 @@ class DuplicateValidator:
                 report += f"  位置：当前章节 {start1}，{chapter_name} {start2}\n"
         else:
             report += "\n2. 跨章节重复：未发现\n"
-        
+
         # 统计信息
         total_duplicates = len(internal_duplicates) + len(cross_chapter_duplicates)
         report += f"\n总计发现 {total_duplicates} 处重复\n"
-        
-        return report 
+
+        return report

@@ -1,13 +1,11 @@
 import os
 import logging
 import re
-import string
 import random
 import json
-from typing import Optional, Set, Dict, List
+from typing import Optional
 # from opencc import OpenCC # Keep if used elsewhere, otherwise remove
-from ..common.data_structures import Character, ChapterOutline # Keep if Character is used later
-from ..common.utils import load_json_file, save_json_file, clean_text, validate_directory, load_outline_chapter_data
+from ..common.utils import load_json_file, save_json_file, validate_directory, load_outline_chapter_data
 # --- Import the correct prompt function ---
 from .. import prompts # Import the prompts module
 
@@ -20,18 +18,18 @@ class NovelFinalizer:
         self.content_model = content_model
         self.knowledge_base = knowledge_base
         self.output_dir = config.output_config["output_dir"]
-        
+
         # 验证并创建输出目录
         validate_directory(self.output_dir)
 
     def finalize_chapter(self, chapter_num: int, update_characters: bool = False, update_summary: bool = True) -> bool:
         """处理章节的定稿工作
-        
+
         Args:
             chapter_num: 要处理的章节号
             update_characters: 是否更新角色状态
             update_summary: 是否更新章节摘要
-            
+
         Returns:
             bool: 处理是否成功
         """
@@ -62,7 +60,7 @@ class NovelFinalizer:
             with open(chapter_file, 'r', encoding='utf-8') as f:
                 content = f.read()
             logger.debug(f"成功读取章节 {chapter_num} 内容，长度: {len(content)}")
-            
+
             # Generate/update summary
             if update_summary:
                 logger.info(f"开始更新第 {chapter_num} 章摘要...")
@@ -76,9 +74,9 @@ class NovelFinalizer:
                         return False
 
                 logger.info(f"第 {chapter_num} 章摘要更新成功。")
-            
+
             logging.info(f"第 {chapter_num} 章定稿完成")
-            
+
             # 新增：自动仿写功能
             if self._should_trigger_auto_imitation(chapter_num):
                 logger.info(f"章节号 {chapter_num} 触发自动仿写...")
@@ -99,14 +97,14 @@ class NovelFinalizer:
                     logger.info(f"第 {chapter_num} 章自动仿写完成")
                 else:
                     logger.warning(f"第 {chapter_num} 章自动仿写失败，但不影响定稿流程")
-            
+
             # 新增：定稿章节号为5的倍数时，自动更新sync_info.json（根据进度关系决定更新策略）
             if chapter_num % 5 == 0:
                 try:
                     # 检查当前进度，避免用历史章节覆盖最新进度
                     sync_info_file = os.path.join(self.output_dir, "sync_info.json")
                     current_progress = self._get_current_progress(sync_info_file)
-                    
+
                     if current_progress is None:
                         # 如果没有现有进度，直接更新
                         logger.info(f"章节号 {chapter_num} 为5的倍数，sync_info.json不存在或无进度记录，直接更新")
@@ -123,12 +121,12 @@ class NovelFinalizer:
                         logger.info(f"章节号 {chapter_num} 为5的倍数，且等于当前进度 {current_progress}，备份原同步信息后更新")
                         self._backup_sync_info(sync_info_file)
                         self._update_sync_info_for_finalize(chapter_num)
-                        
+
                 except Exception as sync_e:
                     logger.error(f"章节号 {chapter_num} 为5的倍数，但自动更新sync_info.json失败: {sync_e}", exc_info=True)
-            
+
             return True
-            
+
         except Exception as e:
             # Log the full traceback for unexpected errors
             logger.error(f"处理章节 {chapter_num} 定稿时发生意外错误: {str(e)}", exc_info=True)
@@ -241,23 +239,23 @@ class NovelFinalizer:
             imitation_config = getattr(self.config, 'imitation_config', {})
             if not imitation_config.get('enabled', False):
                 return False
-            
+
             auto_config = imitation_config.get('auto_imitation', {})
             if not auto_config.get('enabled', False):
                 return False
-            
+
             # 检查是否开启全局仿写
             trigger_all_chapters = auto_config.get('trigger_all_chapters', False)
             if trigger_all_chapters:
                 return True
-            
+
             # 兼容旧配置：检查章节号是否在触发列表中
             trigger_chapters = auto_config.get('trigger_chapters', [])
             if trigger_chapters:
                 return chapter_num in trigger_chapters
-            
+
             return False
-            
+
         except Exception as e:
             logger.error(f"检查自动仿写触发条件时出错: {e}")
             return False
@@ -267,64 +265,64 @@ class NovelFinalizer:
         try:
             imitation_config = getattr(self.config, 'imitation_config', {})
             auto_config = imitation_config.get('auto_imitation', {})
-            
+
             # 获取默认风格
             default_style_name = auto_config.get('default_style', '古风雅致')
             style_sources = auto_config.get('style_sources', [])
-            
+
             # 查找默认风格配置
             default_style = None
             for style in style_sources:
                 if style.get('name') == default_style_name:
                     default_style = style
                     break
-            
+
             if not default_style:
                 logger.error(f"未找到默认风格配置: {default_style_name}")
                 return False
-            
+
             # 读取风格源文件
             style_file_path = default_style.get('file_path')
             if not os.path.exists(style_file_path):
                 logger.error(f"风格源文件不存在: {style_file_path}")
                 return False
-            
+
             with open(style_file_path, 'r', encoding='utf-8') as f:
                 style_text = f.read()
-            
+
             # 构建临时知识库
             temp_kb_config = {
                 "chunk_size": 1200,
                 "chunk_overlap": 300,
                 "cache_dir": imitation_config.get('manual_imitation', {}).get('temp_kb_cache_dir', 'data/cache/imitation_cache')
             }
-            
+
             # 创建临时知识库（透传 reranker_config）
             temp_kb = self.knowledge_base.__class__(
                 temp_kb_config, self.knowledge_base.embedding_model,
                 reranker_config=getattr(self.knowledge_base, 'reranker_config', None)
             )
             temp_kb.build(style_text, force_rebuild=False)
-            
+
             # 检索风格范例
             style_examples = temp_kb.search(content, k=3)
-            
+
             # 生成仿写提示词
             extra_prompt = default_style.get('extra_prompt', '')
             prompt = prompts.get_imitation_prompt(content, style_examples, extra_prompt)
-            
+
             # 调用 imitation_model 生成仿写内容
             model = imitation_model if imitation_model is not None else self.content_model
             imitated_content = model.generate(prompt)
-            
+
             if not imitated_content or not imitated_content.strip():
-                logger.error(f"模型未能生成有效的仿写内容")
+                logger.error("模型未能生成有效的仿写内容")
                 return False
-            
+
             # 保存仿写结果
             output_suffix = auto_config.get('output_suffix', '_imitated')
             imitated_file = os.path.join(self.output_dir, f"第{chapter_num}章_{cleaned_title}{output_suffix}.txt")
-            
+
             # 如果需要备份原文件
             if auto_config.get('backup_original', True):
                 original_file = os.path.join(self.output_dir, f"第{chapter_num}章_{cleaned_title}.txt")
@@ -333,14 +331,14 @@ class NovelFinalizer:
                     import shutil
                     shutil.copy2(original_file, backup_file)
                     logger.info(f"已备份原文件到: {backup_file}")
-            
+
             # 保存仿写结果
             with open(imitated_file, 'w', encoding='utf-8') as f:
                 f.write(imitated_content)
-            
+
             logger.info(f"仿写结果已保存到: {imitated_file}")
             return True
-            
+
         except Exception as e:
             logger.error(f"执行自动仿写时出错: {e}", exc_info=True)
             return False
@@ -418,7 +416,7 @@ class NovelFinalizer:
             if current_chapter is not None:
                 return int(current_chapter)
             return None
-            
+
         except Exception as e:
             logger.warning(f"获取当前进度时出错: {e}")
             return None
@@ -429,16 +427,16 @@ class NovelFinalizer:
             if not os.path.exists(sync_info_file):
                 logger.warning(f"同步信息文件不存在，无需备份: {sync_info_file}")
                 return True
-            
+
             import time
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             backup_file = f"{sync_info_file}.backup_{timestamp}"
-            
+
             import shutil
             shutil.copy2(sync_info_file, backup_file)
             logger.info(f"已备份同步信息文件到: {backup_file}")
             return True
-            
+
         except Exception as e:
             logger.error(f"备份同步信息文件失败: {e}")
             return False
@@ -454,7 +452,7 @@ class NovelFinalizer:
             temp_content_gen._trigger_sync_info_update(self.content_model)
             logger.info(f"finalize模式已更新sync_info.json，最后更新章节: {chapter_num}")
             return True
-            
+
         except Exception as e:
             logger.error(f"finalize模式更新sync_info.json失败: {e}", exc_info=True)
             return False
@@ -464,27 +462,27 @@ if __name__ == "__main__":
     # 绝对导入，兼容直接运行
     from src.config.config import Config
     from src.models import ContentModel, KnowledgeBase
-    
+
     parser = argparse.ArgumentParser(description='处理小说章节的定稿工作')
     parser.add_argument('--config', type=str, required=True, help='配置文件路径')
     parser.add_argument('--chapter', type=int, required=True, help='要处理的章节号')
-    
+
     args = parser.parse_args()
-    
+
     # 加载配置
     config = Config(args.config)
-    
+
     # 初始化模型和知识库
     content_model = ContentModel(config)
     knowledge_base = KnowledgeBase(config)
-    
+
     # 创建定稿器
     finalizer = NovelFinalizer(config, content_model, knowledge_base)
-    
+
     # 处理定稿
     success = finalizer.finalize_chapter(args.chapter)
-    
+
     if success:
         print("章节定稿处理成功！")
     else:
-        print("章节定稿处理失败，请查看日志文件了解详细信息。") 
+        print("章节定稿处理失败，请查看日志文件了解详细信息。")

@@ -33,7 +33,7 @@ class OutlineModel(BaseModel):
         except Exception as e:
             logging.error(f"生成大纲时出错: {str(e)}")
             raise
-        
+
     def embed(self, text: str) -> np.ndarray:
         """获取文本嵌入向量"""
         return self.model.embed(text)
@@ -65,7 +65,7 @@ class ContentModel(BaseModel):
         except Exception as e:
             logging.error(f"生成内容时出错: {str(e)}")
             raise
-        
+
     def embed(self, text: str) -> np.ndarray:
         """获取文本嵌入向量"""
         return self.model.embed(text)
@@ -91,11 +91,11 @@ class EmbeddingModel(BaseModel):
     def generate(self, prompt: str, max_tokens: Optional[int] = None) -> str:
         """生成文本（不支持）"""
         raise NotImplementedError("EmbeddingModel不支持文本生成")
-        
+
     def embed(self, text: str) -> np.ndarray:
         """获取文本嵌入向量"""
         logging.info(f"使用模型 {self.model_name} 生成文本嵌入")
         return self.model.embed(text)
 
 # 导出所有模型类
-__all__ = ['BaseModel', 'OutlineModel', 'ContentModel', 'EmbeddingModel'] 
+__all__ = ['BaseModel', 'OutlineModel', 'ContentModel', 'EmbeddingModel']

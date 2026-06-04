@@ -1,7 +1,5 @@
 """后台流水线 Worker:在 QThread 中执行 auto 生成流程"""
 import os
-import sys
-import json
 import logging
 import threading
 from PySide6.QtCore import QThread, Signal, QCoreApplication

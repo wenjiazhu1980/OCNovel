@@ -3,7 +3,6 @@ import numpy as np
 import time
 import concurrent.futures
 from typing import Optional, Dict, Any
-from tenacity import retry, stop_after_attempt, wait_fixed
 from .base_model import BaseModel, truncate_prompt_preserving_ends
 import logging
 import os

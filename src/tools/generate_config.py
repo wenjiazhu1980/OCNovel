@@ -234,7 +234,7 @@ def generate_config_from_theme(theme_input, template_path="config.json.example",
 
         if filled_novel_config:
             config_data['novel_config'] = filled_novel_config
-            print(f"\n使用 LLM 生成的内容更新了 'novel_config'。")
+            print("\n使用 LLM 生成的内容更新了 'novel_config'。")
         else:
             print("\n未能从 LLM 获取有效的配置。将仅更新主题，其余保留模板值。")
             config_data['novel_config']['theme'] = theme_input
