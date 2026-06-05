@@ -259,6 +259,7 @@ class TestOutlineBatchRetry:
         # 关键：设置重试参数
         config.generation_config["outline_batch_max_retries"] = 3
         config.generation_config["outline_batch_retry_delay"] = 0  # 测试时不需要等待
+        config.generation_config["outline_gap_retry_delay"] = 0    # 补洞重试也不等待
         config.generation_config["outline_batch_size"] = 10
         config.generation_config["batch_size"] = 10
         return config
@@ -354,6 +355,9 @@ class TestOutlineBatchRetry:
         os.makedirs(output_dir, exist_ok=True)
         config = MockConfig(output_dir=output_dir)
         # 不设置 outline_batch_max_retries，应使用默认值 3（总尝试次数）
+        # 但需将所有重试延迟设为 0 避免测试中实际等待
+        config.generation_config["outline_batch_retry_delay"] = 0
+        config.generation_config["outline_gap_retry_delay"] = 0
         with open(os.path.join(output_dir, "outline.json"), "w", encoding="utf-8") as f:
             json.dump([], f)
 
