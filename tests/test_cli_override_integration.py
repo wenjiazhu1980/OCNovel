@@ -22,6 +22,9 @@ def test_cli_override():
 
     # 加载配置（使用项目根目录的配置文件）
     config_path = os.path.join(project_root, 'config.json')
+    if not os.path.exists(config_path):
+        import pytest
+        pytest.skip("缺少项目根目录 config.json（如 CI 环境），跳过集成测试")
     config = Config(config_path)
 
     print("\n1. 原始配置")
