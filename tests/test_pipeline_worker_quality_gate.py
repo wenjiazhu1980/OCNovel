@@ -152,3 +152,42 @@ class TestPipelineWorkerQualityGate:
         assert finished == [True]
         gate_spy.assert_not_called()
         mock_content.generate_content.assert_not_called()
+
+    def test_gate_skipped_in_target_chapters_mode(self, qapp, mock_config):
+        """指定章节重生成模式（target_chapters_list 非空）→ 跳过大纲质量闸门。
+
+        回归防护：质量闸门曾漏加 target_chapters_list 守卫，导致 GUI「重新生成 N 章」
+        会先跑整套大纲 LLM 复核（一堆短返回的 LLM 调用），既慢又非用户意图——
+        指定章节重生成时大纲早已存在，不应再复核全书大纲。
+        """
+        mock_config.novel_config["target_chapters"] = 3
+        mock_config.generation_config["outline_quality_gate_enabled"] = True
+        mock_ai_config, mock_outline, mock_content = _make_mocks(3)
+        mock_content.generate_content.return_value = True
+
+        # 闸门若被调用会判 not passed；正确行为是指定章节模式下根本不调用它
+        gate_spy = MagicMock(return_value=QualityGateResult(
+            passed=False, initial_fatal=2, remaining_fatal=2, rounds_run=1, revised=False))
+        patches = _patch_pipeline(mock_config, mock_ai_config, mock_outline, mock_content)
+        patches.append(patch(
+            "src.generators.outline.outline_quality_gate.run_quality_gate_for_pipeline",
+            gate_spy,
+        ))
+
+        # 指定章节模式：重生成第 2 章
+        from src.gui.workers.pipeline_worker import PipelineWorker
+        worker = PipelineWorker(config_path="dummy.json", env_path="dummy.env",
+                                target_chapters_list=[2])
+        finished = []
+        worker.pipeline_finished.connect(lambda ok: finished.append(ok))
+        for p in patches:
+            p.start()
+        try:
+            worker.run()
+        finally:
+            for p in patches:
+                p.stop()
+
+        gate_spy.assert_not_called()                          # 闸门被跳过
+        assert mock_content.generate_content.call_count == 1  # 只生成第 2 章
+        assert finished == [True]
