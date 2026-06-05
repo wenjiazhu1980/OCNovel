@@ -22,6 +22,36 @@ from src.generators.common.data_structures import ChapterOutline, NovelOutline, 
 
 
 # ---------------------------------------------------------------------------
+# PySide6 缺失时自动跳过依赖它的 GUI 测试
+# ---------------------------------------------------------------------------
+# CI 为减小体积故意不安装 PySide6（见 .github/workflows/ci.yml），但部分测试经
+# src.gui.* 链式 import PySide6，收集阶段就会 ImportError 让整个 test job 失败。
+# 这里在 PySide6 缺失时用源码扫描自动把依赖它的测试加入 collect_ignore（跳过收集），
+# 避免硬编码清单——未来新增 GUI 测试无需改这里；本地装了 PySide6 则照常全跑。
+import pathlib
+
+
+def _pyside6_available() -> bool:
+    try:
+        import PySide6  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+collect_ignore = []
+if not _pyside6_available():
+    _tests_dir = pathlib.Path(__file__).parent
+    for _test_file in _tests_dir.glob("test_*.py"):
+        try:
+            _source = _test_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if "PySide6" in _source or "src.gui" in _source:
+            collect_ignore.append(_test_file.name)
+
+
+# ---------------------------------------------------------------------------
 # Mock Model
 # ---------------------------------------------------------------------------
 class MockModel:
