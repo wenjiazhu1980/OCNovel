@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from dataclasses import asdict
 from src.generators.content.content_generator import ContentGenerator
 from src.generators.common.data_structures import ChapterOutline
+from src.generators.prompts import get_chapter_prompt
 
 
 class TestContentGenerator:
@@ -162,6 +163,85 @@ class TestContentGenerator:
 
         assert success is False
         assert mock_generate.call_count == 4
+
+    def test_stale_zero_progress_sync_info_not_injected_into_chapter_prompt(
+        self, mock_config, mock_content_model, mock_kb, output_dir_with_outline
+    ):
+        """正文进度为 0 时，历史残留 sync_info 不应污染第 1 章 prompt。"""
+        sync_file = os.path.join(output_dir_with_outline, "sync_info.json")
+        stale_marker = "STALE_SYNC_INFO_MARKER"
+        with open(sync_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "最后更新章节": 0,
+                "剧情发展": {"主线梗概": stale_marker * 5000},
+                "世界观": {},
+                "人物设定": {"人物信息": []},
+            }, f, ensure_ascii=False)
+
+        gen = ContentGenerator(mock_config, mock_content_model, mock_kb)
+        gen._load_outline()
+        content = gen._generate_chapter_content(gen.chapter_outlines[0])
+
+        prompt = mock_content_model.generate.call_args.args[0]
+        assert content
+        assert stale_marker not in prompt
+        assert len(prompt) < 50000
+
+    def test_future_sync_info_not_injected_when_regenerating_earlier_chapter(
+        self, mock_config, mock_content_model, mock_kb, output_dir_with_outline
+    ):
+        """同步信息进度不早于目标章节时，跳过注入以避免未来上下文污染。"""
+        sync_file = os.path.join(output_dir_with_outline, "sync_info.json")
+        with open(sync_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "最后更新章节": 5,
+                "剧情发展": {"主线梗概": "第5章之后的未来剧情"},
+                "世界观": {},
+                "人物设定": {"人物信息": []},
+            }, f, ensure_ascii=False)
+
+        gen = ContentGenerator(mock_config, mock_content_model, mock_kb)
+
+        assert gen._load_sync_info_for_prompt(5) == {}
+
+    def test_valid_sync_info_for_prompt_is_compacted(
+        self, mock_config, mock_content_model, mock_kb, output_dir_with_outline
+    ):
+        """有效同步信息可注入，但必须被压缩到 prompt 专用预算内。"""
+        mock_config.generation_config["sync_info_prompt_max_length"] = 2000
+        sync_file = os.path.join(output_dir_with_outline, "sync_info.json")
+        with open(sync_file, "w", encoding="utf-8") as f:
+            json.dump({
+                "最后更新章节": 5,
+                "剧情发展": {
+                    "主线梗概": "主线" * 5000,
+                    "重要事件": [f"事件{i}-" + ("细节" * 200) for i in range(40)],
+                    "进行中冲突": ["冲突" * 200 for _ in range(20)],
+                    "悬念伏笔": ["伏笔" * 200 for _ in range(20)],
+                },
+                "世界观": {"世界背景": ["背景" * 500]},
+                "人物设定": {
+                    "人物信息": [
+                        {"名称": f"角色{i}", "身份": "身份" * 200, "特点": "特点" * 200}
+                        for i in range(50)
+                    ]
+                },
+            }, f, ensure_ascii=False)
+
+        gen = ContentGenerator(mock_config, mock_content_model, mock_kb)
+        compacted = gen._load_sync_info_for_prompt(6)
+        serialized = json.dumps(compacted, ensure_ascii=False)
+
+        assert compacted
+        assert compacted["最后更新章节"] == 5
+        assert len(serialized) <= 2000
+        assert all(isinstance(item, dict) for item in compacted["人物设定"]["人物信息"])
+        prompt = get_chapter_prompt(
+            outline={"chapter_number": 6, "title": "第6章"},
+            references={},
+            sync_info=compacted,
+        )
+        assert "人物现状" in prompt
 
 
 class TestContentGeneratorChapterSave:

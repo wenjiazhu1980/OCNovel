@@ -3,9 +3,13 @@
 测试模型基类模块 - BaseModel
 """
 
-import pytest
 import numpy as np
-from src.models.base_model import BaseModel, truncate_prompt_preserving_ends
+import pytest
+from src.models.base_model import (
+    BaseModel,
+    DEFAULT_MAX_PROMPT_LENGTH,
+    truncate_prompt_preserving_ends,
+)
 
 
 class ConcreteModel(BaseModel):
@@ -70,6 +74,9 @@ class TestBaseModel:
 class TestTruncatePromptPreservingEnds:
     """保首尾智能截断：超长 prompt 保留头部指令与尾部输出格式，省略中间。"""
 
+    def test_default_max_prompt_length_is_190000(self):
+        assert DEFAULT_MAX_PROMPT_LENGTH == 190000
+
     def test_short_prompt_unchanged(self):
         p = "短内容不需要截断"
         assert truncate_prompt_preserving_ends(p, 1000) == p
@@ -90,8 +97,8 @@ class TestTruncatePromptPreservingEnds:
         assert "省略" in out
 
     def test_respects_max_length(self):
-        out = truncate_prompt_preserving_ends("x" * 100000, 65536)
-        assert len(out) <= 65536
+        out = truncate_prompt_preserving_ends("x" * 200000, DEFAULT_MAX_PROMPT_LENGTH)
+        assert len(out) <= DEFAULT_MAX_PROMPT_LENGTH
 
     def test_tiny_max_falls_back_to_head(self):
         out = truncate_prompt_preserving_ends("y" * 1000, 20)

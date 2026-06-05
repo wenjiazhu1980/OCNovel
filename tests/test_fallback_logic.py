@@ -274,6 +274,11 @@ class TestGeminiModelFallbackConfig:
             model = self._make_gemini_model({"model_name": model_name})
             assert model.fallback_model_name == "Qwen/Qwen2.5-7B-Instruct"
 
+    def test_default_max_input_length_remains_500000(self):
+        """Gemini 默认输入长度保持 500000，不跟随通用 prompt 上限。"""
+        model = self._make_gemini_model()
+        assert model.max_input_length == 500000
+
     def test_fallback_disabled(self):
         """fallback_enabled=False 时禁用备用模型"""
         model = self._make_gemini_model({"fallback_enabled": False})

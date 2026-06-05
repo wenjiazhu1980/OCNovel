@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 import numpy as np
 from typing import Optional, Dict, Any
 
+DEFAULT_MAX_PROMPT_LENGTH = 190000
+
+
 class BaseModel(ABC):
     """AI模型基础接口类"""
 

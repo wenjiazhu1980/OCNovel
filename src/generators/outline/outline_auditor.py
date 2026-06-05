@@ -475,6 +475,16 @@ _IDENTITY_CANON = {
     "警官": "警察", "刑警": "警察", "捕快": "警察",
     "教师": "老师", "教授": "老师",
 }
+_IDENTITY_NOTE_SPLIT_RE = re.compile(r"——|--|[，,。；;、]")
+_IDENTITY_ACTION_PREFIX_RE = re.compile(
+    r"^(本章核心|侧写|补充分析|"
+    r"在|从|将|把|对|为|与|因|率|亲自|"
+    r"执行|设计|发现|分析|决定|面对|追回|记录|允许|提出|宣布|下令|"
+    r"接到|得知|巡视|做出|选择|抓捕|供述|展开|转述|确认|总结|观察|"
+    r"处理|研发|主动|私下|夜间|清晨|午后|傍晚|深夜|完成|开始|继续|"
+    r"透露|解释|感谢|告知|签订|试制)"
+)
+_IDENTITY_CONTEXT_SUFFIX = ("铺", "坊", "工具", "技艺", "工坊", "器械", "农具")
 
 
 def _canon_identity(word: str) -> str:
@@ -485,6 +495,32 @@ def _paren_note(raw: str) -> str:
     """提取角色条目的括号注释内容。'张铁柱（退休老刑警）' → '退休老刑警'。"""
     m = re.search(r"[（(](.*?)[）)]", raw or "")
     return m.group(1) if m else ""
+
+
+def _extract_identity_from_note(note: str) -> List[str]:
+    """从角色括号注释中提取可信身份词。
+
+    仅把括号开头的短身份描述视为身份源，避免把长叙述中提到的其他人物、
+    场景或道具误绑定到当前角色，例如“马平（追回陈木匠...）”不能判成
+    “马平=木匠”，“陈渊（...比士兵好用...）”也不能判成“陈渊=士兵”。
+    """
+    first = _IDENTITY_NOTE_SPLIT_RE.split(note or "", maxsplit=1)[0].strip()
+    if not first or len(first) > 24 or _IDENTITY_ACTION_PREFIX_RE.match(first):
+        return []
+
+    identities: List[str] = []
+    for word in _IDENTITY_WORDS:
+        start = 0
+        while True:
+            idx = first.find(word, start)
+            if idx < 0:
+                break
+            suffix = first[idx + len(word):]
+            if not any(suffix.startswith(item) for item in _IDENTITY_CONTEXT_SUFFIX):
+                identities.append(_canon_identity(word))
+                break
+            start = idx + len(word)
+    return sorted(set(identities))
 
 
 def audit_identity(chapters: List[dict]) -> List[Finding]:
@@ -503,14 +539,22 @@ def audit_identity(chapters: List[dict]) -> List[Finding]:
             note = _paren_note(raw)
             if not nm or not note:
                 continue
-            for w in _IDENTITY_WORDS:
-                if w in note:
-                    name2ids.setdefault(nm, {}).setdefault(
-                        _canon_identity(w), set()).add(n)
+            for identity in _extract_identity_from_note(note):
+                name2ids.setdefault(nm, {}).setdefault(identity, set()).add(n)
 
     findings: List[Finding] = []
     for nm, idmap in sorted(name2ids.items()):
         if len(idmap) >= 2:
+            identities = [
+                {"identity": ident, "chapters": sorted(chs)}
+                for ident, chs in sorted(idmap.items(), key=lambda kv: min(kv[1]))
+            ]
+            target_chapters = sorted({
+                n
+                for chs in idmap.values()
+                for n in chs
+                if isinstance(n, int)
+            })
             parts = [
                 f"{ident}(第{min(chs)}章)"
                 for ident, chs in sorted(idmap.items(), key=lambda kv: min(kv[1]))
@@ -519,11 +563,17 @@ def audit_identity(chapters: List[dict]) -> List[Finding]:
                 rule_id="O4",
                 severity="fatal",
                 title="人物身份一致性",
-                chapter=None,
+                chapter=target_chapters[0] if target_chapters else None,
                 message=(
                     f"角色『{nm}』在不同章节被赋予互斥身份：{'、'.join(parts)}，"
                     f"疑似重名冲突或人设漂移"
                 ),
+                evidence={
+                    "character_name": nm,
+                    "conflicting_identities": identities,
+                    "target_chapters": target_chapters,
+                    "candidate_chapters": target_chapters,
+                },
             ))
     return findings
 

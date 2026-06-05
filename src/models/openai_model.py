@@ -4,7 +4,7 @@ import time
 import concurrent.futures
 from typing import Optional, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_fixed
-from .base_model import BaseModel, truncate_prompt_preserving_ends
+from .base_model import BaseModel, DEFAULT_MAX_PROMPT_LENGTH, truncate_prompt_preserving_ends
 from .openai_compat_mixin import OpenAICompatMixin
 import logging
 import json
@@ -332,7 +332,7 @@ class OpenAIModel(OpenAICompatMixin, BaseModel):
         """使用网络管理客户端进行文本生成"""
         try:
             # 如果提示词太长，保留首尾截断（避免砍掉尾部的输出格式等关键信息）
-            max_prompt_length = 65536  # 设置最大提示词长度
+            max_prompt_length = DEFAULT_MAX_PROMPT_LENGTH  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
                 original_length = len(prompt)
                 prompt = truncate_prompt_preserving_ends(prompt, max_prompt_length)
@@ -520,7 +520,7 @@ class OpenAIModel(OpenAICompatMixin, BaseModel):
         # 回退到原始实现
         try:
             # 如果提示词太长，保留首尾截断（避免砍掉尾部的输出格式等关键信息）
-            max_prompt_length = 65536  # 设置最大提示词长度
+            max_prompt_length = DEFAULT_MAX_PROMPT_LENGTH  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
                 original_length = len(prompt)
                 prompt = truncate_prompt_preserving_ends(prompt, max_prompt_length)

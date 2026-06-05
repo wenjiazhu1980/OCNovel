@@ -21,8 +21,8 @@ REVISION_MAX_FINDINGS_PER_CALL = 8
 REVISION_MAX_CONTEXT_CANDIDATES_PER_FINDING = 8
 REVISION_TEXT_LIMIT = 700
 REVISION_LIST_LIMIT = 10
-# _build_revision_prompt 目标字符上限，刻意小于模型层 65536 硬截断，留余量给
-# 数组缩进与省略标注，避免上下文累加撑爆 prompt 导致尾部 [输出格式] 被砍掉。
+# _build_revision_prompt 内部保守字符预算，留余量给数组缩进与省略标注，
+# 避免上下文累加撑爆 prompt 导致尾部 [输出格式] 被砍掉。
 REVISION_PROMPT_CHAR_BUDGET = 58000
 
 _ALLOWED_FIELDS = {
@@ -40,6 +40,7 @@ _ALLOWED_FIELDS = {
 _LIST_FIELDS = {"key_points", "characters", "settings", "conflicts", "scene_sequence", "foreshadowing"}
 _DICT_FIELDS = {"character_goals"}
 _STRING_FIELDS = {"title", "emotion_tone", "pov_character"}
+_CHAPTER_REF_RE = re.compile(r"第\s*(\d+)\s*章")
 
 
 @dataclass
@@ -92,6 +93,19 @@ def _finding_ref(finding: dict) -> str:
     return f"{rule}@{chapter}: {message}"
 
 
+def _message_chapter_numbers(finding: dict, max_chapter: int) -> List[int]:
+    """兼容旧审计报告：从 message 中提取“第 N 章”作为可修订上下文。"""
+    nums = set()
+    for match in _CHAPTER_REF_RE.finditer(str(finding.get("message", ""))):
+        try:
+            n = int(match.group(1))
+        except ValueError:
+            continue
+        if 1 <= n <= max_chapter:
+            nums.add(n)
+    return sorted(nums)
+
+
 def select_actionable_findings(
     audit_report: dict,
     severities: Sequence[str] = ("fatal",),
@@ -128,7 +142,13 @@ def _context_chapter_numbers(findings: Iterable[dict], max_chapter: int) -> Tupl
                     core.add(n)
             if 1 <= chapter + 2 <= max_chapter:
                 extra.add(chapter + 2)
+        for n in _message_chapter_numbers(finding, max_chapter):
+            core.add(n)
         evidence = finding.get("evidence") or {}
+        for key in ("target_chapters", "affected_chapters"):
+            for n in list(evidence.get(key, []) or []):
+                if isinstance(n, int) and 1 <= n <= max_chapter:
+                    core.add(n)
         for key in ("candidate_chapters", "sample_occurrences"):
             values = list(evidence.get(key, []) or [])
             if key == "candidate_chapters":
@@ -206,8 +226,9 @@ def _build_revision_prompt(chapters: List[dict], findings: List[dict]) -> str:
 1. 只修订能直接解决 fatal 问题的章节；不要重写整本大纲。
 2. 如果任务/伏笔其实已在上下文中闭环，优先补充明确的“任务完成/回收/收口”表述，而不是新增大事件。
 3. 如果确实缺少闭环，请在最合适的现有章节中补上收束动作、后果或 foreshadowing 回收项。
-4. 保持章节号不变，保持未涉及字段不变。
-5. 只输出 JSON，不要输出解释性文字。
+4. 对 O4 人物身份一致性问题，优先修订 affected/target 章节的 characters 字段：同一角色人设漂移时统一身份；确为不同人物重名时改名或加可区分称谓，并同步修订 key_points/scene_sequence 中直接引用的名称。
+5. 保持章节号不变，保持未涉及字段不变。
+6. 只输出 JSON，不要输出解释性文字。
 
 输出格式：
 {{
@@ -232,7 +253,7 @@ def _build_revision_prompt(chapters: List[dict], findings: List[dict]) -> str:
 """
 
     # 上下文章节受字符预算约束：core（修订目标）优先纳入，extra（背景）次之，
-    # 超预算的章节省略并在末尾标注，确保整体 prompt 落在模型层硬截断线内。
+    # 超预算的章节省略并在末尾标注，确保整体 prompt 落在内部保守预算内。
     budget = REVISION_PROMPT_CHAR_BUDGET - len(header)
     selected: List[Tuple[int, dict]] = []
     used = 0

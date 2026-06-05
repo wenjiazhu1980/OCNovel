@@ -13,6 +13,7 @@
 """
 
 import json
+from dataclasses import asdict
 from unittest.mock import MagicMock
 
 from src.generators.outline.outline_quality_gate import (
@@ -245,6 +246,59 @@ def test_pipeline_gate_reloads_outline_when_revised(monkeypatch):
 
     assert cg.load_calls == 1
     assert result.passed is False
+
+
+def test_pipeline_gate_revises_o4_audit_fatal_and_reloads_outline(tmp_path):
+    """auto 共用入口应按 O4 审计结果修订 outline.json，并让流水线使用重载后的大纲。"""
+    from src.generators.outline import outline_quality_gate as qg
+
+    chapters = [
+        ChapterOutline(
+            1, "第一章", ["老王在医馆救人。"], ["老王（医生）"], ["医馆"], ["伤患危急"]
+        ),
+        ChapterOutline(
+            5, "第五章", ["老王继续以医生身份调查疫病。"], ["老王（刑警）"], ["县衙"], ["疫病未明"]
+        ),
+    ]
+    outline_path = tmp_path / "outline.json"
+    outline_path.write_text(
+        json.dumps([asdict(ch) for ch in chapters], ensure_ascii=False),
+        encoding="utf-8",
+    )
+    cg = _FakeContentGen(chapters)
+    model = MagicMock()
+    model.generate.return_value = json.dumps({
+        "summary": "统一老王身份为医生",
+        "revisions": [{
+            "chapter_number": 5,
+            "reason": "O4 审计发现老王身份漂移，按上下文统一为医生",
+            "finding_refs": ["O4@1"],
+            "fields": {
+                "characters": ["老王（医生）"],
+                "key_points": ["老王继续以医生身份调查疫病。"],
+            },
+        }],
+    }, ensure_ascii=False)
+
+    result = qg.run_quality_gate_for_pipeline(
+        _fake_config(enabled=True, llm=False, rounds=1, output_dir=str(tmp_path)),
+        cg,
+        model,
+    )
+
+    updated = json.loads(outline_path.read_text(encoding="utf-8"))
+    report = json.loads((tmp_path / qg.REPORT_FILENAME).read_text(encoding="utf-8"))
+
+    assert result.passed is True
+    assert result.initial_fatal == 1
+    assert result.remaining_fatal == 0
+    assert result.revised is True
+    assert result.changed_chapters == [5]
+    assert cg.load_calls == 1
+    assert updated[1]["characters"] == ["老王（医生）"]
+    assert report["passed"] is True
+    assert report["remaining_fatal"] == 0
+    assert list(tmp_path.glob("outline.json.bak.*"))
 
 
 def test_pipeline_gate_no_reload_when_not_revised(monkeypatch):

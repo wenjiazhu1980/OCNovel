@@ -28,6 +28,7 @@ from tools.audit_outline import (  # noqa: E402
     llm_review_task_closure_with_stats,
     merge_llm_task_review_findings,
 )
+from src.generators.outline.outline_auditor import AUDIT_LLM_PROMPT_MAX_CHARS  # noqa: E402
 
 
 def _ch(n, **kw):
@@ -273,6 +274,24 @@ class TestO4Identity:
         findings = audit_identity(chapters)
         assert any(f.rule_id == "O4" and "老王" in f.message for f in findings)
 
+    def test_identity_conflict_contains_revision_evidence(self):
+        chapters = [
+            _ch(1, characters=["老王（镇上的医生）"]),
+            _ch(5, characters=["老王（潜伏的刑警）"]),
+        ]
+        findings = audit_identity(chapters)
+
+        target = next(f for f in findings if f.rule_id == "O4" and "老王" in f.message)
+
+        assert target.chapter == 1
+        assert target.evidence["character_name"] == "老王"
+        assert target.evidence["target_chapters"] == [1, 5]
+        assert target.evidence["candidate_chapters"] == [1, 5]
+        assert target.evidence["conflicting_identities"] == [
+            {"identity": "医生", "chapters": [1]},
+            {"identity": "警察", "chapters": [5]},
+        ]
+
     def test_no_flag_consistent_identity(self):
         chapters = [
             _ch(1, characters=["老王（医生）"]),
@@ -299,6 +318,37 @@ class TestO4Identity:
         ]
         findings = audit_identity(chapters)
         assert not any(f.rule_id == "O4" and "张铁柱" in f.message for f in findings)
+
+    def test_ignores_identity_words_inside_narrative_character_notes(self):
+        # characters 括号内常是长叙述，提到其他人/职业/道具时不能绑定到当前角色。
+        chapters = [
+            _ch(1, characters=[
+                "马平（追回陈木匠，克制杀意将人带回）",
+                "陈渊（巡视窑场后判断陶罐巷战价值——'比士兵好用'）",
+                "田七（在粮棚外被抓——他与第119章那个木匠判若两人）",
+            ]),
+            _ch(2, characters=[
+                "马平（年轻士兵）",
+                "陈渊（退役将军）",
+                "田七（铁匠）",
+            ]),
+        ]
+
+        findings = audit_identity(chapters)
+
+        assert not any(f.rule_id == "O4" and "马平" in f.message for f in findings)
+        assert not any(f.rule_id == "O4" and "陈渊" in f.message for f in findings)
+        assert not any(f.rule_id == "O4" and "田七" in f.message for f in findings)
+
+    def test_ignores_workplace_mentions_as_identity(self):
+        chapters = [
+            _ch(1, characters=["老范（铁匠铺首任管事）"]),
+            _ch(2, characters=["老范（退役士兵）"]),
+        ]
+
+        findings = audit_identity(chapters)
+
+        assert not any(f.rule_id == "O4" and "老范" in f.message for f in findings)
 
 
 class TestO5RecoveryRate:
@@ -481,7 +531,7 @@ class TestLLMReview:
         result = llm_review_task_closure_with_stats(chapters, model)
 
         prompt = model.generate.call_args.args[0]
-        assert len(prompt) < 65536
+        assert len(prompt) <= AUDIT_LLM_PROMPT_MAX_CHARS
         assert result.stats["candidate_completion_chapters"] > result.stats["candidate_completion_chapters_sent"]
         assert result.stats["candidate_completion_chapters_omitted"] > 0
         assert "已省略" in prompt

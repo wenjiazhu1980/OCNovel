@@ -3,7 +3,7 @@ import numpy as np
 import time
 import concurrent.futures
 from typing import Optional, Dict, Any
-from .base_model import BaseModel, truncate_prompt_preserving_ends
+from .base_model import BaseModel, DEFAULT_MAX_PROMPT_LENGTH, truncate_prompt_preserving_ends
 import logging
 import os
 
@@ -200,7 +200,7 @@ class ClaudeModel(BaseModel):
 
         try:
             # 如果提示词太长，保留首尾截断（避免砍掉尾部的输出格式等关键信息）
-            max_prompt_length = 180000  # Claude 支持更长的上下文
+            max_prompt_length = DEFAULT_MAX_PROMPT_LENGTH  # 设置最大提示词长度
             if len(prompt) > max_prompt_length:
                 original_length = len(prompt)
                 prompt = truncate_prompt_preserving_ends(prompt, max_prompt_length)

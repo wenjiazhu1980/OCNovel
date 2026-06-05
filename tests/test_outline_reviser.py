@@ -5,6 +5,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from src.generators.outline.outline_reviser import (
+    REVISION_PROMPT_CHAR_BUDGET,
     _build_revision_prompt,
     apply_revisions,
     parse_revision_response,
@@ -13,6 +14,9 @@ from src.generators.outline.outline_reviser import (
     select_actionable_findings,
 )
 from tools.revise_outline_from_audit import main as revise_cli_main
+
+
+REVISION_PROMPT_TEST_MAX = REVISION_PROMPT_CHAR_BUDGET + 8192
 
 
 def _chapters():
@@ -141,7 +145,7 @@ def test_revise_outline_batches_large_audit_prompt_under_model_limit():
     assert result.stats["revision_batches"] == 3
     assert model.generate.call_count == 3
     for call in model.generate.call_args_list:
-        assert len(call.args[0]) < 65536
+        assert len(call.args[0]) <= REVISION_PROMPT_TEST_MAX
         assert call.kwargs["temperature"] == 0
 
 
@@ -229,11 +233,11 @@ def _large_outline(n=200):
 
 
 def test_build_revision_prompt_respects_char_budget_with_many_fatal():
-    """大量 fatal（上下文章节累加爆炸）时 prompt 不应超过模型层 65536 硬截断。
+    """大量 fatal（上下文章节累加爆炸）时 prompt 不应超过修订器内部保守上限。
 
     回归：400 章规模下 7 个 O3-LLM fatal 累加上下文达 59 章，prompt 撑到 ~90K，
     被 openai_model 砍尾部 27%，恰好丢掉末尾 [输出格式] 说明 → 修订响应无法解析。
-    修复后 context 受字符预算约束、输出格式前置，prompt 落在硬截断线内且核心章节保留。
+    修复后 context 受字符预算约束、输出格式前置，prompt 落在保守上限内且核心章节保留。
     """
     chapters = _large_outline(200)
     core_chapters = [10, 35, 60, 85, 110, 135, 160, 185]
@@ -250,8 +254,8 @@ def test_build_revision_prompt_respects_char_budget_with_many_fatal():
 
     prompt = _build_revision_prompt(chapters, findings)
 
-    # 不触发模型层 65536 硬截断
-    assert len(prompt) <= 65536, f"prompt 长度 {len(prompt)} 仍超过硬截断线"
+    # 核心章节会优先保留，整体长度允许略高于上下文预算，但仍需落在保守上限内。
+    assert len(prompt) <= REVISION_PROMPT_TEST_MAX, f"prompt 长度 {len(prompt)} 仍超过内部保守上限"
     # 关键指令与输出格式不被丢弃（截断曾砍掉这块）
     assert "输出格式" in prompt
     assert '"summary"' in prompt
@@ -272,6 +276,39 @@ def test_build_revision_prompt_small_input_unchanged_behavior():
 
     prompt = _build_revision_prompt(chapters, findings)
 
-    assert len(prompt) <= 65536
+    assert len(prompt) <= REVISION_PROMPT_CHAR_BUDGET
     assert "输出格式" in prompt
     assert '"chapter_number": 3' in prompt
+
+
+def test_build_revision_prompt_uses_o4_message_chapter_refs_for_legacy_reports():
+    """旧版 O4 报告没有 evidence/chapter 时，仍应从 message 中抽取上下文章节。"""
+    chapters = [
+        {
+            "chapter_number": 67,
+            "title": "第67章",
+            "key_points": ["陈渊在铁匠铺处理兵器。"],
+            "characters": ["陈渊（铁匠）"],
+            "scene_sequence": ["铁匠铺"],
+        },
+        {
+            "chapter_number": 87,
+            "title": "第87章",
+            "key_points": ["陈渊作为士兵参与守城。"],
+            "characters": ["陈渊（士兵）"],
+            "scene_sequence": ["城墙"],
+        },
+    ]
+    findings = [{
+        "rule": "O4",
+        "severity": "fatal",
+        "chapter": None,
+        "message": "角色『陈渊』在不同章节被赋予互斥身份：铁匠(第67章)、士兵(第87章)，疑似重名冲突或人设漂移",
+    }]
+
+    prompt = _build_revision_prompt(chapters, findings)
+
+    assert "O4 人物身份一致性" in prompt
+    assert "characters 字段" in prompt
+    assert '"chapter_number": 67' in prompt
+    assert '"chapter_number": 87' in prompt

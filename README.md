@@ -12,10 +12,10 @@
 
 | 平台 | 下载链接 | 当前最新 |
 |------|----------|----------|
-| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.22 |
-| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.22 |
+| macOS (Apple Silicon) | [OCNovel-macOS-arm64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-macOS-arm64.zip) | v1.0.24 |
+| Windows (x64) | [OCNovel-Windows-x64.zip](https://github.com/wenjiazhu1980/OCNovel/releases/latest/download/OCNovel-Windows-x64.zip) | v1.0.24 |
 
-> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu1980/OCNovel/releases)  ·  本次发布：[v1.0.22](https://github.com/wenjiazhu1980/OCNovel/releases/tag/v1.0.22)
+> 历史版本与更新日志：[Releases 页面](https://github.com/wenjiazhu1980/OCNovel/releases)  ·  本次发布：[v1.0.24](https://github.com/wenjiazhu1980/OCNovel/releases/tag/v1.0.24)
 
 > **macOS 用户首次启动**：因应用未经 Apple 公证（Apple Developer Program 收费 $99/年），
 > 解压后请在终端执行一次以下命令清除 quarantine 标记：
@@ -200,7 +200,7 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 
 - **模型配置** — 管理 Claude / Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL、模型名称，支持一键测试连接
 - **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
-- **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写
+- **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写；可单独「重新生成指定章节」、「仅生成大纲」、运行「大纲审计复核」与「修订大纲」、一键合并所有章节并生成营销内容
 
 ### 国际化支持
 
@@ -238,6 +238,8 @@ pyinstaller ocnovel_win.spec --clean
 - **生成流水线** — outline → content → finalize，通过 `auto` 命令串联
 - **知识库** — 文本分块 → 嵌入向量 → FAISS 检索 → Reranker API 精排
 - **重试/备用** — tenacity 重试 + 备用模型自动切换
+- **大纲质量保障** — 全书大纲生成后跑跨章审计（O1-O5：伏笔闭环 / 实体收口 / 任务闭环 / 人物身份 / 回收率，算法初筛 + 可选 LLM 语义复核）；`auto` 流程含阻断式质量闸门，有致命问题自动修订重审、仍不过则中止不进正文
+- **情绪节奏** — `arc_config` 支持卷内 6 阶段螺旋情绪节奏（成长→挫折→绝境→爆发→跌落→新局），可按总章数自动推算最优分卷以对齐 25%/50%/75% 灾难锚点
 
 ## 支持的 AI 模型
 
@@ -270,6 +272,11 @@ pyinstaller ocnovel_win.spec --clean
 | `output_config`        | 输出格式、编码、输出目录、合并分卷阈值（`max_volume_size_mb` 默认 2MB，超过自动按章节边界分卷，便于导入作家助手等写作软件） |
 | `imitation_config`     | 仿写开关、风格源列表、质量控制参数                                                                 |
 
+> **近期新增配置**：
+> - `novel_config.arc_config` — 卷内 6 阶段螺旋情绪节奏（`chapters_per_arc` 启用 / `auto_compute` 按总章数自动推算分卷，对齐 25%/50%/75% 灾难锚点）
+> - `generation_config.outline_audit_enabled` — 全书大纲生成后跑只读全局审计（O1-O5：伏笔/事件线/人物身份），落盘 `outline_audit_report.json`
+> - `generation_config.outline_quality_gate_enabled` — `auto` 流程阻断式质量闸门（算法审计 + LLM 复核 → 有致命问题自动修订重审 → 仍不过则中止、不进正文）
+
 ## 环境要求
 
 - Python 3.9+
@@ -289,9 +296,16 @@ python -m pytest tests/ -q --tb=short
 # 单文件 / 单用例
 python -m pytest tests/test_translator_h2.py -v
 python -m pytest tests/test_outline_generator.py::TestSpecificCase -v
+
+# 代码风格检查（与 GitHub Actions CI 一致，规则见 ruff.toml）
+ruff check src/ --select E,F,W --ignore E501
 ```
 
 测试约定与 fixture 说明详见 [`tests/README.md`](tests/README.md)。
+
+> 推送到 GitHub 后由 GitHub Actions 自动跑 lint + 测试；CI 为减体积不安装 PySide6，依赖它的 GUI 测试会自动跳过（见 `tests/conftest.py`）。
+
+辅助工具（`tools/`）：`audit_outline.py`（全局大纲审计，可加 `--llm` 语义复核）、`recommend_arc_size.py`（推荐情绪节奏分卷数）、`fill_outline_gaps.py`（补全大纲缺失槽位）、`backfill_emotion_tone.py`（为既有大纲回填情绪阶段占位）。
 
 ## 常见问题 (FAQ)
 

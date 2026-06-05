@@ -84,6 +84,25 @@ The architecture allows dynamic switching, fallback, and hybrid usage.
 
 ------
 
+### 6. Outline Audit & Blocking Quality Gate
+
+OCNovel validates the **global outline** before any chapter is written:
+
+- Cross-chapter audit (O1–O5): foreshadowing closure, entity resolution, task/arc closure, character-identity consistency, and recovery rate
+- Algorithmic high-recall screening + optional LLM semantic adjudication (to catch false closures caused by motif reuse)
+- In the `auto` pipeline a **blocking quality gate** auto-revises the outline on fatal issues and re-audits; if fatals remain, generation is halted before any chapter is produced
+
+------
+
+### 7. Emotion-arc Pacing
+
+Per-volume **6-stage spiral emotional rhythm** (growth → setback → desperation → outbreak → fall → new beginning):
+
+- Configurable via `arc_config`; can auto-derive the optimal number of volumes from the total chapter count
+- Aligns the 25% / 50% / 75% disaster anchors with each volume's setback / desperation / fall phases
+
+------
+
 ## System Architecture
 
 ```

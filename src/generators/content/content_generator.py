@@ -413,7 +413,7 @@ class ContentGenerator:
         成功返回 True；任何环节失败抛出异常，由调用方决定是否重试。
         """
         self._check_cancelled()
-        sync_info = self._load_sync_info()
+        sync_info = self._load_sync_info_for_prompt(chapter_num)
 
         # 3. 逻辑验证
         logic_report, needs_logic_revision = self.logic_validator.check_logic(
@@ -1070,7 +1070,7 @@ class ContentGenerator:
 
             # 获取故事设定和同步信息
             story_config = self.config.novel_config if hasattr(self.config, 'novel_config') else None
-            sync_info = self._load_sync_info()
+            sync_info = self._load_sync_info_for_prompt(chapter_num)
 
             # 使用 prompts.py 中的方法
             humanization_config = self.config.generation_config.get("humanization", {}) if hasattr(self.config, 'generation_config') else {}
@@ -1868,7 +1868,7 @@ class ContentGenerator:
         - sync_info_max_length: 现有同步信息上限,默认 32000(原 8000)
         - sync_story_max_length: 故事内容上限,默认 60000(原 30000)
 
-        模型层(openai_model.py max_prompt_length=65536, claude_model.py=180000)
+        模型层(openai_model.py / claude_model.py max_prompt_length=190000)
         会再次兜底,本截断主要防止 prompt 模板拼接后过度膨胀。
         """
         existing_sync_info = ""
@@ -2028,6 +2028,131 @@ class ContentGenerator:
             # 处理其他未预期的错误
             logger.error(f"读取同步信息文件 {self.sync_info_file} 时发生未知错误: {e}，返回空字典", exc_info=True)
             return {}
+
+    def _sync_info_progress(self, sync_info: dict) -> Optional[int]:
+        """返回同步信息对应的最后更新章节；无有效进度时返回 None。"""
+        if not isinstance(sync_info, dict):
+            return None
+        raw_progress = sync_info.get("最后更新章节", sync_info.get("当前章节"))
+        if raw_progress is None or isinstance(raw_progress, bool):
+            return None
+        if isinstance(raw_progress, int):
+            return raw_progress if raw_progress >= 0 else None
+        if isinstance(raw_progress, float):
+            return int(raw_progress) if raw_progress.is_integer() and raw_progress >= 0 else None
+        if isinstance(raw_progress, str):
+            raw_progress = raw_progress.strip()
+            if not raw_progress:
+                return None
+            try:
+                parsed = int(raw_progress)
+            except ValueError:
+                return None
+            return parsed if parsed >= 0 else None
+        return None
+
+    def _compact_sync_value_for_prompt(self, value, text_limit: int, list_limit: int):
+        """递归压缩同步信息，防止旧文件或异常膨胀字段撑爆章节 prompt。"""
+        if isinstance(value, str):
+            return value if len(value) <= text_limit else value[:text_limit] + "...(已截断)"
+        if isinstance(value, list):
+            compacted = [
+                self._compact_sync_value_for_prompt(item, text_limit, list_limit)
+                for item in value[:list_limit]
+            ]
+            omitted = len(value) - len(compacted)
+            if omitted > 0:
+                omission = f"...(已省略 {omitted} 项)"
+                if value and all(isinstance(item, dict) for item in value):
+                    compacted.append({
+                        "名称": omission,
+                        "身份": "",
+                        "特点": "",
+                        "当前状态": "",
+                        "语言风格": "",
+                        "核心欲望": "",
+                    })
+                else:
+                    compacted.append(omission)
+            return compacted
+        if isinstance(value, dict):
+            return {
+                key: self._compact_sync_value_for_prompt(item, text_limit, list_limit)
+                for key, item in value.items()
+            }
+        return value
+
+    def _compact_sync_info_for_prompt(self, sync_info: dict) -> dict:
+        """生成章节/校验 prompt 专用同步信息，默认控制在 32000 字符以内。"""
+        if not sync_info:
+            return {}
+        gen_cfg = getattr(self.config, "generation_config", None) or {}
+        try:
+            max_chars = int(gen_cfg.get("sync_info_prompt_max_length", 32000))
+            if max_chars <= 0:
+                max_chars = 32000
+        except (TypeError, ValueError):
+            max_chars = 32000
+
+        original_len = len(json.dumps(sync_info, ensure_ascii=False))
+        for text_limit, list_limit in ((1200, 20), (600, 12), (300, 8), (160, 5)):
+            compacted = self._compact_sync_value_for_prompt(sync_info, text_limit, list_limit)
+            serialized_len = len(json.dumps(compacted, ensure_ascii=False))
+            if serialized_len <= max_chars:
+                if serialized_len < original_len:
+                    logger.info(f"同步信息已压缩用于提示词: {original_len} → {serialized_len} 字符")
+                return compacted
+
+        progress = self._sync_info_progress(sync_info)
+        serialized = json.dumps(sync_info, ensure_ascii=False)
+        logger.warning(
+            f"同步信息压缩后仍过长 ({len(serialized)} 字符)，"
+            f"将退化为 {max_chars} 字符以内的摘要片段"
+        )
+        fallback = {
+            "最后更新章节": progress,
+            "剧情发展": {
+                "主线梗概": "",
+                "重要事件": [],
+                "进行中冲突": [],
+                "悬念伏笔": [],
+            },
+            "世界观": {},
+            "人物设定": {"人物信息": []},
+        }
+        marker = "...(已截断)"
+        overhead = len(json.dumps(fallback, ensure_ascii=False)) + len(marker)
+        summary_limit = max(0, max_chars - overhead)
+        fallback["剧情发展"]["主线梗概"] = serialized[:summary_limit] + marker
+        while len(json.dumps(fallback, ensure_ascii=False)) > max_chars and summary_limit > 0:
+            overflow = len(json.dumps(fallback, ensure_ascii=False)) - max_chars
+            summary_limit = max(0, summary_limit - overflow - 16)
+            fallback["剧情发展"]["主线梗概"] = serialized[:summary_limit] + marker
+        return fallback
+
+    def _load_sync_info_for_prompt(self, chapter_num: Optional[int] = None) -> dict:
+        """加载章节 prompt 可用的同步信息。
+
+        只允许使用已经完成、且早于当前生成章节的同步信息。这样可避免：
+        - 正文进度为 0 时，历史残留 sync_info 污染第 1-5 章；
+        - 重生成早期章节时，误把未来章节摘要注入 prompt。
+        """
+        sync_info = self._load_sync_info()
+        if not sync_info:
+            return {}
+
+        progress = self._sync_info_progress(sync_info)
+        if progress is None or progress <= 0:
+            logger.info("同步信息没有有效已完成章节进度，跳过注入章节提示词")
+            return {}
+        if chapter_num is not None and progress >= chapter_num:
+            logger.info(
+                f"同步信息进度 {progress} 不早于待生成第 {chapter_num} 章，"
+                "跳过注入以避免未来上下文污染"
+            )
+            return {}
+
+        return self._compact_sync_info_for_prompt(sync_info)
 
 if __name__ == "__main__":
     import argparse
