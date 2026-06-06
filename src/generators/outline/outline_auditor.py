@@ -314,7 +314,7 @@ def audit_entities(
 # =====================================================================
 
 _TASK_MARKER_RE = re.compile(
-    r"系统[^。；\n]{0,32}(?:发布|更新|下达|推送|布置|追加|弹出|触发|出现|浮现)[^。；\n]{0,18}(?:新)?任务(?!完成|达成|办结|结算|完结)|"
+    r"系统[^。；\n]{0,32}(?:发布|更新|下达|推送|布置|追加|弹出|触发|出现|浮现)[^。；\n]{0,18}(?:新)?(?<!非)任务(?!完成|达成|办结|结算|完结)|"
     r"系统任务(?:弹出|出现|浮现|触发)"
 )
 _TASK_METADATA_RE = re.compile(
@@ -324,8 +324,14 @@ _TASK_DONE_RE = re.compile(
     r"任务(?:完成|达成|办结|结算|完结)|完成[^。；\n]{0,8}任务|"
     r"(?:至此)?正式办结|办结的结果|顺利进行|平静顺利|顺利完成|"
     r"最后的?[‘']?净化|初步解决|暂时解决|彻底解决|关键修复|"
+    r"阶段性[^。；\n]{0,20}闭环|转入[^。；\n]{0,20}(?:观察/暂缓|暂缓)状态|"
     r"成功(?:净化|调解|引导|化解|清理|稳定)|"
     r"回收[：:][^。\n]{0,120}(?:第\d+章|任务|事件|线索|伏笔)"
+)
+_TASK_STATUS_ONLY_RE = re.compile(
+    r"非任务|任务(?:完成|达成|办结|结算|完结)|前置任务完成|"
+    r"已记录[^。；\n]{0,100}(?:暂缓|观察/暂缓|重启|无即时奖励|闭环)|"
+    r"阶段性[^。；\n]{0,20}闭环|转入[^。；\n]{0,20}(?:观察/暂缓|暂缓)状态"
 )
 
 
@@ -388,6 +394,10 @@ def _extract_published_tasks_from_text(text: str) -> List[str]:
     for unit in _split_context_units(text):
         for m in _TASK_MARKER_RE.finditer(unit):
             desc = _capture_task_description(unit, m.end())
+            # “非任务提示 / 已记录 / 暂缓闭环”等状态更新不是新发布任务，
+            # 否则修订后用于收口的文字会被再次审计成未闭环任务。
+            if _TASK_STATUS_ONLY_RE.search(unit) or _TASK_STATUS_ONLY_RE.search(desc):
+                continue
             if len(_hanzi_bigrams(desc)) >= 2:
                 tasks.append(desc)
     return tasks

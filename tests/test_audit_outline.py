@@ -262,6 +262,45 @@ class TestO3TaskClosure:
 
         assert not any(f.rule_id == "O3" for f in findings)
 
+    def test_does_not_treat_non_task_popup_as_new_task(self):
+        chapters = [
+            _ch(117, key_points=[
+                "系统界面突然强制弹出一条新提示（非任务）：" 
+                "“检测到宿主主动建立深层‘地脉链接’（尝试）。是否确认固化此链接？”",
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" for f in findings)
+
+    def test_does_not_republish_status_update_as_new_task(self):
+        chapters = [
+            _ch(117, key_points=[
+                "系统界面再次更新，提示：“任务：‘检测到宿主主动建立深层‘地脉链接’（尝试）’已记录。"
+                "因宿主选择‘否’，此链接尝试转入‘观察/暂缓’状态。此任务进入阶段性暂缓闭环。”",
+            ]),
+        ]
+
+        findings = audit_task_closure(chapters)
+
+        assert not any(f.rule_id == "O3" for f in findings)
+
+    def test_llm_review_does_not_republish_status_update_as_new_task(self):
+        chapters = [
+            _ch(117, key_points=[
+                "系统界面再次更新，提示：“任务：‘检测到宿主主动建立深层‘地脉链接’（尝试）’已记录。"
+                "因宿主选择‘否’，此链接尝试转入‘观察/暂缓’状态。此任务进入阶段性暂缓闭环。”",
+            ]),
+        ]
+        model = MagicMock()
+
+        result = llm_review_task_closure_with_stats(chapters, model)
+
+        assert result.stats["published_tasks"] == 0
+        assert result.findings == []
+        model.generate.assert_not_called()
+
 
 class TestO4Identity:
     """O4 人物身份一致性（仅信任 characters 字段的括号注释，避免邻近窗口污染）"""
