@@ -130,6 +130,54 @@ Key layers:
 
 ------
 
+## Quick Start
+
+Install dependencies and create local configuration files:
+
+```bash
+pip install -r requirements.txt
+cp config.json.example config.json
+cp .env.example .env
+```
+
+Fill in at least one model provider in `.env`:
+
+- Claude: `CLAUDE_API_KEY` plus OpenAI-compatible embedding settings
+- Gemini: `GEMINI_API_KEY`
+- OpenAI-compatible APIs: `OPENAI_OUTLINE_API_KEY`, `OPENAI_CONTENT_API_KEY`, and `OPENAI_EMBEDDING_API_KEY`
+- Optional fallback model: `FALLBACK_API_KEY`, `FALLBACK_API_BASE`, `FALLBACK_MODEL_ID`, `FALLBACK_API_MODE`
+
+Run the GUI:
+
+```bash
+python gui_main.py
+```
+
+Run the CLI pipeline:
+
+```bash
+python main.py auto
+python main.py outline --start 1 --end 10
+python main.py content --start-chapter 3
+python main.py finalize --chapter 8
+```
+
+------
+
+## Maintenance Tools
+
+The repository includes standalone tools under `tools/`:
+
+- `audit_outline.py` — global outline audit, with optional `--llm` semantic review
+- `revise_outline_from_audit.py` — revise an outline based on an audit report
+- `fill_outline_gaps.py` — patch missing sparse outline slots
+- `recommend_arc_size.py` — recommend `chapters_per_arc` for emotion-arc pacing
+- `backfill_emotion_tone.py` — backfill emotion-tone placeholders for existing outlines
+
+Runtime configuration examples are maintained in `config.json.example` and `.env.example`.
+
+------
+
 ## OpenAI Integration
 
 OCNovel is designed to work seamlessly with OpenAI-compatible models:
@@ -236,4 +284,3 @@ OCNovel is not just a writing tool, but a **structured system for long-form gene
 - multi-stage reasoning
 
 It aims to explore how LLMs can move beyond short outputs toward **stable, large-scale content generation**.
-

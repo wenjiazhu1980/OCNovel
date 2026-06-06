@@ -107,10 +107,18 @@ OCNovel/
 │   │       ├── platform_utils.py     # 跨平台工具（打开目录等）
 │   │       └── fonts.py              # 跨平台字体常量
 │   │
-│   └── tools/                 # 辅助工具
+│   └── tools/                 # 内置辅助工具
 │       ├── generate_config.py
 │       ├── generate_marketing.py
-│       └── ai_density_checker.py
+│       ├── ai_density_checker.py
+│       └── recover_summary.py
+│
+├── tools/                     # 命令行维护工具
+│   ├── audit_outline.py
+│   ├── revise_outline_from_audit.py
+│   ├── fill_outline_gaps.py
+│   ├── recommend_arc_size.py
+│   └── backfill_emotion_tone.py
 │
 └── data/                      # 运行时数据（gitignored）
     ├── cache/
@@ -146,20 +154,33 @@ CLAUDE_CONTENT_MODEL=claude-3-5-sonnet-20241022
 # 嵌入模型（必需，Claude 不支持嵌入）
 OPENAI_EMBEDDING_API_KEY=your_key
 OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
+OPENAI_EMBEDDING_API_MODE=auto
 
 # 方式二：使用 OpenAI 兼容模型（推荐用于开发测试）
 OPENAI_EMBEDDING_API_KEY=your_key
 OPENAI_EMBEDDING_API_BASE=https://api.siliconflow.cn/v1
 OPENAI_OUTLINE_API_KEY=your_key
 OPENAI_OUTLINE_API_BASE=https://api.siliconflow.cn/v1
+OPENAI_OUTLINE_MODEL=Qwen/Qwen2.5-7B-Instruct
+OPENAI_OUTLINE_API_MODE=auto
 OPENAI_CONTENT_API_KEY=your_key
 OPENAI_CONTENT_API_BASE=https://api.siliconflow.cn/v1
+OPENAI_CONTENT_MODEL=Qwen/Qwen2.5-7B-Instruct
+OPENAI_CONTENT_API_MODE=auto
 
 # 方式三：使用 Gemini 模型
 GEMINI_API_KEY=your_gemini_key
 GEMINI_OUTLINE_MODEL=gemini-2.5-pro
 GEMINI_CONTENT_MODEL=gemini-2.5-flash
+
+# 备用模型（可选；不设置 FALLBACK_API_KEY 时自动禁用）
+FALLBACK_API_KEY=your_fallback_key
+FALLBACK_API_BASE=https://api.siliconflow.cn/v1
+FALLBACK_MODEL_ID=Qwen/Qwen2.5-7B-Instruct
+FALLBACK_API_MODE=auto
 ```
+
+完整环境变量模板见 [`.env.example`](.env.example)。
 
 ### 3. 启动
 
@@ -274,6 +295,7 @@ pyinstaller ocnovel_win.spec --clean
 
 > **近期新增配置**：
 > - `novel_config.arc_config` — 卷内 6 阶段螺旋情绪节奏（`chapters_per_arc` 启用 / `auto_compute` 按总章数自动推算分卷，对齐 25%/50%/75% 灾难锚点）
+> - `generation_config.outline_auto_patch_holes` — `pipeline_worker` 检测到大纲缺洞时自动调用补洞流程
 > - `generation_config.outline_audit_enabled` — 全书大纲生成后跑只读全局审计（O1-O5：伏笔/事件线/人物身份），落盘 `outline_audit_report.json`
 > - `generation_config.outline_quality_gate_enabled` — `auto` 流程阻断式质量闸门（算法审计 + LLM 复核 → 有致命问题自动修订重审 → 仍不过则中止、不进正文）
 
@@ -287,7 +309,7 @@ pyinstaller ocnovel_win.spec --clean
 ## 开发与测试
 
 ```bash
-# 全量测试（约 2 分钟）
+# 全量测试（当前单元测试路径通常数秒至十余秒，取决于环境）
 python -m pytest tests/ -v
 
 # 静默模式 + 失败摘要
@@ -305,7 +327,7 @@ ruff check src/ --select E,F,W --ignore E501
 
 > 推送到 GitHub 后由 GitHub Actions 自动跑 lint + 测试；CI 为减体积不安装 PySide6，依赖它的 GUI 测试会自动跳过（见 `tests/conftest.py`）。
 
-辅助工具（`tools/`）：`audit_outline.py`（全局大纲审计，可加 `--llm` 语义复核）、`recommend_arc_size.py`（推荐情绪节奏分卷数）、`fill_outline_gaps.py`（补全大纲缺失槽位）、`backfill_emotion_tone.py`（为既有大纲回填情绪阶段占位）。
+辅助工具（`tools/`）：`audit_outline.py`（全局大纲审计，可加 `--llm` 语义复核）、`revise_outline_from_audit.py`（根据审计报告修订大纲）、`recommend_arc_size.py`（推荐情绪节奏分卷数）、`fill_outline_gaps.py`（补全大纲缺失槽位）、`backfill_emotion_tone.py`（为既有大纲回填情绪阶段占位）。
 
 ## 常见问题 (FAQ)
 
@@ -340,4 +362,3 @@ ruff check src/ --select E,F,W --ignore E501
 
 此外，章节内容首行的 Markdown `#` 标题（LLM 自带输出）会在落盘与合并时自动剥离，
 避免在写作软件里被误识别为正文字符。
-

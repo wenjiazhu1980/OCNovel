@@ -18,7 +18,8 @@
       "target_chapters": 100,
       "chapter_length": 2500,
       "arc_config": {
-        "chapters_per_arc": 30
+        "chapters_per_arc": 30,
+        "auto_compute": false
       },
       "knowledge_base": {
         "chunk_size": 1200,
@@ -138,6 +139,9 @@
 
       "outline_gap_max_retries": 2,
       "outline_gap_retry_delay": 3,
+
+      "outline_auto_patch_holes": true,
+      "outline_audit_enabled": true,
 
       "outline_quality_gate_enabled": true,
       "outline_quality_gate_llm_review": true,

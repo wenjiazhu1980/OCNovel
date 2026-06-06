@@ -12,8 +12,8 @@ python -m pytest tests/test_translator_h2.py -v
 # 静默 + 失败摘要
 python -m pytest tests/ -q --tb=short
 
-# 跳过慢测试（依赖 FlagEmbedding/远程服务的）
-python -m pytest tests/ -m "not slow"
+# 与 CI 一致：静默运行并输出失败摘要
+python -m pytest tests/ --tb=short -q
 ```
 
 ## 命名约定
@@ -35,10 +35,10 @@ python -m pytest tests/ -m "not slow"
 - 测试产物（`__pycache__ / .pytest_cache / .coverage / htmlcov / data / output`）忽略
 - 详见仓库根 `.gitignore` `tests/` 段落
 
-## 已知问题
+## 当前状态
 
-- `test_chapter_list_and_regen.py::TestPipelineWorkerTargetChapters::test_run_allows_regen_when_outline_covers_selected_chapter_only`：mock 未同步 `patch_missing_chapters` 返回 `(succeeded, still_missing)` 元组的新签名；待 follow-up 修复
-- 部分 KB 测试依赖 FlagEmbedding，无法在最小依赖环境运行；建议加 `@pytest.mark.slow` 标记后通过 marker 隔离
+- 当前测试套件为纯单元测试路径，KnowledgeBase 相关测试使用 mock，避免真实加载 FlagEmbedding/远程服务。
+- 如未来新增依赖大模型、网络服务或大体积本地模型的慢测试，应补充 `@pytest.mark.slow` 标记，并在 `pytest.ini` 注册 marker 后再使用 `-m "not slow"` 隔离。
 
 ## CI 集成
 
@@ -46,5 +46,5 @@ python -m pytest tests/ -m "not slow"
 
 ```yaml
 - name: Run tests
-  run: python -m pytest tests/ -v --tb=short
+  run: python -m pytest tests/ --tb=short -q
 ```
