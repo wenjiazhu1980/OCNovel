@@ -83,6 +83,17 @@ def main():
     revise_outline_parser.add_argument('--rules', type=str, help='只处理指定规则，逗号分隔，例如 O3,O3-LLM,O4')
     revise_outline_parser.add_argument('--dry-run', action='store_true', help='只生成修订报告，不写回 outline.json')
     revise_outline_parser.add_argument('--json', action='store_true', help='JSON 输出结果')
+
+    # 根据章节内容审计报告修订正文
+    revise_content_parser = subparsers.add_parser('revise-content', help='根据章节内容审计报告修订章节正文')
+    revise_content_parser.add_argument('--outline', type=str, help='outline.json 路径，默认使用配置输出目录')
+    revise_content_parser.add_argument('--audit-report', type=str, help='content_audit_report*.json 路径，默认优先使用局部审计报告')
+    revise_content_parser.add_argument('--output-report', type=str, help='修订报告输出路径，默认与审计报告同目录')
+    revise_content_parser.add_argument('--include-warning', action='store_true', help='除 fatal 外也纳入 warning 级发现')
+    revise_content_parser.add_argument('--rules', type=str, help='只处理指定规则，逗号分隔，例如 C1,C2')
+    revise_content_parser.add_argument('--dry-run', action='store_true', help='只生成修订报告，不写回章节正文')
+    revise_content_parser.add_argument('--update-summary', action='store_true', help='写回正文后刷新已修改章节的 summary.json 摘要')
+    revise_content_parser.add_argument('--json', action='store_true', help='JSON 输出结果')
     
     # 自动生成命令（包含完整流程）
     auto_parser = subparsers.add_parser('auto', help='自动执行完整生成流程')
@@ -334,6 +345,57 @@ def main():
                     print("dry-run 模式，未写回 outline.json")
                 elif report.get("backup_path"):
                     print(f"已备份原大纲到: {report['backup_path']}")
+                print(f"修订报告: {report.get('revision_report')}")
+
+        elif args.command == 'revise-content':
+            from src.generators.content.content_reviser import revise_content_files
+
+            output_dir = config.output_config.get("output_dir", "data/output")
+            if not os.path.isabs(output_dir):
+                output_dir = os.path.abspath(output_dir)
+            outline_path = args.outline or os.path.join(output_dir, "outline.json")
+            if not os.path.isabs(outline_path):
+                outline_path = os.path.abspath(outline_path)
+            severities = ("fatal", "warning") if args.include_warning else ("fatal",)
+            rules = [item.strip() for item in args.rules.split(",") if item.strip()] if args.rules else ("C1", "C2")
+            report = revise_content_files(
+                output_dir=output_dir,
+                outline_path=outline_path,
+                audit_report_path=args.audit_report,
+                output_report_path=args.output_report,
+                model=content_model,
+                severities=severities,
+                rules=rules,
+                dry_run=args.dry_run,
+            )
+            refreshed = []
+            if args.update_summary and not args.dry_run:
+                for chapter_num in report.get("stats", {}).get("changed_chapters", []) or []:
+                    try:
+                        if finalizer.finalize_chapter(chapter_num=int(chapter_num), update_summary=True):
+                            refreshed.append(int(chapter_num))
+                    except Exception as exc:
+                        logging.error(f"刷新第 {chapter_num} 章摘要失败: {exc}", exc_info=True)
+                report["summary_refreshed_chapters"] = refreshed
+            if args.json:
+                print(json.dumps(report, ensure_ascii=False, indent=2))
+            else:
+                stats = report.get("stats", {})
+                print(
+                    "内容修订完成："
+                    f"actionable {stats.get('actionable_findings', 0)} / "
+                    f"requested {stats.get('requested_revisions', 0)} / "
+                    f"applied {stats.get('applied_revisions', 0)} / "
+                    f"written {stats.get('written_revisions', 0)}"
+                )
+                if report.get("dry_run"):
+                    print("dry-run 模式，未写回章节正文")
+                elif report.get("backup_paths"):
+                    print("已备份原章节：")
+                    for chapter_num, backup_path in sorted(report["backup_paths"].items(), key=lambda item: int(item[0])):
+                        print(f"  第{chapter_num}章: {backup_path}")
+                if refreshed:
+                    print("已刷新摘要章节: " + ", ".join(str(chapter) for chapter in refreshed))
                 print(f"修订报告: {report.get('revision_report')}")
             
         elif args.command == 'auto':
