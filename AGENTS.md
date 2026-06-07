@@ -23,6 +23,8 @@ src/
   generators/
     outline/outline_generator.py # 大纲生成
     content/content_generator.py # 章节内容生成
+    content/content_auditor.py   # 章节内容审计（C0/C1/C2）
+    content/content_reviser.py   # 根据审计报告修订章节正文
     content/consistency_checker.py
     content/validators.py
     finalizer/finalizer.py       # 定稿处理
@@ -71,6 +73,7 @@ data/                            # 运行时数据（gitignored）
 - **合并分卷**：`merge_all_chapters` 在产物超过 `output_config.max_volume_size_mb`（默认 2MB，UTF-8 字节）时按章节边界分卷，文件命名 `{title}_完整版_第N卷.txt`；返回 `Optional[List[str]]`。
 - **大纲全局审计（终局闸门）**：`generate_outline` 全书生成（补洞后）由 `_run_outline_audit` 调用 `src/generators/outline/outline_auditor.py` 的 `run_audit`，做**跨章结构审计**（O1 伏笔闭环 / O2 实体收口 / O3 任务闭环 / O4 人物身份 / O5 回收率），落盘 `outline_audit_report.json`。**只读不阻断生成**，由 `generation_config.outline_audit_enabled` 开关；异常被吞不影响大纲。审计核心在 `src/` 层（CLI `tools/audit_outline.py` 与流水线共用，确保打包可用）。算法为高召回初筛，`llm_review_task_closure(chapters, model)` 提供可选 LLM 语义裁决，专治"母题复用/顺带提及"导致的假闭环漏报（纯算法与 LLM 会犯同样的母题混淆错——闭环判定本质是语义任务）。
 - **大纲质量闸门（阻断式，auto 流水线）**：`src/generators/outline/outline_quality_gate.py` 的 `run_quality_gate` / `run_quality_gate_for_pipeline`。auto 流程（CLI `main.py` 与 GUI `pipeline_worker` 共用）在大纲生成（含补洞）后、正文生成前跑此闸门：算法审计 + LLM 复核，有 fatal 则调 `revise_outline_from_audit` 修订写回 `outline.json`（带 `.bak` 备份）并重审；最终仍有 fatal 则 `passed=False`，调用方中止流水线、不进正文，并落盘 `outline_quality_gate_report.json`。**与只读 `_run_outline_audit` 的区别**：后者只读不阻断、只算法；本闸门含 LLM、会改写大纲、会中止流程。闸门自身执行异常 → fail-open 放行（与 `_run_outline_audit` 异常哲学一致）。由 `generation_config.outline_quality_gate_enabled` 开关（默认开）。
+- **章节内容审计与修订**：`src/generators/content/content_auditor.py` 对已生成章节正文做只读审计（C0 输入完整性 / C1 章节正文与大纲一致性 / C2 相邻章节衔接），落盘 `content_audit_report.json`。支持整部或选中章节审计，GUI 可指定审计范围与批量大小（`content_audit_batch_size`）。`src/generators/content/content_reviser.py` 根据审计报告中的 fatal/warning 发现，调用 `content_model` 修订章节正文并自动备份原文件；CLI 命令 `revise-content` 支持 `--dry-run`、`--include-warning`、`--update-summary` 等选项。GUI `progress_tab` 提供「章节内容审计」与「修订内容」按钮。
 
 ## generation_config 关键键
 
@@ -84,6 +87,7 @@ data/                            # 运行时数据（gitignored）
 | `outline_quality_gate_enabled` | `true` | auto 流程大纲生成后跑**阻断式**质量闸门（算法审计+LLM复核 → 有 fatal 自动修订重审 → 仍 fatal 中止流水线、不进正文）。区别于只读的 `outline_audit_enabled`，核心见 `outline_quality_gate.py` |
 | `outline_quality_gate_llm_review` | `true` | 质量闸门内是否含 LLM 任务闭环复核（关闭则只跑算法审计，省额度） |
 | `outline_quality_gate_max_rounds` | `1` | 闸门「修订→重审」最大轮数（默认单轮裁决） |
+| `content_audit_batch_size` | `5` | 章节内容审计的批量大小，控制同时审计的章节数量 |
 
 ## output_config 关键键
 
@@ -118,6 +122,7 @@ python main.py finalize --chapter 8               # 定稿
 python main.py auto                               # 全流程
 python main.py auto --force-outline               # 强制重生成大纲
 python main.py imitate --style-source ... --input-file ... --output-file ...
+python main.py revise-content --audit-report ... [--include-warning] [--dry-run] [--update-summary] [--rules C1,C2] [--json]
 ```
 
 ### 配套工具（tools/）

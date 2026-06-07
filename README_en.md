@@ -86,11 +86,23 @@ The architecture allows dynamic switching, fallback, and hybrid usage.
 
 ### 6. Outline Audit & Blocking Quality Gate
 
-OCNovel validates the **global outline** before any chapter is written:
+OCNovel provides **two complementary mechanisms** to validate the global outline before any chapter is written:
 
-- Cross-chapter audit (O1–O5): foreshadowing closure, entity resolution, task/arc closure, character-identity consistency, and recovery rate
-- Algorithmic high-recall screening + optional LLM semantic adjudication (to catch false closures caused by motif reuse)
-- In the `auto` pipeline a **blocking quality gate** auto-revises the outline on fatal issues and re-audits; if fatals remain, generation is halted before any chapter is produced
+**Read-only audit** (`outline_audit_enabled`, on by default):
+- Runs a cross-chapter structural audit after the full outline is generated
+- Five algorithmic rules: **O1** foreshadowing closure, **O2** entity life-line (characters that vanish mid-story), **O3** task/arc closure, **O4** character-identity consistency, **O5** recovery rate
+- Outputs `outline_audit_report.json`; does **not** block generation
+- Can be augmented with LLM semantic review via `tools/audit_outline.py --llm` to catch false closures caused by motif reuse
+
+**Blocking quality gate** (`outline_quality_gate_enabled`, on by default):
+- Runs in the `auto` pipeline after outline generation
+- Algorithmic audit + LLM review; on fatal findings, auto-revises the outline (with `.bak` backup) and re-audits
+- If fatal findings remain after `outline_quality_gate_max_rounds` rounds, the pipeline is halted before any chapter is produced
+- Outputs `outline_quality_gate_report.json`
+
+Both mechanisms feed into the same revision engine, accessible via:
+- `tools/revise_outline_from_audit.py` (CLI)
+- GUI "Revise Outline" button
 
 ------
 
@@ -100,6 +112,27 @@ Per-volume **6-stage spiral emotional rhythm** (growth → setback → desperati
 
 - Configurable via `arc_config`; can auto-derive the optimal number of volumes from the total chapter count
 - Aligns the 25% / 50% / 75% disaster anchors with each volume's setback / desperation / fall phases
+
+------
+
+### 8. Chapter Content Audit & Revision
+
+After chapters are generated, OCNovel can **audit** and **revise** their content:
+
+- **C0**: Input completeness pre-check
+- **C1**: Chapter text vs. outline consistency
+- **C2**: Transition naturalness between the current chapter's opening and the previous chapter's ending
+
+The audit supports both **full-novel** and **selected-chapter** modes. Based on the audit report, the revision module automatically rewrites chapters with fatal/warning findings, backs up originals, and optionally refreshes chapter summaries.
+
+CLI usage:
+
+```bash
+python main.py revise-content --audit-report data/output/content_audit_report.json
+python main.py revise-content --include-warning   # also process warnings
+python main.py revise-content --dry-run            # preview only, no writes
+python main.py revise-content --update-summary     # refresh summaries after revision
+```
 
 ------
 
@@ -168,11 +201,25 @@ python main.py finalize --chapter 8
 
 The repository includes standalone tools under `tools/`:
 
-- `audit_outline.py` — global outline audit, with optional `--llm` semantic review
-- `revise_outline_from_audit.py` — revise an outline based on an audit report
+- `audit_outline.py` — global outline audit (O1–O5 algorithmic rules), with optional `--llm` semantic review for task closure
+- `revise_outline_from_audit.py` — revise an outline based on an audit report; supports `--dry-run`, `--include-warning`, `--rules O3,O4`
 - `fill_outline_gaps.py` — patch missing sparse outline slots
 - `recommend_arc_size.py` — recommend `chapters_per_arc` for emotion-arc pacing
 - `backfill_emotion_tone.py` — backfill emotion-tone placeholders for existing outlines
+
+```bash
+# Outline audit (algorithmic only)
+python tools/audit_outline.py --outline data/output/outline.json
+
+# Outline audit with LLM semantic review
+python tools/audit_outline.py --outline data/output/outline.json --llm --config config.json
+
+# Revise outline from audit report (fatal findings only)
+python tools/revise_outline_from_audit.py --outline data/output/outline.json --config config.json
+
+# Preview mode (no writes)
+python tools/revise_outline_from_audit.py --outline data/output/outline.json --config config.json --dry-run
+```
 
 Runtime configuration examples are maintained in `config.json.example` and `.env.example`.
 

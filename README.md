@@ -62,7 +62,7 @@ OCNovel/
 │   │
 │   ├── generators/            # 内容生成器
 │   │   ├── common/            # 通用工具和数据结构
-│   │   ├── content/           # 章节内容生成 + 一致性检查 + 验证
+│   │   ├── content/           # 章节内容生成 + 一致性检查 + 验证 + 审计 + 修订
 │   │   ├── outline/           # 大纲生成
 │   │   ├── finalizer/         # 定稿处理
 │   │   ├── prompts.py         # Prompt 模板
@@ -213,6 +213,44 @@ python main.py auto --force-outline
 
 # 仿写
 python main.py imitate --style-source 范文.txt --input-file 原文.txt --output-file 输出.txt
+
+# 根据章节内容审计报告修订正文（默认只处理 fatal C1/C2）
+python main.py revise-content --audit-report data/output/content_audit_report.json
+
+# 修订时也纳入 warning 级发现
+python main.py revise-content --include-warning
+
+# 只生成修订报告，不写回章节正文
+python main.py revise-content --dry-run
+
+# 修订后刷新已修改章节的 summary.json
+python main.py revise-content --update-summary
+
+# 只处理指定规则
+python main.py revise-content --rules C1,C2
+
+# ---- 大纲审计与修订（配套工具） ----
+
+# 全局大纲审计（纯算法 O1-O5：伏笔闭环/实体收口/任务闭环/人物身份/回收率）
+python tools/audit_outline.py --outline data/output/outline.json
+
+# 叠加 LLM 语义复核任务闭环（识破"母题复用"导致的假闭环）
+python tools/audit_outline.py --outline data/output/outline.json --llm --config config.json
+
+# JSON 输出（便于脚本消费）
+python tools/audit_outline.py --outline data/output/outline.json --json
+
+# 根据审计报告修订大纲（默认只处理 fatal 级发现）
+python tools/revise_outline_from_audit.py --outline data/output/outline.json --config config.json
+
+# 修订时纳入 warning 级发现
+python tools/revise_outline_from_audit.py --outline data/output/outline.json --config config.json --include-warning
+
+# 只生成修订报告，不写回大纲
+python tools/revise_outline_from_audit.py --outline data/output/outline.json --config config.json --dry-run
+
+# 只处理指定规则（如 O3 任务闭环、O4 人物身份）
+python tools/revise_outline_from_audit.py --outline data/output/outline.json --config config.json --rules O3,O4
 ```
 
 ## GUI 功能
@@ -221,7 +259,7 @@ python main.py imitate --style-source 范文.txt --input-file 原文.txt --outpu
 
 - **模型配置** — 管理 Claude / Gemini / OpenAI / Fallback / Reranker 的 API 密钥、Base URL、模型名称，支持一键测试连接
 - **小说参数** — 编辑 config.json 中的小说设定、写作指南、生成参数（支持温度、Top_P、Humanizer-zh 校验等）、仿写配置、知识库和输出目录；支持 AI 自动生成写作指南、新建/备份配置
-- **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写；可单独「重新生成指定章节」、「仅生成大纲」、运行「大纲审计复核」与「修订大纲」、一键合并所有章节并生成营销内容
+- **创作进度** — 一键启停生成流水线，实时查看章节状态列表和彩色日志，进度条显示当前进度，支持断点续写；可单独「重新生成指定章节」、「仅生成大纲」、运行「大纲审计复核」与「修订大纲」、「章节内容审计」（支持整部或选中章节）、「修订内容」（根据审计报告自动修订正文）、一键合并所有章节并生成营销内容
 
 ### 国际化支持
 
@@ -259,8 +297,12 @@ pyinstaller ocnovel_win.spec --clean
 - **生成流水线** — outline → content → finalize，通过 `auto` 命令串联
 - **知识库** — 文本分块 → 嵌入向量 → FAISS 检索 → Reranker API 精排
 - **重试/备用** — tenacity 重试 + 备用模型自动切换
-- **大纲质量保障** — 全书大纲生成后跑跨章审计（O1-O5：伏笔闭环 / 实体收口 / 任务闭环 / 人物身份 / 回收率，算法初筛 + 可选 LLM 语义复核）；`auto` 流程含阻断式质量闸门，有致命问题自动修订重审、仍不过则中止不进正文
+- **大纲质量保障** — 两套互补机制：
+  - *只读审计*（`outline_audit_enabled`）：全书大纲生成后跑跨章结构审计（O1 伏笔闭环 / O2 实体生命线 / O3 任务闭环 / O4 人物身份一致性 / O5 回收率），落盘 `outline_audit_report.json`，**不阻断生成**；可用 `tools/audit_outline.py --llm` 叠加 LLM 语义复核识破"母题复用"导致的假闭环
+  - *阻断式质量闸门*（`outline_quality_gate_enabled`）：`auto` 流程在大纲生成后跑算法审计 + LLM 复核，有 fatal 则自动调用修订器写回 `outline.json`（带 `.bak` 备份）并重审；仍不过则中止流水线、不进正文，落盘 `outline_quality_gate_report.json`
+  - 两套机制均可用 `tools/revise_outline_from_audit.py` 或 GUI「修订大纲」按钮手动触发修订
 - **情绪节奏** — `arc_config` 支持卷内 6 阶段螺旋情绪节奏（成长→挫折→绝境→爆发→跌落→新局），可按总章数自动推算最优分卷以对齐 25%/50%/75% 灾难锚点
+- **章节内容审计与修订** — 对已生成章节正文做只读审计（C0 输入完整性 / C1 大纲一致性 / C2 章节衔接），支持整部或选中章节审计；根据审计报告中的 fatal/warning 发现自动修订正文并备份原文件，修订后可选刷新章节摘要
 
 ## 支持的 AI 模型
 
@@ -296,8 +338,11 @@ pyinstaller ocnovel_win.spec --clean
 > **近期新增配置**：
 > - `novel_config.arc_config` — 卷内 6 阶段螺旋情绪节奏（`chapters_per_arc` 启用 / `auto_compute` 按总章数自动推算分卷，对齐 25%/50%/75% 灾难锚点）
 > - `generation_config.outline_auto_patch_holes` — `pipeline_worker` 检测到大纲缺洞时自动调用补洞流程
-> - `generation_config.outline_audit_enabled` — 全书大纲生成后跑只读全局审计（O1-O5：伏笔/事件线/人物身份），落盘 `outline_audit_report.json`
+> - `generation_config.outline_audit_enabled` — 全书大纲生成后跑只读全局审计（O1-O5：伏笔/事件线/人物身份），落盘 `outline_audit_report.json`；**只读报告，不阻断生成**
 > - `generation_config.outline_quality_gate_enabled` — `auto` 流程阻断式质量闸门（算法审计 + LLM 复核 → 有致命问题自动修订重审 → 仍不过则中止、不进正文）
+> - `generation_config.outline_quality_gate_llm_review` — 质量闸门内是否含 LLM 任务闭环复核（默认开；关闭则只跑算法审计，省额度）
+> - `generation_config.outline_quality_gate_max_rounds` — 闸门「修订→重审」最大轮数（默认 1 轮）
+> - `generation_config.content_audit_batch_size` — 章节内容审计的批量大小（默认 5），控制同时审计的章节数量
 
 ## 环境要求
 
