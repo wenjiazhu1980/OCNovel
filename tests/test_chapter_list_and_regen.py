@@ -514,6 +514,26 @@ class TestProgressTabOutlineAudit:
         assert hasattr(tab, "btn_outline_audit")
         assert "大纲审计复核" in tab.btn_outline_audit.text()
 
+    def test_novel_audit_range_resolver_requires_complete_range(self, qapp, tmp_path):
+        """小说审计范围应区分整部、完整闭区间与不完整范围。"""
+        tab = self._make_tab(qapp, tmp_path)
+
+        tab.spin_audit_start.setValue(0)
+        tab.spin_audit_end.setValue(0)
+        assert tab._resolve_novel_audit_chapters(selected_only=False) is None
+
+        tab.spin_audit_start.setValue(10)
+        tab.spin_audit_end.setValue(0)
+        assert tab._resolve_novel_audit_chapters(selected_only=False) == []
+
+        tab.spin_audit_start.setValue(0)
+        tab.spin_audit_end.setValue(20)
+        assert tab._resolve_novel_audit_chapters(selected_only=False) == []
+
+        tab.spin_audit_start.setValue(5)
+        tab.spin_audit_end.setValue(3)
+        assert tab._resolve_novel_audit_chapters(selected_only=False) == [3, 4, 5]
+
     def test_running_task_blocks_outline_audit(self, qapp, tmp_path):
         """已有任务运行时不应创建审计 worker"""
         tab = self._make_tab(qapp, tmp_path, with_outline=True)

@@ -1537,8 +1537,8 @@ This may take a few minutes, continue?</translation>
 {0}</translation>
     </message>
     <message>
-        <source>🔎  整部小说审计</source>
-        <translation>🔎  Novel Audit</translation>
+        <source>🔎  章节内容审计</source>
+        <translation>🔎  Chapter Content Audit</translation>
     </message>
     <message>
         <source>读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json</source>

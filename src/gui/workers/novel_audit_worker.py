@@ -39,10 +39,29 @@ class NovelAuditWorker(QThread):
     novel_audit_finished = Signal(bool, str)  # (success, message)
     log_message = Signal(str, str)            # (message, level)
 
-    def __init__(self, config_path: str, env_path: str):
+    def __init__(
+        self,
+        config_path: str,
+        env_path: str,
+        chapter_numbers: list[int] | None = None,
+        batch_size: int | None = None,
+    ):
         super().__init__()
         self._config_path = config_path
         self._env_path = env_path
+        if chapter_numbers is None:
+            self._chapter_numbers = None
+        else:
+            normalized_chapters = []
+            for value in chapter_numbers:
+                try:
+                    chapter_number = int(value)
+                except (TypeError, ValueError):
+                    continue
+                if chapter_number > 0:
+                    normalized_chapters.append(chapter_number)
+            self._chapter_numbers = sorted(set(normalized_chapters))
+        self._batch_size = batch_size
         self._stop_event = threading.Event()
 
     def stop(self) -> None:
@@ -63,6 +82,12 @@ class NovelAuditWorker(QThread):
         handler: SignalLogHandler | None = None
 
         try:
+            if self._chapter_numbers == []:
+                msg = QCoreApplication.translate("NovelAuditWorker", "未选择有效章节，已取消小说内容审计。")
+                logger.info(msg)
+                self.novel_audit_finished.emit(False, msg)
+                return
+
             from ._env_lock import ENV_CONFIG_LOCK
             from dotenv import load_dotenv
             from src.config.config import Config
@@ -83,7 +108,8 @@ class NovelAuditWorker(QThread):
                 config.output_config.get("output_dir", "data/output")
             )
             outline_path = os.path.join(output_dir, "outline.json")
-            report_path = os.path.join(output_dir, "content_audit_report.json")
+            report_name = "content_audit_report_scope.json" if self._chapter_numbers else "content_audit_report.json"
+            report_path = os.path.join(output_dir, report_name)
 
             if self._stop_event.is_set():
                 msg = QCoreApplication.translate("NovelAuditWorker", "用户取消")
@@ -106,9 +132,15 @@ class NovelAuditWorker(QThread):
                     ).format(output_dir)
                 )
 
-            logger.info(QCoreApplication.translate(
-                "NovelAuditWorker", "开始整部小说内容审计: {0}"
-            ).format(output_dir))
+            if self._chapter_numbers:
+                scope_text = ", ".join(str(chapter) for chapter in self._chapter_numbers)
+                logger.info(QCoreApplication.translate(
+                    "NovelAuditWorker", "开始指定章节内容审计: {0}；章节: {1}"
+                ).format(output_dir, scope_text))
+            else:
+                logger.info(QCoreApplication.translate(
+                    "NovelAuditWorker", "开始整部小说内容审计: {0}"
+                ).format(output_dir))
 
             content_model_config = dict(config.get_model_config("content_model"))
             llm_model_type = content_model_config.get("type", "unknown")
@@ -139,11 +171,19 @@ class NovelAuditWorker(QThread):
 
             from src.generators.content.content_auditor import build_report, run_audit
 
+            generation_config = getattr(config, "generation_config", {}) or {}
+            if self._batch_size is not None:
+                resolved_batch_size = self._batch_size
+            else:
+                resolved_batch_size = generation_config.get("content_audit_batch_size", 1)
+
             result = run_audit(
                 output_dir=output_dir,
                 outline_path=outline_path,
                 model=content_model,
                 stop_event=self._stop_event,
+                chapter_numbers=self._chapter_numbers,
+                batch_size=resolved_batch_size,
             )
 
             report = build_report(
@@ -180,7 +220,7 @@ class NovelAuditWorker(QThread):
             if fatal_count:
                 message = QCoreApplication.translate(
                     "NovelAuditWorker",
-                    "整部小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。\n"
+                    "小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。\n"
                     "已审计章节 {3} 章，LLM 调用 {4} 次。\n报告已保存到:\n{5}",
                 ).format(
                     fatal_count,
@@ -193,7 +233,7 @@ class NovelAuditWorker(QThread):
             else:
                 message = QCoreApplication.translate(
                     "NovelAuditWorker",
-                    "整部小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。\n"
+                    "小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。\n"
                     "已审计章节 {2} 章，LLM 调用 {3} 次。\n报告已保存到:\n{4}",
                 ).format(
                     warning_count,

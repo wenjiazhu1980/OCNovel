@@ -65,7 +65,7 @@ class TestNovelAuditWorker:
             results = _run_worker(worker)
 
         assert results and results[0][0] is True
-        assert "整部小说内容审计完成" in results[0][1]
+        assert "小说内容审计完成" in results[0][1]
         mock_create.assert_called_once_with(
             mock_config.get_model_config("content_model"),
             context="NovelAuditWorker",
@@ -82,6 +82,61 @@ class TestNovelAuditWorker:
         assert data["llm_model_type"] == mock_config.get_model_config("content_model")["type"]
         assert data["llm_stats"]["llm_calls"] == 1
         assert data["findings"][0]["rule"] == "C1"
+
+    def test_worker_passes_scope_and_batch_size_to_auditor(self, mock_config, tmp_path):
+        from src.gui.workers.novel_audit_worker import NovelAuditWorker
+
+        _write_outline_and_chapter(mock_config.output_config["output_dir"])
+        config_path = str(tmp_path / "config.json")
+        env_path = str(tmp_path / ".env")
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        (tmp_path / ".env").write_text("", encoding="utf-8")
+
+        mock_model = MagicMock()
+        result = LLMReviewResult([], {
+            "outline_chapters": 1,
+            "audited_chapters": 1,
+            "missing_chapters": 0,
+            "chapter_checks": 1,
+            "transition_checks": 0,
+            "llm_calls": 1,
+        }, audit_scope={"mode": "selected", "requested_chapters": [1], "audited_chapters": [1]})
+
+        with patch("src.config.config.Config", return_value=mock_config), \
+             patch("src.generators.common.utils.setup_logging"), \
+             patch("src.gui.workers.novel_audit_worker.create_model", return_value=mock_model), \
+             patch("src.generators.content.content_auditor.run_audit", return_value=result) as mock_run:
+            worker = NovelAuditWorker(
+                config_path=config_path,
+                env_path=env_path,
+                chapter_numbers=[1, 1],
+                batch_size=3,
+            )
+            results = _run_worker(worker)
+
+        assert results and results[0][0] is True
+        assert mock_run.call_args.kwargs["chapter_numbers"] == [1]
+        assert mock_run.call_args.kwargs["batch_size"] == 3
+
+        report_path = os.path.join(mock_config.output_config["output_dir"], "content_audit_report_scope.json")
+        data = json.load(open(report_path, encoding="utf-8"))
+        assert data["audit_scope"]["mode"] == "selected"
+
+    def test_worker_empty_chapter_list_returns_failure_without_audit(self, tmp_path):
+        from src.gui.workers.novel_audit_worker import NovelAuditWorker
+
+        config_path = str(tmp_path / "config.json")
+        env_path = str(tmp_path / ".env")
+        (tmp_path / "config.json").write_text("{}", encoding="utf-8")
+        (tmp_path / ".env").write_text("", encoding="utf-8")
+
+        with patch("src.generators.content.content_auditor.run_audit") as mock_run:
+            worker = NovelAuditWorker(config_path=config_path, env_path=env_path, chapter_numbers=[])
+            results = _run_worker(worker)
+
+        assert results and results[0][0] is False
+        assert "未选择有效章节" in results[0][1]
+        mock_run.assert_not_called()
 
     def test_missing_outline_returns_failure_without_audit(self, mock_config, tmp_path):
         from src.gui.workers.novel_audit_worker import NovelAuditWorker

@@ -206,8 +206,8 @@
 <context>
     <name>ProgressTab</name>
     <message>
-        <source>🔎  整部小说审计</source>
-        <translation>🔎  整部小说审计</translation>
+        <source>🔎  章节内容审计</source>
+        <translation>🔎  章节内容审计</translation>
     </message>
     <message>
         <source>读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json</source>
@@ -266,6 +266,84 @@
     <message>
         <source>整部小说审计失败: {0}</source>
         <translation>整部小说审计失败: {0}</translation>
+    </message>
+    <message>
+        <source>🔎  审计选中章节</source>
+        <translation>🔎  审计选中章节</translation>
+    </message>
+    <message>
+        <source>仅审计章节列表中当前选中的章节，并检查上一章到选中章的入场衔接</source>
+        <translation>仅审计章节列表中当前选中的章节，并检查上一章到选中章的入场衔接</translation>
+    </message>
+    <message>
+        <source>小说审计范围:</source>
+        <translation>小说审计范围:</translation>
+    </message>
+    <message>
+        <source>整部</source>
+        <translation>整部</translation>
+    </message>
+    <message>
+        <source>审计起始章节（0 = 整部小说）</source>
+        <translation>审计起始章节（0 = 整部小说）</translation>
+    </message>
+    <message>
+        <source>审计结束章节（0 = 整部小说）</source>
+        <translation>审计结束章节（0 = 整部小说）</translation>
+    </message>
+    <message>
+        <source>批大小:</source>
+        <translation>批大小:</translation>
+    </message>
+    <message>
+        <source>默认</source>
+        <translation>默认</translation>
+    </message>
+    <message>
+        <source>LLM 单次处理的章节/转场数量（0 = 使用配置默认；1 = 不分批）</source>
+        <translation>LLM 单次处理的章节/转场数量（0 = 使用配置默认；1 = 不分批）</translation>
+    </message>
+    <message>
+        <source>🔎  审计 {0} 章</source>
+        <translation>🔎  审计 {0} 章</translation>
+    </message>
+    <message>
+        <source>请先在章节列表中选中要审计的章节。</source>
+        <translation>请先在章节列表中选中要审计的章节。</translation>
+    </message>
+    <message>
+        <source>确认小说内容审计</source>
+        <translation>确认小说内容审计</translation>
+    </message>
+    <message>
+        <source>整部小说</source>
+        <translation>整部小说</translation>
+    </message>
+    <message>
+        <source>指定 {0} 章</source>
+        <translation>指定 {0} 章</translation>
+    </message>
+    <message>
+        <source>配置默认</source>
+        <translation>配置默认</translation>
+    </message>
+    <message>
+        <source>将读取当前章节正文与 outline.json，调用 content_model 审核正文大纲一致性和相邻章节衔接。
+
+审计范围：{0}
+批大小：{1}
+
+这可能需要较长时间并消耗模型额度，确定要继续吗？</source>
+        <translation>将读取当前章节正文与 outline.json，调用 content_model 审核正文大纲一致性和相邻章节衔接。
+
+审计范围：{0}
+批大小：{1}
+
+这可能需要较长时间并消耗模型额度，确定要继续吗？</translation>
+    </message>
+    <message>
+        <source>开始指定章节小说审计，共 {0} 章...</source>
+        <translation>开始指定章节小说审计，共 {0} 章...</translation>
     </message>
 </context>
 <context>
@@ -333,6 +411,30 @@
     <message>
         <source>整部小说内容审计失败: {0}</source>
         <translation>整部小说内容审计失败: {0}</translation>
+    </message>
+    <message>
+        <source>开始指定章节内容审计: {0}；章节: {1}</source>
+        <translation>开始指定章节内容审计: {0}；章节: {1}</translation>
+    </message>
+    <message>
+        <source>小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。
+已审计章节 {3} 章，LLM 调用 {4} 次。
+报告已保存到:
+{5}</source>
+        <translation>小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。
+已审计章节 {3} 章，LLM 调用 {4} 次。
+报告已保存到:
+{5}</translation>
+    </message>
+    <message>
+        <source>小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。
+已审计章节 {2} 章，LLM 调用 {3} 次。
+报告已保存到:
+{4}</source>
+        <translation>小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。
+已审计章节 {2} 章，LLM 调用 {3} 次。
+报告已保存到:
+{4}</translation>
     </message>
 </context>
 </TS>
