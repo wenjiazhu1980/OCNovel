@@ -17,6 +17,7 @@ from src.gui.workers.merge_worker import MergeWorker
 from src.gui.workers.outline_worker import OutlineWorker
 from src.gui.workers.outline_audit_worker import OutlineAuditWorker
 from src.gui.workers.outline_revision_worker import OutlineRevisionWorker
+from src.gui.workers.novel_audit_worker import NovelAuditWorker
 from src.gui.utils.config_io import load_config
 
 
@@ -36,6 +37,7 @@ class ProgressTab(QWidget):
         self._outline_worker: OutlineWorker | None = None
         self._outline_audit_worker: OutlineAuditWorker | None = None
         self._outline_revision_worker: OutlineRevisionWorker | None = None
+        self._novel_audit_worker: NovelAuditWorker | None = None
         # [5.4] i18n 注册表
         from ..utils.i18n_helper import RetranslateRegistry
         self._i18n_registry = RetranslateRegistry(self.tr)
@@ -199,6 +201,14 @@ class ProgressTab(QWidget):
         self.btn_outline_audit.setProperty("cssClass", "info")
         top_bar_3.addWidget(self.btn_outline_audit)
 
+        self.btn_novel_audit = QPushButton(self.tr("🔎  整部小说审计"))
+        self.btn_novel_audit.setMinimumWidth(170)
+        self.btn_novel_audit.setToolTip(self.tr(
+            "读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json"
+        ))
+        self.btn_novel_audit.setProperty("cssClass", "info")
+        top_bar_3.addWidget(self.btn_novel_audit)
+
         self.btn_outline_revision = QPushButton(self.tr("🛠  修订大纲"))
         self.btn_outline_revision.setMinimumWidth(140)
         self.btn_outline_revision.setToolTip(self.tr(
@@ -248,6 +258,7 @@ class ProgressTab(QWidget):
         self.btn_merge.clicked.connect(self._on_merge)
         self.btn_marketing.clicked.connect(self._on_generate_marketing)
         self.btn_outline_audit.clicked.connect(self._on_run_outline_audit)
+        self.btn_novel_audit.clicked.connect(self._on_run_novel_audit)
         self.btn_outline_revision.clicked.connect(self._on_revise_outline_from_audit)
         self.chapter_list.itemSelectionChanged.connect(self._on_selection_changed)
 
@@ -410,18 +421,19 @@ class ProgressTab(QWidget):
         self.btn_merge.setEnabled(False)
         self.btn_marketing.setEnabled(False)
         self.btn_outline_audit.setEnabled(False)
+        self.btn_novel_audit.setEnabled(False)
         self.btn_outline_revision.setEnabled(False)
         self.pipeline_running_changed.emit(True)
 
         self._worker.start()
 
     def _on_stop(self):
-        """请求停止所有长任务（流水线 / 大纲 / 合并 / 营销）"""
+        """请求停止所有长任务（流水线 / 大纲 / 合并 / 营销 / 审计）"""
         stopped_any = False
         for w in (
             self._worker, self._outline_worker, self._merge_worker,
             self._marketing_worker, self._outline_audit_worker,
-            self._outline_revision_worker,
+            self._outline_revision_worker, self._novel_audit_worker,
         ):
             if w is None:
                 continue
@@ -441,8 +453,8 @@ class ProgressTab(QWidget):
         return any(w is not None for w in (
             self._worker, self._outline_worker,
             self._merge_worker, self._marketing_worker,
-            self._outline_audit_worker,
-            self._outline_revision_worker,
+            self._outline_audit_worker, self._outline_revision_worker,
+            self._novel_audit_worker,
         ))
 
     def shutdown_workers(self, wait_ms: int = 8000):
@@ -450,7 +462,7 @@ class ProgressTab(QWidget):
         for w in (
             self._worker, self._outline_worker, self._merge_worker,
             self._marketing_worker, self._outline_audit_worker,
-            self._outline_revision_worker,
+            self._outline_revision_worker, self._novel_audit_worker,
         ):
             if w is None:
                 continue
@@ -555,6 +567,7 @@ class ProgressTab(QWidget):
         self.btn_merge.setEnabled(False)
         self.btn_marketing.setEnabled(False)
         self.btn_outline_audit.setEnabled(False)
+        self.btn_novel_audit.setEnabled(False)
         self.btn_outline_revision.setEnabled(False)
         self.pipeline_running_changed.emit(True)
 
@@ -570,6 +583,7 @@ class ProgressTab(QWidget):
         self.btn_merge.setEnabled(True)
         self.btn_marketing.setEnabled(True)
         self.btn_outline_audit.setEnabled(True)
+        self.btn_novel_audit.setEnabled(True)
         self.btn_outline_revision.setEnabled(True)
         self.pipeline_running_changed.emit(False)
 
@@ -637,6 +651,7 @@ class ProgressTab(QWidget):
         self.btn_marketing.setText(self.tr("⏳  生成中..."))
         self.btn_merge.setEnabled(False)
         self.btn_outline_audit.setEnabled(False)
+        self.btn_novel_audit.setEnabled(False)
         self.btn_outline_revision.setEnabled(False)
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -695,6 +710,7 @@ class ProgressTab(QWidget):
         self.btn_merge.setText(self.tr("⏳  合并中..."))
         self.btn_marketing.setEnabled(False)
         self.btn_outline_audit.setEnabled(False)
+        self.btn_novel_audit.setEnabled(False)
         self.btn_outline_revision.setEnabled(False)
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -753,6 +769,7 @@ class ProgressTab(QWidget):
         self.btn_refresh.setEnabled(False)
         self.btn_merge.setEnabled(False)
         self.btn_marketing.setEnabled(False)
+        self.btn_novel_audit.setEnabled(False)
         self.btn_outline_revision.setEnabled(False)
         self.btn_stop.setEnabled(True)
         self.pipeline_running_changed.emit(True)
@@ -812,6 +829,7 @@ class ProgressTab(QWidget):
         self.btn_outline_revision.setEnabled(False)
         self.btn_outline_revision.setText(self.tr("⏳  修订中..."))
         self.btn_outline_audit.setEnabled(False)
+        self.btn_novel_audit.setEnabled(False)
         self.btn_start.setEnabled(False)
         self.btn_outline_only.setEnabled(False)
         self.btn_regen.setEnabled(False)
@@ -823,6 +841,86 @@ class ProgressTab(QWidget):
 
         self.log_viewer.append_log(self.tr("开始根据审计报告修订大纲..."), "INFO")
         self._outline_revision_worker.start()
+
+    def _on_run_novel_audit(self):
+        """手动运行整部小说章节内容审计。"""
+        if self.has_running_task():
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("有任务正在运行中，请等待完成后再进行整部小说审计。"),
+            )
+            return
+
+        cfg = load_config(self._config_path)
+        output_dir = cfg.get("output_config", {}).get("output_dir", "data/output")
+        if not os.path.isabs(output_dir):
+            output_dir = os.path.join(os.path.dirname(self._config_path), output_dir)
+        outline_file = os.path.join(output_dir, "outline.json")
+
+        if not os.path.exists(outline_file):
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("未找到 outline.json，请先生成大纲。"),
+            )
+            return
+        if not os.path.isdir(output_dir):
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("未找到输出目录，请先生成章节内容。"),
+            )
+            return
+
+        content_exists = False
+        for filename in os.listdir(output_dir):
+            if not filename.endswith(".txt"):
+                continue
+            if "_摘要" in filename or "_imitated" in filename or "_original" in filename:
+                continue
+            if filename.startswith("第") and "章_" in filename:
+                content_exists = True
+                break
+        if not content_exists:
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("未找到章节正文文件，请先生成至少一章内容。"),
+            )
+            return
+
+        reply = QMessageBox.question(
+            self, self.tr("确认整部小说审计"),
+            self.tr(
+                "将读取当前章节正文与 outline.json，调用 content_model 审核正文大纲一致性和相邻章节衔接。\n\n"
+                "这可能需要较长时间并消耗模型额度，确定要继续吗？"
+            ),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        self._novel_audit_worker = NovelAuditWorker(
+            config_path=self._config_path,
+            env_path=self._env_path,
+        )
+        self._novel_audit_worker.novel_audit_finished.connect(self._on_novel_audit_finished)
+        self._novel_audit_worker.log_message.connect(self.log_viewer.append_log)
+        self._attach_thread_lifecycle("_novel_audit_worker")
+
+        self.btn_novel_audit.setEnabled(False)
+        self.btn_novel_audit.setText(self.tr("⏳  小说审计中..."))
+        self.btn_start.setEnabled(False)
+        self.btn_outline_only.setEnabled(False)
+        self.btn_regen.setEnabled(False)
+        self.btn_refresh.setEnabled(False)
+        self.btn_merge.setEnabled(False)
+        self.btn_marketing.setEnabled(False)
+        self.btn_outline_audit.setEnabled(False)
+        self.btn_outline_revision.setEnabled(False)
+        self.btn_stop.setEnabled(True)
+        self.pipeline_running_changed.emit(True)
+
+        self.log_viewer.append_log(self.tr("开始整部小说审计..."), "INFO")
+        self._novel_audit_worker.start()
 
     # ------------------------------------------------------------------
     # Worker 信号处理
@@ -860,6 +958,7 @@ class ProgressTab(QWidget):
         self.btn_merge.setEnabled(True)
         self.btn_marketing.setEnabled(True)
         self.btn_outline_audit.setEnabled(True)
+        self.btn_novel_audit.setEnabled(True)
         self.btn_outline_revision.setEnabled(True)
         self.pipeline_running_changed.emit(False)
 
@@ -882,6 +981,7 @@ class ProgressTab(QWidget):
         self.btn_marketing.setText(self.tr("📢  生成营销内容"))
         self.btn_merge.setEnabled(True)
         self.btn_outline_audit.setEnabled(True)
+        self.btn_novel_audit.setEnabled(True)
         self.btn_outline_revision.setEnabled(True)
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
@@ -910,6 +1010,7 @@ class ProgressTab(QWidget):
         self.btn_merge.setText(self.tr("📚  合并所有章节"))
         self.btn_marketing.setEnabled(True)
         self.btn_outline_audit.setEnabled(True)
+        self.btn_novel_audit.setEnabled(True)
         self.btn_outline_revision.setEnabled(True)
         self.btn_start.setEnabled(True)
         self.btn_stop.setEnabled(False)
@@ -946,6 +1047,7 @@ class ProgressTab(QWidget):
         self.btn_refresh.setEnabled(True)
         self.btn_merge.setEnabled(True)
         self.btn_marketing.setEnabled(True)
+        self.btn_novel_audit.setEnabled(True)
         self.btn_outline_revision.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.pipeline_running_changed.emit(False)
@@ -973,6 +1075,7 @@ class ProgressTab(QWidget):
         self.btn_refresh.setEnabled(True)
         self.btn_merge.setEnabled(True)
         self.btn_marketing.setEnabled(True)
+        self.btn_novel_audit.setEnabled(True)
         self.btn_stop.setEnabled(False)
         self.pipeline_running_changed.emit(False)
 
@@ -985,6 +1088,33 @@ class ProgressTab(QWidget):
                 self.tr("大纲修订失败：\n{0}").format(message),
             )
             self.log_viewer.append_log(self.tr("大纲修订失败: {0}").format(message), "ERROR")
+
+        # 引用清理由 QThread.finished 触发，见 _attach_thread_lifecycle。
+
+    def _on_novel_audit_finished(self, success: bool, message: str):
+        """整部小说内容审计完成。"""
+        self.btn_novel_audit.setEnabled(True)
+        self.btn_novel_audit.setText(self.tr("🔎  整部小说审计"))
+        self.btn_start.setEnabled(True)
+        self.btn_outline_only.setEnabled(True)
+        self.btn_regen.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
+        self.btn_refresh.setEnabled(True)
+        self.btn_merge.setEnabled(True)
+        self.btn_marketing.setEnabled(True)
+        self.btn_outline_audit.setEnabled(True)
+        self.btn_outline_revision.setEnabled(True)
+        self.btn_stop.setEnabled(False)
+        self.pipeline_running_changed.emit(False)
+
+        if success:
+            QMessageBox.information(self, self.tr("整部小说审计完成"), message)
+            self.log_viewer.append_log(self.tr("整部小说审计完成。"), "INFO")
+        else:
+            QMessageBox.critical(
+                self, self.tr("整部小说审计失败"),
+                self.tr("整部小说审计失败：\n{0}").format(message),
+            )
+            self.log_viewer.append_log(self.tr("整部小说审计失败: {0}").format(message), "ERROR")
 
         # 引用清理由 QThread.finished 触发，见 _attach_thread_lifecycle。
 
@@ -1026,6 +1156,10 @@ class ProgressTab(QWidget):
             self.btn_outline_audit.setText(self.tr("⏳  审计中..."))
         else:
             self.btn_outline_audit.setText(self.tr("🔍  大纲审计复核"))
+        if self._novel_audit_worker is not None and self._novel_audit_worker.isRunning():
+            self.btn_novel_audit.setText(self.tr("⏳  小说审计中..."))
+        else:
+            self.btn_novel_audit.setText(self.tr("🔎  整部小说审计"))
         if self._outline_revision_worker is not None and self._outline_revision_worker.isRunning():
             self.btn_outline_revision.setText(self.tr("⏳  修订中..."))
         else:

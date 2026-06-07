@@ -1536,5 +1536,134 @@ This may take a few minutes, continue?</translation>
         <translation>Output directory not found:
 {0}</translation>
     </message>
+    <message>
+        <source>🔎  整部小说审计</source>
+        <translation>🔎  Novel Audit</translation>
+    </message>
+    <message>
+        <source>读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json</source>
+        <translation>Read current chapter text and outline.json, audit content-outline consistency and adjacent chapter transitions, and write content_audit_report.json</translation>
+    </message>
+    <message>
+        <source>有任务正在运行中，请等待完成后再进行整部小说审计。</source>
+        <translation>A task is running, please wait before running the novel audit.</translation>
+    </message>
+    <message>
+        <source>未找到输出目录，请先生成章节内容。</source>
+        <translation>Output directory not found, please generate chapter content first.</translation>
+    </message>
+    <message>
+        <source>未找到章节正文文件，请先生成至少一章内容。</source>
+        <translation>Chapter content files not found, please generate at least one chapter first.</translation>
+    </message>
+    <message>
+        <source>确认整部小说审计</source>
+        <translation>Confirm Novel Audit</translation>
+    </message>
+    <message>
+        <source>将读取当前章节正文与 outline.json，调用 content_model 审核正文大纲一致性和相邻章节衔接。
+
+这可能需要较长时间并消耗模型额度，确定要继续吗？</source>
+        <translation>Current chapter text and outline.json will be read, and content_model will audit content-outline consistency and adjacent chapter transitions.
+
+This may take a long time and consume model quota. Continue?</translation>
+    </message>
+    <message>
+        <source>⏳  小说审计中...</source>
+        <translation>⏳  Auditing Novel...</translation>
+    </message>
+    <message>
+        <source>开始整部小说审计...</source>
+        <translation>Starting novel audit...</translation>
+    </message>
+    <message>
+        <source>整部小说审计完成</source>
+        <translation>Novel Audit Complete</translation>
+    </message>
+    <message>
+        <source>整部小说审计完成。</source>
+        <translation>Novel audit complete.</translation>
+    </message>
+    <message>
+        <source>整部小说审计失败</source>
+        <translation>Novel Audit Failed</translation>
+    </message>
+    <message>
+        <source>整部小说审计失败：
+{0}</source>
+        <translation>Novel audit failed:
+{0}</translation>
+    </message>
+    <message>
+        <source>整部小说审计失败: {0}</source>
+        <translation>Novel audit failed: {0}</translation>
+    </message>
+</context>
+<context>
+    <name>NovelAuditWorker</name>
+    <message>
+        <source>不支持的模型类型: {0}</source>
+        <translation>Unsupported model type: {0}</translation>
+    </message>
+    <message>
+        <source>用户取消</source>
+        <translation>User cancelled</translation>
+    </message>
+    <message>
+        <source>未找到 outline.json，请先生成大纲: {0}</source>
+        <translation>outline.json not found, please generate an outline first: {0}</translation>
+    </message>
+    <message>
+        <source>未找到输出目录，请先生成章节内容: {0}</source>
+        <translation>Output directory not found, please generate chapter content first: {0}</translation>
+    </message>
+    <message>
+        <source>开始整部小说内容审计: {0}</source>
+        <translation>Starting full novel content audit: {0}</translation>
+    </message>
+    <message>
+        <source>开始 LLM 章节内容审计（content_model）...</source>
+        <translation>Starting LLM chapter content audit (content_model)...</translation>
+    </message>
+    <message>
+        <source>章节内容审计完成：total {0} / fatal {1} / warning {2} / info {3}</source>
+        <translation>Chapter content audit complete: total {0} / fatal {1} / warning {2} / info {3}</translation>
+    </message>
+    <message>
+        <source>审计报告已保存到: {0}</source>
+        <translation>Audit report saved to: {0}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计已停止，已写出当前进度报告。
+报告已保存到:
+{0}</source>
+        <translation>Full novel content audit stopped; a current progress report has been written.
+Report saved to:
+{0}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。
+已审计章节 {3} 章，LLM 调用 {4} 次。
+报告已保存到:
+{5}</source>
+        <translation>Full novel content audit complete. Found {0} fatal issues, {1} warnings, and {2} info items.
+Audited {3} chapters with {4} LLM calls.
+Report saved to:
+{5}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。
+已审计章节 {2} 章，LLM 调用 {3} 次。
+报告已保存到:
+{4}</source>
+        <translation>Full novel content audit complete. No fatal issues found; {0} warnings and {1} info items.
+Audited {2} chapters with {3} LLM calls.
+Report saved to:
+{4}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计失败: {0}</source>
+        <translation>Full novel content audit failed: {0}</translation>
+    </message>
 </context>
 </TS>

@@ -203,4 +203,136 @@
         <translation type="unfinished"></translation>
     </message>
 </context>
+<context>
+    <name>ProgressTab</name>
+    <message>
+        <source>🔎  整部小说审计</source>
+        <translation>🔎  整部小说审计</translation>
+    </message>
+    <message>
+        <source>读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json</source>
+        <translation>读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json</translation>
+    </message>
+    <message>
+        <source>有任务正在运行中，请等待完成后再进行整部小说审计。</source>
+        <translation>有任务正在运行中，请等待完成后再进行整部小说审计。</translation>
+    </message>
+    <message>
+        <source>未找到输出目录，请先生成章节内容。</source>
+        <translation>未找到输出目录，请先生成章节内容。</translation>
+    </message>
+    <message>
+        <source>未找到章节正文文件，请先生成至少一章内容。</source>
+        <translation>未找到章节正文文件，请先生成至少一章内容。</translation>
+    </message>
+    <message>
+        <source>确认整部小说审计</source>
+        <translation>确认整部小说审计</translation>
+    </message>
+    <message>
+        <source>将读取当前章节正文与 outline.json，调用 content_model 审核正文大纲一致性和相邻章节衔接。
+
+这可能需要较长时间并消耗模型额度，确定要继续吗？</source>
+        <translation>将读取当前章节正文与 outline.json，调用 content_model 审核正文大纲一致性和相邻章节衔接。
+
+这可能需要较长时间并消耗模型额度，确定要继续吗？</translation>
+    </message>
+    <message>
+        <source>⏳  小说审计中...</source>
+        <translation>⏳  小说审计中...</translation>
+    </message>
+    <message>
+        <source>开始整部小说审计...</source>
+        <translation>开始整部小说审计...</translation>
+    </message>
+    <message>
+        <source>整部小说审计完成</source>
+        <translation>整部小说审计完成</translation>
+    </message>
+    <message>
+        <source>整部小说审计完成。</source>
+        <translation>整部小说审计完成。</translation>
+    </message>
+    <message>
+        <source>整部小说审计失败</source>
+        <translation>整部小说审计失败</translation>
+    </message>
+    <message>
+        <source>整部小说审计失败：
+{0}</source>
+        <translation>整部小说审计失败：
+{0}</translation>
+    </message>
+    <message>
+        <source>整部小说审计失败: {0}</source>
+        <translation>整部小说审计失败: {0}</translation>
+    </message>
+</context>
+<context>
+    <name>NovelAuditWorker</name>
+    <message>
+        <source>不支持的模型类型: {0}</source>
+        <translation>不支持的模型类型: {0}</translation>
+    </message>
+    <message>
+        <source>用户取消</source>
+        <translation>用户取消</translation>
+    </message>
+    <message>
+        <source>未找到 outline.json，请先生成大纲: {0}</source>
+        <translation>未找到 outline.json，请先生成大纲: {0}</translation>
+    </message>
+    <message>
+        <source>未找到输出目录，请先生成章节内容: {0}</source>
+        <translation>未找到输出目录，请先生成章节内容: {0}</translation>
+    </message>
+    <message>
+        <source>开始整部小说内容审计: {0}</source>
+        <translation>开始整部小说内容审计: {0}</translation>
+    </message>
+    <message>
+        <source>开始 LLM 章节内容审计（content_model）...</source>
+        <translation>开始 LLM 章节内容审计（content_model）...</translation>
+    </message>
+    <message>
+        <source>章节内容审计完成：total {0} / fatal {1} / warning {2} / info {3}</source>
+        <translation>章节内容审计完成：total {0} / fatal {1} / warning {2} / info {3}</translation>
+    </message>
+    <message>
+        <source>审计报告已保存到: {0}</source>
+        <translation>审计报告已保存到: {0}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计已停止，已写出当前进度报告。
+报告已保存到:
+{0}</source>
+        <translation>整部小说内容审计已停止，已写出当前进度报告。
+报告已保存到:
+{0}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。
+已审计章节 {3} 章，LLM 调用 {4} 次。
+报告已保存到:
+{5}</source>
+        <translation>整部小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。
+已审计章节 {3} 章，LLM 调用 {4} 次。
+报告已保存到:
+{5}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。
+已审计章节 {2} 章，LLM 调用 {3} 次。
+报告已保存到:
+{4}</source>
+        <translation>整部小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。
+已审计章节 {2} 章，LLM 调用 {3} 次。
+报告已保存到:
+{4}</translation>
+    </message>
+    <message>
+        <source>整部小说内容审计失败: {0}</source>
+        <translation>整部小说内容审计失败: {0}</translation>
+    </message>
+</context>
 </TS>

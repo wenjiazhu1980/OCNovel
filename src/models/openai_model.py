@@ -10,6 +10,28 @@ import logging
 import json
 import os
 
+
+_DEBUG_SESSION_ID = "bda02d"
+_DEBUG_LOG_PATH = "/Users/zzz/Codespace/OCNovel/.cursor/debug-bda02d.log"
+
+
+def _debug_bda02d(hypothesis_id: str, location: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
+    """写入本次调试会话的 NDJSON 运行证据。"""
+    try:
+        os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
+        payload = {
+            "sessionId": _DEBUG_SESSION_ID,
+            "hypothesisId": hypothesis_id,
+            "location": location,
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as fp:
+            fp.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
+    except Exception:
+        pass
+
 # 导入网络管理相关模块
 try:
     from ..network.config import PoolConfig
@@ -216,19 +238,83 @@ class OpenAIModel(OpenAICompatMixin, BaseModel):
             create_kwargs = dict(**params)
             if stream_timeout is not None:
                 create_kwargs["timeout"] = stream_timeout
+            # region debug-bda02d
+            _debug_bda02d(
+                "H1_H4",
+                "src/models/openai_model.py:_generate_with_chat_api:stream_start",
+                "准备发起 Chat Completions 流式请求，记录推理模式与请求形态",
+                {
+                    "model": model_name,
+                    "prompt_len": len(prompt or ""),
+                    "max_tokens": max_tokens,
+                    "temperature_present": "temperature" in create_kwargs,
+                    "top_p_present": "top_p" in create_kwargs,
+                    "reasoning_enabled": self._is_reasoning_enabled(),
+                    "stream_timeout": stream_timeout,
+                    "stream": create_kwargs.get("stream"),
+                },
+            )
+            # endregion
+            stream_started_at = time.time()
             response = client.chat.completions.create(**create_kwargs)
 
             chunks = []
+            stream_event_count = 0
+            choice_event_count = 0
+            content_event_count = 0
+            empty_delta_count = 0
+            alt_delta_field_count = 0
+            finish_reasons: Dict[str, int] = {}
+            last_delta_fields: list = []
             for chunk in response:
+                stream_event_count += 1
                 if self.cancel_checker and self.cancel_checker():
                     raise InterruptedError("用户取消生成")
 
                 if hasattr(chunk, "choices") and chunk.choices:
+                    choice_event_count += len(chunk.choices)
+                    finish_reason = getattr(chunk.choices[0], "finish_reason", None)
+                    if finish_reason:
+                        finish_reasons[str(finish_reason)] = finish_reasons.get(str(finish_reason), 0) + 1
                     delta = chunk.choices[0].delta
+                    delta_fields = []
+                    try:
+                        if hasattr(delta, "model_dump"):
+                            delta_fields = [key for key, value in delta.model_dump().items() if value not in (None, "", [])]
+                        elif hasattr(delta, "__dict__"):
+                            delta_fields = [key for key, value in vars(delta).items() if value not in (None, "", [])]
+                    except Exception:
+                        delta_fields = []
+                    if delta_fields:
+                        last_delta_fields = delta_fields
+                    if any(field for field in delta_fields if field != "content"):
+                        alt_delta_field_count += 1
                     if hasattr(delta, "content") and delta.content:
+                        content_event_count += 1
                         chunks.append(delta.content)
+                    elif not delta_fields:
+                        empty_delta_count += 1
 
             content = "".join(chunks).strip()
+            # region debug-bda02d
+            _debug_bda02d(
+                "H1_H2_H4",
+                "src/models/openai_model.py:_generate_with_chat_api:stream_complete",
+                "Chat Completions 流式迭代结束，记录 chunk 与 delta 统计",
+                {
+                    "model": model_name,
+                    "elapsed_ms": int((time.time() - stream_started_at) * 1000),
+                    "stream_event_count": stream_event_count,
+                    "choice_event_count": choice_event_count,
+                    "content_event_count": content_event_count,
+                    "empty_delta_count": empty_delta_count,
+                    "alt_delta_field_count": alt_delta_field_count,
+                    "last_delta_fields": last_delta_fields,
+                    "finish_reasons": finish_reasons,
+                    "content_len_after_strip": len(content),
+                },
+            )
+            # endregion
             if not content:
                 raise Exception("Chat Completions 响应流为空")
             return content
@@ -237,12 +323,59 @@ class OpenAIModel(OpenAICompatMixin, BaseModel):
                     or "响应流为空" in str(e)
                     or type(e).__name__ in ("TypeError", "AttributeError")):
                 logging.warning(f"流式请求失败或不受支持，回退至非流式请求: {e}")
+                # region debug-bda02d
+                _debug_bda02d(
+                    "H1_H4",
+                    "src/models/openai_model.py:_generate_with_chat_api:stream_fallback_triggered",
+                    "流式请求进入非流式回退分支，记录异常类型与请求上下文",
+                    {
+                        "model": model_name,
+                        "error_type": type(e).__name__,
+                        "error_message": str(e),
+                        "reasoning_enabled": self._is_reasoning_enabled(),
+                        "prompt_len": len(prompt or ""),
+                        "max_tokens": max_tokens,
+                    },
+                )
+                # endregion
                 params["stream"] = False
                 non_stream_kwargs = dict(**params)
                 if stream_timeout is not None:
                     non_stream_kwargs["timeout"] = stream_timeout
+                non_stream_started_at = time.time()
                 response = client.chat.completions.create(**non_stream_kwargs)
                 content = self._extract_chat_content(response)
+                choice_count = len(getattr(response, "choices", []) or [])
+                finish_reason = None
+                raw_content_type = None
+                raw_content_len = None
+                if choice_count:
+                    choice = response.choices[0]
+                    finish_reason = getattr(choice, "finish_reason", None)
+                    message = getattr(choice, "message", None)
+                    raw_content = getattr(message, "content", None) if message is not None else None
+                    raw_content_type = type(raw_content).__name__
+                    raw_content_len = len(raw_content) if isinstance(raw_content, str) else None
+                usage = getattr(response, "usage", None)
+                # region debug-bda02d
+                _debug_bda02d(
+                    "H3_H5",
+                    "src/models/openai_model.py:_generate_with_chat_api:non_stream_complete",
+                    "非流式回退完成，记录返回结构与提取内容长度",
+                    {
+                        "model": model_name,
+                        "elapsed_ms": int((time.time() - non_stream_started_at) * 1000),
+                        "choice_count": choice_count,
+                        "finish_reason": str(finish_reason) if finish_reason is not None else None,
+                        "raw_content_type": raw_content_type,
+                        "raw_content_len": raw_content_len,
+                        "extracted_is_none": content is None,
+                        "extracted_len": len(content) if isinstance(content, str) else None,
+                        "extracted_len_after_strip": len(content.strip()) if isinstance(content, str) else None,
+                        "usage": usage.model_dump() if hasattr(usage, "model_dump") else str(usage) if usage is not None else None,
+                    },
+                )
+                # endregion
                 if content is None:
                     raise Exception("Chat Completions 非流式请求返回空内容")
                 return content

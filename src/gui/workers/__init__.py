@@ -4,3 +4,4 @@ from .writing_guide_worker import WritingGuideWorker
 from .outline_worker import OutlineWorker
 from .outline_audit_worker import OutlineAuditWorker
 from .outline_revision_worker import OutlineRevisionWorker
+from .novel_audit_worker import NovelAuditWorker
