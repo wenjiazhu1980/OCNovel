@@ -23,7 +23,7 @@ class ChapterListWidget(QListWidget):
         from src.gui.utils.fonts import FONT_UI
         self.setFont(QFont(FONT_UI, 13))
         self.setAlternatingRowColors(True)
-        self.setSpacing(2)
+        self.setSpacing(1)
         self.setSelectionMode(QListWidget.ExtendedSelection)
         self._total = 0
 
@@ -54,9 +54,8 @@ class ChapterListWidget(QListWidget):
     def get_completed_count(self) -> int:
         """返回已完成章节数"""
         count = 0
-        icon_completed = _STATUS_MAP["completed"][0]
         for i in range(self.count()):
-            if icon_completed in (self.item(i).text() or ""):
+            if self.item(i).data(Qt.UserRole) == "completed":
                 count += 1
         return count
 
@@ -74,10 +73,8 @@ class ChapterListWidget(QListWidget):
     def get_non_completed_chapter_numbers(self) -> list[int]:
         """返回所有未完成(pending/failed)的章节编号列表"""
         numbers = []
-        icon_completed = _STATUS_MAP["completed"][0]
         for i in range(self.count()):
-            text = self.item(i).text() or ""
-            if icon_completed not in text:
+            if self.item(i).data(Qt.UserRole) != "completed":
                 numbers.append(i + 1)
         numbers.sort()
         return numbers
@@ -89,5 +86,5 @@ class ChapterListWidget(QListWidget):
         item.setForeground(color)
         item.setFlags(item.flags() & ~Qt.ItemIsEditable)
         item.setData(Qt.UserRole, status)
-        item.setSizeHint(QSize(0, 36))
+        item.setSizeHint(QSize(0, 34))
         self.addItem(item)

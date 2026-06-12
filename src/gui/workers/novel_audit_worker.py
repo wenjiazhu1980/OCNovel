@@ -3,34 +3,11 @@ import json
 import logging
 import os
 import threading
-import time
 
 from PySide6.QtCore import QCoreApplication, QThread, Signal
 
 from src.gui.utils.log_handler import SignalLogHandler
 from src.gui.workers.model_factory import create_model
-
-
-_DEBUG_SESSION_ID = "bda02d"
-_DEBUG_LOG_PATH = "/Users/zzz/Codespace/OCNovel/.cursor/debug-bda02d.log"
-
-
-def _debug_bda02d(hypothesis_id: str, location: str, message: str, data: dict | None = None) -> None:
-    """写入本次调试会话的 NDJSON 运行证据。"""
-    try:
-        os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
-        payload = {
-            "sessionId": _DEBUG_SESSION_ID,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data or {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as fp:
-            fp.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
 
 
 class NovelAuditWorker(QThread):
@@ -151,19 +128,6 @@ class NovelAuditWorker(QThread):
                     "NovelAuditWorker",
                     "章节内容审计为结构化 JSON 任务，已临时关闭 content_model 推理输出以减少截断。",
                 ))
-            # region debug-bda02d
-            _debug_bda02d(
-                "H4",
-                "src/gui/workers/novel_audit_worker.py:run:audit_model_config",
-                "整部小说审计创建 content_model 前记录推理开关处理结果",
-                {
-                    "original_reasoning_enabled": original_reasoning_enabled,
-                    "effective_reasoning_enabled": bool(content_model_config.get("reasoning_enabled", False)),
-                    "model_type": llm_model_type,
-                    "model_name_present": bool(content_model_config.get("model_name")),
-                },
-            )
-            # endregion
             logger.info(QCoreApplication.translate(
                 "NovelAuditWorker", "开始 LLM 章节内容审计（content_model）..."
             ))
@@ -175,7 +139,8 @@ class NovelAuditWorker(QThread):
             if self._batch_size is not None:
                 resolved_batch_size = self._batch_size
             else:
-                resolved_batch_size = generation_config.get("content_audit_batch_size", 1)
+                # 缺省值与 config.json.example / CLAUDE.md 文档保持一致（默认 5）
+                resolved_batch_size = generation_config.get("content_audit_batch_size", 5)
 
             result = run_audit(
                 output_dir=output_dir,
@@ -195,6 +160,21 @@ class NovelAuditWorker(QThread):
             )
             with open(report_path, "w", encoding="utf-8") as fp:
                 json.dump(report, fp, ensure_ascii=False, indent=2)
+
+            # 全书审计完成后清理旧的局部审计报告：修订流程优先消费 scope 报告，
+            # 不清理会导致后续「修订内容」静默使用过时的局部审计结果。
+            if self._chapter_numbers is None:
+                stale_scope_report = os.path.join(output_dir, "content_audit_report_scope.json")
+                try:
+                    if os.path.exists(stale_scope_report):
+                        os.remove(stale_scope_report)
+                        logger.info(QCoreApplication.translate(
+                            "NovelAuditWorker", "已清理过时的局部审计报告: {0}"
+                        ).format(stale_scope_report))
+                except OSError as exc:
+                    logger.warning(QCoreApplication.translate(
+                        "NovelAuditWorker", "清理局部审计报告失败: {0}"
+                    ).format(exc))
 
             fatal_count = report["fatal"]
             warning_count = report["warning"]

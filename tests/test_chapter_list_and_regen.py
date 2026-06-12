@@ -461,14 +461,21 @@ class TestProgressTabRegen:
 class TestProgressTabOutlineAudit:
     """测试手动大纲审计复核按钮"""
 
-    def _make_tab(self, qapp, tmp_path, with_outline=False, with_audit_report=False):
+    def _make_tab(
+        self,
+        qapp,
+        tmp_path,
+        with_outline=False,
+        with_audit_report=False,
+        target_chapters=5,
+    ):
         config_path = str(tmp_path / "config.json")
         env_path = str(tmp_path / ".env")
         output_dir = tmp_path / "output"
         output_dir.mkdir(exist_ok=True)
 
         cfg = {
-            "novel_config": {"target_chapters": 5},
+            "novel_config": {"target_chapters": target_chapters},
             "output_config": {"output_dir": str(output_dir)},
         }
         with open(config_path, "w", encoding="utf-8") as f:
@@ -625,27 +632,47 @@ class TestProgressTabOutlineAudit:
         assert hasattr(tab, "btn_outline_revision")
         assert "修订大纲" in tab.btn_outline_revision.text()
 
-    def test_action_bar_buttons_keep_visible_gaps(self, qapp, tmp_path):
-        """操作按钮应保留可见间距，避免默认窗口宽度下相邻按钮粘连"""
-        tab = self._make_tab(qapp, tmp_path)
+    def test_action_bar_buttons_are_grouped_without_overlap(self, qapp, tmp_path):
+        """操作按钮应按功能分组，并在默认窗口宽度下保留可见间距"""
+        tab = self._make_tab(qapp, tmp_path, target_chapters=20)
         tab.resize(1100, 700)
         tab.show()
+        tab.load_chapters()
         qapp.processEvents()
 
-        assert all(layout.spacing() >= 12 for layout in tab._action_bar_layouts)
+        assert [group.title() for group in tab._control_group_boxes] == [
+            "生成控制",
+            "章节与产物",
+            "审计与修订",
+        ]
+        assert all(
+            layout.horizontalSpacing() >= 10 and layout.verticalSpacing() >= 3
+            for layout in tab._action_bar_layouts
+        )
+
+        row_height = tab.chapter_list.sizeHintForRow(0) + tab.chapter_list.spacing()
+        assert tab.chapter_list.viewport().height() >= row_height * 10
 
         button_rows = [
+            [tab.btn_start, tab.btn_stop],
+            [tab.btn_outline_only, tab.spin_outline_start, tab.spin_outline_end],
             [tab.btn_open_output, tab.btn_refresh, tab.btn_regen],
-            [tab.btn_merge, tab.btn_marketing, tab.btn_outline_audit, tab.btn_outline_revision],
+            [tab.btn_merge, tab.btn_marketing],
+            [tab.btn_outline_audit, tab.btn_outline_revision],
+            [tab.btn_novel_audit, tab.btn_novel_audit_selected, tab.btn_content_revision],
+            [tab.spin_audit_start, tab.spin_audit_end, tab.spin_audit_batch_size],
         ]
-        for buttons in button_rows:
+        for widgets in button_rows:
             gaps = []
-            for left, right in zip(buttons, buttons[1:]):
+            for left, right in zip(widgets, widgets[1:]):
                 left_rect = left.geometry()
                 right_rect = right.geometry()
                 gaps.append(right_rect.x() - (left_rect.x() + left_rect.width()))
 
-            assert min(gaps) >= 12
+            assert min(gaps) >= 10
+
+            for left, right in zip(widgets, widgets[1:]):
+                assert not left.geometry().intersects(right.geometry())
 
     def test_missing_audit_report_blocks_outline_revision(self, qapp, tmp_path):
         """缺少审计报告时不应启动修订"""

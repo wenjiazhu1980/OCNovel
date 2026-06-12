@@ -129,6 +129,40 @@ QGroupBox[cssClass="inner"] {
     padding: 28px 12px 12px 12px;
 }
 
+/* 紧凑 QGroupBox — 用于操作密集区，为内容区释放空间 */
+QGroupBox[cssClass="compact"] {
+    background-color: #FFFFFF;
+    border: 1px solid #E8E8E8;
+    border-radius: 8px;
+    margin-top: 7px;
+    padding: 6px 6px 4px 6px;
+    font-weight: 600;
+    color: #1D2129;
+}
+
+QGroupBox[cssClass="compact"]::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+    color: #1D2129;
+}
+
+QGroupBox[cssClass="compact"] QPushButton[cssClass="success"] {
+    background-color: #34C759;
+    border: none;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+
+QGroupBox[cssClass="compact"] QPushButton[cssClass="success"]:hover {
+    background-color: #2DB84E;
+}
+
+QGroupBox[cssClass="compact"] QPushButton[cssClass="success"]:disabled {
+    background-color: #EBEDF0;
+    color: #A0A4AA;
+}
+
 /* ══ 输入控件 ══ */
 
 QLineEdit, QTextEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {

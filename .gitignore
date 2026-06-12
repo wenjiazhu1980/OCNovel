@@ -55,6 +55,18 @@ examples/
 scripts/
 # *_gui.* — GUI入口已入库
 
+# 推广视频工具产物与 vendored 依赖（tools/generate_bilibili_promo_video.py）
+video_temp/
+*.mp4
+*.pptx
+*.srt
+*.aiff
+*.mp3
+视频配音文案.md
+create_ocnovel_presentation.py
+ppt_to_video.py
+tools/generate_bilibili_promo_video.py
+
 # 环境变量
 .env
 !.env.example

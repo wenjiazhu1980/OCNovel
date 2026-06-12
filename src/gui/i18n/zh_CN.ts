@@ -218,6 +218,10 @@
         <translation>有任务正在运行中，请等待完成后再进行整部小说审计。</translation>
     </message>
     <message>
+        <source>有任务正在运行中，请等待完成后再启动新任务。</source>
+        <translation>有任务正在运行中，请等待完成后再启动新任务。</translation>
+    </message>
+    <message>
         <source>未找到输出目录，请先生成章节内容。</source>
         <translation>未找到输出目录，请先生成章节内容。</translation>
     </message>
@@ -435,6 +439,22 @@
 已审计章节 {2} 章，LLM 调用 {3} 次。
 报告已保存到:
 {4}</translation>
+    </message>
+    <message>
+        <source>未选择有效章节，已取消小说内容审计。</source>
+        <translation>未选择有效章节，已取消小说内容审计。</translation>
+    </message>
+    <message>
+        <source>章节内容审计为结构化 JSON 任务，已临时关闭 content_model 推理输出以减少截断。</source>
+        <translation>章节内容审计为结构化 JSON 任务，已临时关闭 content_model 推理输出以减少截断。</translation>
+    </message>
+    <message>
+        <source>已清理过时的局部审计报告: {0}</source>
+        <translation>已清理过时的局部审计报告: {0}</translation>
+    </message>
+    <message>
+        <source>清理局部审计报告失败: {0}</source>
+        <translation>清理局部审计报告失败: {0}</translation>
     </message>
 </context>
 </TS>

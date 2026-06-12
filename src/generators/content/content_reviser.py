@@ -17,6 +17,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from src.generators.content.content_auditor import (
     _compact_text,
+    _extract_json,
     _safe_json_dumps,
     _strip_markdown_heading,
     find_chapter_candidates,
@@ -51,33 +52,6 @@ class ContentRevisionResult:
     raw_response: str = ""
     skipped_findings: List[Dict[str, Any]] = field(default_factory=list)
     failed_revisions: List[Dict[str, Any]] = field(default_factory=list)
-
-
-def _extract_json(text: str) -> Optional[Any]:
-    """从 LLM 输出中提取首个 JSON 对象或数组。"""
-    if not text:
-        return None
-    cleaned = str(text).strip()
-    fence_match = re.search(r"```(?:json)?\s*(.*?)```", cleaned, re.S | re.I)
-    if fence_match:
-        cleaned = fence_match.group(1).strip()
-    try:
-        return json.loads(cleaned)
-    except Exception:
-        pass
-
-    starts = [idx for idx in (cleaned.find("{"), cleaned.find("[")) if idx >= 0]
-    if not starts:
-        return None
-    start = min(starts)
-    end_char = "}" if cleaned[start] == "{" else "]"
-    end = cleaned.rfind(end_char)
-    if end <= start:
-        return None
-    try:
-        return json.loads(cleaned[start:end + 1])
-    except Exception:
-        return None
 
 
 def _normalize_rule(value: Any) -> str:

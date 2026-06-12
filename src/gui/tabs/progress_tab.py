@@ -5,7 +5,7 @@ import logging
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QCheckBox, QLineEdit, QSplitter, QProgressBar, QMessageBox,
-    QLabel, QSpinBox,
+    QLabel, QSpinBox, QGroupBox, QGridLayout, QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal, QEvent
 
@@ -77,21 +77,49 @@ class ProgressTab(QWidget):
     # ------------------------------------------------------------------
 
     def _init_ui(self):
-        action_gap = 12
-        action_group_gap = 8
+        action_gap = 10
+        compact_control_height = 30
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(12, 6, 12, 6)
+        root.setSpacing(4)
 
-        # ---- 顶部控制栏 ----
-        # 第一行:启动/停止/强制重生成大纲/额外提示词
-        top_bar_1 = QHBoxLayout()
-        top_bar_1.setSpacing(action_gap)
-        top_bar_1.setContentsMargins(0, 0, 0, 0)
+        # ---- 顶部控制区：按功能分组，避免按钮与范围控件互相挤压 ----
+        controls = QVBoxLayout()
+        controls.setSpacing(0)
+        controls.setContentsMargins(0, 0, 0, 0)
+        self._action_bar_layouts = []
+        self._control_group_boxes = []
+
+        def make_group(title: str) -> tuple[QGroupBox, QGridLayout]:
+            group = QGroupBox(self.tr(title))
+            group.setProperty("cssClass", "compact")
+            group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            layout = QGridLayout(group)
+            layout.setContentsMargins(8, 0, 8, 2)
+            layout.setHorizontalSpacing(action_gap)
+            layout.setVerticalSpacing(3)
+            self._control_group_boxes.append(group)
+            self._action_bar_layouts.append(layout)
+            return group, layout
+
+        def tune_button(button: QPushButton, min_width: int) -> None:
+            button.setMinimumWidth(min_width)
+            button.setFixedHeight(compact_control_height)
+            button.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Fixed)
+
+        def tune_spin(spin_box: QSpinBox) -> None:
+            spin_box.setFixedSize(68, compact_control_height)
+
+        def make_label(text: str) -> QLabel:
+            label = QLabel(self.tr(text))
+            label.setStyleSheet("background: transparent;")
+            label.setFixedHeight(compact_control_height)
+            label.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+            return label
 
         self.btn_start = QPushButton(self.tr("▶  启动"))
-        self.btn_start.setMinimumWidth(110)  # 改为最小宽度,允许自动扩展
+        tune_button(self.btn_start, 108)
         self.btn_start.setProperty("cssClass", "success")
         self.btn_start.setToolTip(self.tr(
             "启动完整流水线（大纲 → 内容 → 定稿）\n"
@@ -100,12 +128,29 @@ class ProgressTab(QWidget):
         ))
 
         self.btn_stop = QPushButton(self.tr("■  停止"))
-        self.btn_stop.setMinimumWidth(110)  # 改为最小宽度,允许自动扩展
+        tune_button(self.btn_stop, 108)
         self.btn_stop.setEnabled(False)
         self.btn_stop.setProperty("cssClass", "danger")
 
+        self.chk_force_outline = QCheckBox(self.tr("强制重生成大纲"))
+        self.chk_force_outline.setFixedHeight(compact_control_height)
+        self.edit_extra_prompt = QLineEdit()
+        self.edit_extra_prompt.setPlaceholderText(self.tr("额外提示词（可选）"))
+        self.edit_extra_prompt.setMinimumWidth(260)
+        self.edit_extra_prompt.setFixedHeight(compact_control_height)
+        self.edit_extra_prompt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        generation_group, generation_layout = make_group("生成控制")
+        generation_layout.addWidget(self.btn_start, 0, 0)
+        generation_layout.addWidget(self.btn_stop, 0, 1)
+        generation_layout.addWidget(self.chk_force_outline, 0, 2)
+        generation_layout.addWidget(make_label("额外提示词:"), 0, 3)
+        generation_layout.addWidget(self.edit_extra_prompt, 0, 4)
+        generation_layout.setColumnStretch(4, 1)
+        controls.addWidget(generation_group)
+
         self.btn_outline_only = QPushButton(self.tr("📝  仅生成大纲"))
-        self.btn_outline_only.setMinimumWidth(140)
+        tune_button(self.btn_outline_only, 138)
         self.btn_outline_only.setToolTip(self.tr(
             "仅生成大纲而不生成章节内容，可先预览大纲效果\n"
             "受「大纲范围」「强制重生成大纲」「额外提示词」三项约束"
@@ -121,7 +166,7 @@ class ProgressTab(QWidget):
             "大纲起始章节（0 = 自动推断）\n"
             "仅作用于「仅生成大纲」按钮；启动流水线时被忽略"
         ))
-        self.spin_outline_start.setFixedWidth(72)
+        tune_spin(self.spin_outline_start)
 
         self.spin_outline_end = QSpinBox()
         self.spin_outline_end.setRange(0, 9999)
@@ -131,139 +176,126 @@ class ProgressTab(QWidget):
             "大纲结束章节（0 = 自动推断）\n"
             "仅作用于「仅生成大纲」按钮；启动流水线时被忽略"
         ))
-        self.spin_outline_end.setFixedWidth(72)
+        tune_spin(self.spin_outline_end)
 
-        lbl_outline_range = QLabel(self.tr("大纲范围（仅大纲）:"))
-        lbl_outline_tilde = QLabel("~")
+        lbl_outline_range = make_label("大纲范围（仅大纲）:")
+        lbl_outline_tilde = make_label("~")
 
-        self.chk_force_outline = QCheckBox(self.tr("强制重生成大纲"))
-        self.edit_extra_prompt = QLineEdit()
-        self.edit_extra_prompt.setPlaceholderText(self.tr("额外提示词（可选）"))
-
-        top_bar_1.addWidget(self.btn_start)
-        top_bar_1.addWidget(self.btn_stop)
-        top_bar_1.addWidget(self.btn_outline_only)
-        top_bar_1.addWidget(lbl_outline_range)
-        top_bar_1.addWidget(self.spin_outline_start)
-        top_bar_1.addWidget(lbl_outline_tilde)
-        top_bar_1.addWidget(self.spin_outline_end)
-        top_bar_1.addWidget(self.chk_force_outline)
-        top_bar_1.addWidget(self.edit_extra_prompt, stretch=1)
-
-        root.addLayout(top_bar_1)
-
-        # 第二行:打开输出目录/刷新章节/重新生成选中章节
-        top_bar_2 = QHBoxLayout()
-        top_bar_2.setSpacing(action_gap)
-        top_bar_2.setContentsMargins(0, 0, 0, 0)
+        outline_options = QWidget()
+        outline_options.setStyleSheet("background: transparent;")
+        outline_options_row = QHBoxLayout(outline_options)
+        outline_options_row.setContentsMargins(0, 0, 0, 0)
+        outline_options_row.setSpacing(action_gap)
+        outline_options_row.addWidget(self.btn_outline_only)
+        outline_options_row.addWidget(lbl_outline_range)
+        outline_options_row.addWidget(self.spin_outline_start)
+        outline_options_row.addWidget(lbl_outline_tilde)
+        outline_options_row.addWidget(self.spin_outline_end)
+        outline_options_row.addStretch()
+        generation_layout.addWidget(outline_options, 1, 0, 1, 5)
 
         self.btn_open_output = QPushButton(self.tr("打开输出目录"))
         self.btn_open_output.clicked.connect(self._open_output_dir)
-        self.btn_open_output.setMinimumWidth(120)
-        top_bar_2.addWidget(self.btn_open_output)
+        tune_button(self.btn_open_output, 120)
 
         self.btn_refresh = QPushButton(self.tr("↻  刷新章节"))
-        self.btn_refresh.setMinimumWidth(120)  # 改为最小宽度,允许自动扩展
+        tune_button(self.btn_refresh, 120)
         self.btn_refresh.setToolTip(self.tr("从磁盘重新加载章节状态"))
-        top_bar_2.addWidget(self.btn_refresh)
 
         self.btn_regen = QPushButton(self.tr("🔄  重新生成选中章节"))
-        self.btn_regen.setMinimumWidth(180)  # 改为最小宽度,允许自动扩展
+        tune_button(self.btn_regen, 160)
         self.btn_regen.setEnabled(False)
         self.btn_regen.setToolTip(self.tr("在章节列表中选中要重新生成的章节，然后点击此按钮"))
-        top_bar_2.addWidget(self.btn_regen)
-        top_bar_2.addStretch()
-
-        root.addLayout(top_bar_2)
-
-        # 第三行:合并/营销/大纲审计与修订。拆行避免默认窗口宽度下按钮被挤压粘连。
-        top_bar_3 = QHBoxLayout()
-        top_bar_3.setSpacing(action_gap)
-        top_bar_3.setContentsMargins(0, 0, 0, 0)
-        self._action_bar_layouts = [top_bar_2, top_bar_3]
 
         self.btn_merge = QPushButton(self.tr("📚  合并所有章节"))
-        self.btn_merge.setMinimumWidth(150)  # 改为最小宽度,允许自动扩展
+        tune_button(self.btn_merge, 140)
         self.btn_merge.setToolTip(self.tr("将所有已完成的章节合并为一个完整文件"))
         self.btn_merge.setProperty("cssClass", "success")
-        top_bar_3.addWidget(self.btn_merge)
+        self.btn_merge.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #34C759;
+                border: none;
+                color: #FFFFFF;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #2DB84E;
+            }
+            QPushButton:disabled {
+                background-color: #EBEDF0;
+                color: #A0A4AA;
+            }
+            """
+        )
 
         self.btn_marketing = QPushButton(self.tr("📢  生成营销内容"))
-        self.btn_marketing.setMinimumWidth(150)  # 改为最小宽度,允许自动扩展
+        tune_button(self.btn_marketing, 140)
         self.btn_marketing.setToolTip(self.tr("根据已完成的章节生成营销文案、标题和封面提示词"))
         self.btn_marketing.setProperty("cssClass", "info")
-        top_bar_3.addWidget(self.btn_marketing)
-        top_bar_3.addSpacing(action_group_gap)
+
+        chapter_group, chapter_layout = make_group("章节与产物")
+        chapter_layout.addWidget(self.btn_open_output, 0, 0)
+        chapter_layout.addWidget(self.btn_refresh, 0, 1)
+        chapter_layout.addWidget(self.btn_regen, 0, 2)
+        chapter_layout.addWidget(self.btn_merge, 1, 0)
+        chapter_layout.addWidget(self.btn_marketing, 1, 1)
+        chapter_layout.setColumnStretch(3, 1)
 
         self.btn_outline_audit = QPushButton(self.tr("🔍  大纲审计复核"))
-        self.btn_outline_audit.setMinimumWidth(160)
+        tune_button(self.btn_outline_audit, 150)
         self.btn_outline_audit.setToolTip(self.tr(
             "读取当前 outline.json，运行全局审计与 LLM 任务闭环复核，并写出 outline_audit_report.json"
         ))
         self.btn_outline_audit.setProperty("cssClass", "info")
-        top_bar_3.addWidget(self.btn_outline_audit)
 
         self.btn_novel_audit = QPushButton(self.tr("🔎  章节内容审计"))
-        self.btn_novel_audit.setMinimumWidth(170)
+        tune_button(self.btn_novel_audit, 150)
         self.btn_novel_audit.setToolTip(self.tr(
             "读取当前章节正文与 outline.json，审核正文大纲一致性和相邻章节衔接，并写出 content_audit_report.json"
         ))
         self.btn_novel_audit.setProperty("cssClass", "info")
-        top_bar_3.addWidget(self.btn_novel_audit)
 
         self.btn_novel_audit_selected = QPushButton(self.tr("🔎  审计选中章节"))
-        self.btn_novel_audit_selected.setMinimumWidth(170)
+        tune_button(self.btn_novel_audit_selected, 150)
         self.btn_novel_audit_selected.setEnabled(False)
         self.btn_novel_audit_selected.setToolTip(self.tr(
             "仅审计章节列表中当前选中的章节，并检查上一章到选中章的入场衔接"
         ))
         self.btn_novel_audit_selected.setProperty("cssClass", "info")
-        top_bar_3.addWidget(self.btn_novel_audit_selected)
 
         self.btn_content_revision = QPushButton(self.tr("🛠  修订内容"))
-        self.btn_content_revision.setMinimumWidth(140)
+        tune_button(self.btn_content_revision, 130)
         self.btn_content_revision.setToolTip(self.tr(
             "优先读取 content_audit_report_scope.json，否则读取 content_audit_report.json，"
             "调用 content_model 对 fatal C1/C2 章节正文做必要修订，并自动备份原章节"
         ))
         self.btn_content_revision.setProperty("cssClass", "warning")
-        top_bar_3.addWidget(self.btn_content_revision)
 
         self.btn_outline_revision = QPushButton(self.tr("🛠  修订大纲"))
-        self.btn_outline_revision.setMinimumWidth(140)
+        tune_button(self.btn_outline_revision, 130)
         self.btn_outline_revision.setToolTip(self.tr(
             "读取 outline_audit_report.json，调用 outline_model 对 outline.json 做必要修订，并自动备份原文件"
         ))
         self.btn_outline_revision.setProperty("cssClass", "warning")
-        top_bar_3.addWidget(self.btn_outline_revision)
 
-        top_bar_3.addStretch()  # 添加弹性空间,让按钮靠左对齐
-
-        root.addLayout(top_bar_3)
-
-        # 第四行:小说内容审计范围与批量大小。0 表示自动/整部/不分批。
-        top_bar_4 = QHBoxLayout()
-        top_bar_4.setSpacing(action_gap)
-        top_bar_4.setContentsMargins(0, 0, 0, 0)
-        self._action_bar_layouts.append(top_bar_4)
-
-        lbl_audit_range = QLabel(self.tr("小说审计范围:"))
+        lbl_audit_range = make_label("小说审计范围:")
         self.spin_audit_start = QSpinBox()
         self.spin_audit_start.setRange(0, 9999)
         self.spin_audit_start.setValue(0)
         self.spin_audit_start.setSpecialValueText(self.tr("整部"))
         self.spin_audit_start.setToolTip(self.tr("审计起始章节（0 = 整部小说；指定范围时起止都需大于 0）"))
-        self.spin_audit_start.setFixedWidth(72)
+        tune_spin(self.spin_audit_start)
 
-        lbl_audit_tilde = QLabel("~")
+        lbl_audit_tilde = make_label("~")
         self.spin_audit_end = QSpinBox()
         self.spin_audit_end.setRange(0, 9999)
         self.spin_audit_end.setValue(0)
         self.spin_audit_end.setSpecialValueText(self.tr("整部"))
         self.spin_audit_end.setToolTip(self.tr("审计结束章节（0 = 整部小说；指定范围时起止都需大于 0）"))
-        self.spin_audit_end.setFixedWidth(72)
+        tune_spin(self.spin_audit_end)
 
-        lbl_audit_batch = QLabel(self.tr("批大小:"))
+        lbl_audit_batch = make_label("批大小:")
         self.spin_audit_batch_size = QSpinBox()
         self.spin_audit_batch_size.setRange(0, 50)
         self.spin_audit_batch_size.setValue(0)
@@ -271,18 +303,41 @@ class ProgressTab(QWidget):
         self.spin_audit_batch_size.setToolTip(self.tr(
             "LLM 单次处理的章节/转场数量（0 = 使用配置默认；1 = 不分批）"
         ))
-        self.spin_audit_batch_size.setFixedWidth(72)
+        tune_spin(self.spin_audit_batch_size)
 
-        top_bar_4.addWidget(lbl_audit_range)
-        top_bar_4.addWidget(self.spin_audit_start)
-        top_bar_4.addWidget(lbl_audit_tilde)
-        top_bar_4.addWidget(self.spin_audit_end)
-        top_bar_4.addSpacing(action_group_gap)
-        top_bar_4.addWidget(lbl_audit_batch)
-        top_bar_4.addWidget(self.spin_audit_batch_size)
-        top_bar_4.addStretch()
+        audit_group, audit_layout = make_group("审计与修订")
+        audit_layout.addWidget(self.btn_outline_audit, 0, 0)
+        audit_layout.addWidget(self.btn_outline_revision, 0, 1)
+        audit_layout.addWidget(self.btn_novel_audit, 1, 0)
+        audit_layout.addWidget(self.btn_novel_audit_selected, 1, 1)
+        audit_layout.addWidget(self.btn_content_revision, 1, 2)
 
-        root.addLayout(top_bar_4)
+        audit_options = QWidget()
+        audit_options.setStyleSheet("background: transparent;")
+        audit_options_row = QHBoxLayout(audit_options)
+        audit_options_row.setContentsMargins(0, 0, 0, 0)
+        audit_options_row.setSpacing(action_gap)
+        audit_options_row.addWidget(lbl_audit_range)
+        audit_options_row.addWidget(self.spin_audit_start)
+        audit_options_row.addWidget(lbl_audit_tilde)
+        audit_options_row.addWidget(self.spin_audit_end)
+        audit_options_row.addSpacing(8)
+        audit_options_row.addWidget(lbl_audit_batch)
+        audit_options_row.addWidget(self.spin_audit_batch_size)
+        audit_options_row.addStretch()
+        audit_layout.addWidget(audit_options, 2, 0, 1, 3)
+        audit_layout.setColumnStretch(3, 1)
+
+        grouped_actions = QWidget()
+        grouped_actions.setStyleSheet("background: transparent;")
+        grouped_actions_layout = QHBoxLayout(grouped_actions)
+        grouped_actions_layout.setContentsMargins(0, 0, 0, 0)
+        grouped_actions_layout.setSpacing(6)
+        grouped_actions_layout.addWidget(chapter_group, 1)
+        grouped_actions_layout.addWidget(audit_group, 1)
+        controls.addWidget(grouped_actions)
+
+        root.addLayout(controls)
 
         # ---- 中部：章节列表 + 日志 ----
         splitter = QSplitter(Qt.Horizontal)
@@ -408,6 +463,14 @@ class ProgressTab(QWidget):
         Args:
             target_chapters_list: 指定要生成的章节列表，None 表示全量续写模式
         """
+        # 统一互斥：任一长任务运行中都不允许再启动流水线
+        if self.has_running_task():
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("有任务正在运行中，请等待完成后再启动新任务。"),
+            )
+            return
+
         # 读取配置获取目标章节数
         cfg = load_config(self._config_path)
         target_chapters = (cfg.get("novel_config") or {}).get("target_chapters", 0)
@@ -480,19 +543,7 @@ class ProgressTab(QWidget):
         self._attach_thread_lifecycle("_worker")
 
         # 切换按钮状态
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.btn_outline_only.setEnabled(False)
-        self.btn_regen.setEnabled(False)
-        self.btn_refresh.setEnabled(False)
-        self.btn_merge.setEnabled(False)
-        self.btn_marketing.setEnabled(False)
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_novel_audit_selected.setEnabled(False)
-        self.btn_content_revision.setEnabled(False)
-        self.btn_outline_revision.setEnabled(False)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self._worker.start()
 
@@ -568,6 +619,26 @@ class ProgressTab(QWidget):
 
         worker.finished.connect(_on_thread_finished)
 
+    def _set_actions_busy(self, busy: bool) -> None:
+        """统一切换长任务运行期间的动作按钮可用状态并广播 busy 信号。
+
+        所有任务的启动/结束必须经由此方法切换按钮，禁止逐处手写
+        setEnabled 清单——手写清单已多次漏项（如流水线结束后「修订内容」
+        未恢复、大纲生成期间「重新生成」未禁用导致可并发启动流水线）。
+        """
+        for button in (
+            self.btn_start, self.btn_outline_only, self.btn_refresh,
+            self.btn_merge, self.btn_marketing, self.btn_outline_audit,
+            self.btn_novel_audit, self.btn_content_revision,
+            self.btn_outline_revision,
+        ):
+            button.setEnabled(not busy)
+        has_selection = len(self.chapter_list.get_selected_chapter_numbers()) > 0
+        self.btn_regen.setEnabled(not busy and has_selection)
+        self.btn_novel_audit_selected.setEnabled(not busy and has_selection)
+        self.btn_stop.setEnabled(busy)
+        self.pipeline_running_changed.emit(busy)
+
     def _on_selection_changed(self):
         """章节列表选择变化时，更新重新生成按钮状态"""
         selected = self.chapter_list.get_selected_chapter_numbers()
@@ -584,6 +655,14 @@ class ProgressTab(QWidget):
 
     def _on_regen(self):
         """重新生成选中的章节"""
+        # 统一互斥：其他流程（如大纲生成/合并）运行中禁止并发启动流水线
+        if self.has_running_task():
+            QMessageBox.warning(
+                self, self.tr("提示"),
+                self.tr("有任务正在运行中，请等待完成后再启动新任务。"),
+            )
+            return
+
         selected = self.chapter_list.get_selected_chapter_numbers()
         if not selected:
             QMessageBox.information(self, self.tr("提示"), self.tr("请先在章节列表中选中要重新生成的章节。"))
@@ -634,36 +713,16 @@ class ProgressTab(QWidget):
         self._outline_worker.log_message.connect(self.log_viewer.append_log)
         self._attach_thread_lifecycle("_outline_worker")
 
-        self.btn_outline_only.setEnabled(False)
         self.btn_outline_only.setText(self.tr("⏳  大纲生成中..."))
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.btn_merge.setEnabled(False)
-        self.btn_marketing.setEnabled(False)
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_novel_audit_selected.setEnabled(False)
-        self.btn_content_revision.setEnabled(False)
-        self.btn_outline_revision.setEnabled(False)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self.log_viewer.append_log(self.tr("开始生成大纲..."), "INFO")
         self._outline_worker.start()
 
     def _on_outline_finished(self, success: bool, message: str):
         """大纲生成完成"""
-        self.btn_outline_only.setEnabled(True)
         self.btn_outline_only.setText(self.tr("📝  仅生成大纲"))
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        self.btn_merge.setEnabled(True)
-        self.btn_marketing.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_content_revision.setEnabled(True)
-        self.btn_outline_revision.setEnabled(True)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             QMessageBox.information(self, self.tr("大纲生成完成"), message)
@@ -725,16 +784,8 @@ class ProgressTab(QWidget):
         self._attach_thread_lifecycle("_marketing_worker")
 
         # 禁用按钮 + 广播全局 busy 状态（锁定其它 tab）
-        self.btn_marketing.setEnabled(False)
         self.btn_marketing.setText(self.tr("⏳  生成中..."))
-        self.btn_merge.setEnabled(False)
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_novel_audit_selected.setEnabled(False)
-        self.btn_outline_revision.setEnabled(False)
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self.log_viewer.append_log(self.tr("开始生成营销内容..."), "INFO")
         self._marketing_worker.start()
@@ -785,16 +836,8 @@ class ProgressTab(QWidget):
         self._attach_thread_lifecycle("_merge_worker")
 
         # 禁用按钮 + 广播全局 busy 状态（锁定其它 tab）
-        self.btn_merge.setEnabled(False)
         self.btn_merge.setText(self.tr("⏳  合并中..."))
-        self.btn_marketing.setEnabled(False)
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_content_revision.setEnabled(False)
-        self.btn_outline_revision.setEnabled(False)
-        self.btn_start.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self.log_viewer.append_log(self.tr("开始合并所有章节..."), "INFO")
         self._merge_worker.start()
@@ -841,19 +884,8 @@ class ProgressTab(QWidget):
         self._outline_audit_worker.log_message.connect(self.log_viewer.append_log)
         self._attach_thread_lifecycle("_outline_audit_worker")
 
-        self.btn_outline_audit.setEnabled(False)
         self.btn_outline_audit.setText(self.tr("⏳  审计中..."))
-        self.btn_start.setEnabled(False)
-        self.btn_outline_only.setEnabled(False)
-        self.btn_regen.setEnabled(False)
-        self.btn_refresh.setEnabled(False)
-        self.btn_merge.setEnabled(False)
-        self.btn_marketing.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_content_revision.setEnabled(False)
-        self.btn_outline_revision.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self.log_viewer.append_log(self.tr("开始大纲审计复核..."), "INFO")
         self._outline_audit_worker.start()
@@ -910,21 +942,8 @@ class ProgressTab(QWidget):
         self._content_revision_worker.log_message.connect(self.log_viewer.append_log)
         self._attach_thread_lifecycle("_content_revision_worker")
 
-        self.btn_content_revision.setEnabled(False)
         self.btn_content_revision.setText(self.tr("⏳  修订中..."))
-        self.btn_outline_revision.setEnabled(False)
-        self.btn_content_revision.setEnabled(False)
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_novel_audit_selected.setEnabled(False)
-        self.btn_start.setEnabled(False)
-        self.btn_outline_only.setEnabled(False)
-        self.btn_regen.setEnabled(False)
-        self.btn_refresh.setEnabled(False)
-        self.btn_merge.setEnabled(False)
-        self.btn_marketing.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self.log_viewer.append_log(self.tr("开始根据内容审计报告修订章节正文..."), "INFO")
         self._content_revision_worker.start()
@@ -978,18 +997,8 @@ class ProgressTab(QWidget):
         self._outline_revision_worker.log_message.connect(self.log_viewer.append_log)
         self._attach_thread_lifecycle("_outline_revision_worker")
 
-        self.btn_outline_revision.setEnabled(False)
         self.btn_outline_revision.setText(self.tr("⏳  修订中..."))
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_novel_audit.setEnabled(False)
-        self.btn_start.setEnabled(False)
-        self.btn_outline_only.setEnabled(False)
-        self.btn_regen.setEnabled(False)
-        self.btn_refresh.setEnabled(False)
-        self.btn_merge.setEnabled(False)
-        self.btn_marketing.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         self.log_viewer.append_log(self.tr("开始根据审计报告修订大纲..."), "INFO")
         self._outline_revision_worker.start()
@@ -1099,20 +1108,8 @@ class ProgressTab(QWidget):
         self._novel_audit_worker.log_message.connect(self.log_viewer.append_log)
         self._attach_thread_lifecycle("_novel_audit_worker")
 
-        self.btn_novel_audit.setEnabled(False)
         self.btn_novel_audit.setText(self.tr("⏳  小说审计中..."))
-        self.btn_novel_audit_selected.setEnabled(False)
-        self.btn_content_revision.setEnabled(False)
-        self.btn_start.setEnabled(False)
-        self.btn_outline_only.setEnabled(False)
-        self.btn_regen.setEnabled(False)
-        self.btn_refresh.setEnabled(False)
-        self.btn_merge.setEnabled(False)
-        self.btn_marketing.setEnabled(False)
-        self.btn_outline_audit.setEnabled(False)
-        self.btn_outline_revision.setEnabled(False)
-        self.btn_stop.setEnabled(True)
-        self.pipeline_running_changed.emit(True)
+        self._set_actions_busy(True)
 
         if chapter_numbers is None:
             self.log_viewer.append_log(self.tr("开始整部小说审计..."), "INFO")
@@ -1148,18 +1145,7 @@ class ProgressTab(QWidget):
 
     def _on_pipeline_finished(self, success: bool):
         """流水线结束（成功或失败）"""
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        self.btn_outline_only.setEnabled(True)
-        self.btn_regen.setEnabled(False)
-        self.btn_refresh.setEnabled(True)
-        self.btn_merge.setEnabled(True)
-        self.btn_marketing.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_outline_revision.setEnabled(True)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         completed = self.chapter_list.get_completed_count()
         if success:
@@ -1176,17 +1162,8 @@ class ProgressTab(QWidget):
 
     def _on_marketing_finished(self, success: bool, message: str):
         """营销内容生成完成"""
-        self.btn_marketing.setEnabled(True)
         self.btn_marketing.setText(self.tr("📢  生成营销内容"))
-        self.btn_merge.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_content_revision.setEnabled(True)
-        self.btn_outline_revision.setEnabled(True)
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             QMessageBox.information(
@@ -1207,17 +1184,8 @@ class ProgressTab(QWidget):
 
     def _on_merge_finished(self, success: bool, paths: list):
         """章节合并完成。paths:成功时为产物路径列表,失败时为错误消息列表。"""
-        self.btn_merge.setEnabled(True)
         self.btn_merge.setText(self.tr("📚  合并所有章节"))
-        self.btn_marketing.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_content_revision.setEnabled(True)
-        self.btn_outline_revision.setEnabled(True)
-        self.btn_start.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             if len(paths) == 1:
@@ -1242,20 +1210,8 @@ class ProgressTab(QWidget):
 
     def _on_outline_audit_finished(self, success: bool, message: str):
         """大纲审计复核完成"""
-        self.btn_outline_audit.setEnabled(True)
         self.btn_outline_audit.setText(self.tr("🔍  大纲审计复核"))
-        self.btn_start.setEnabled(True)
-        self.btn_outline_only.setEnabled(True)
-        self.btn_regen.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_refresh.setEnabled(True)
-        self.btn_merge.setEnabled(True)
-        self.btn_marketing.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_content_revision.setEnabled(True)
-        self.btn_outline_revision.setEnabled(True)
-        self.btn_stop.setEnabled(False)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             QMessageBox.information(self, self.tr("大纲审计完成"), message)
@@ -1271,20 +1227,8 @@ class ProgressTab(QWidget):
 
     def _on_outline_revision_finished(self, success: bool, message: str):
         """大纲修订完成"""
-        self.btn_outline_revision.setEnabled(True)
         self.btn_outline_revision.setText(self.tr("🛠  修订大纲"))
-        self.btn_content_revision.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_start.setEnabled(True)
-        self.btn_outline_only.setEnabled(True)
-        self.btn_regen.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_refresh.setEnabled(True)
-        self.btn_merge.setEnabled(True)
-        self.btn_marketing.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_stop.setEnabled(False)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             QMessageBox.information(self, self.tr("大纲修订完成"), message)
@@ -1300,20 +1244,8 @@ class ProgressTab(QWidget):
 
     def _on_content_revision_finished(self, success: bool, message: str):
         """章节内容修订完成。"""
-        self.btn_content_revision.setEnabled(True)
         self.btn_content_revision.setText(self.tr("🛠  修订内容"))
-        self.btn_outline_revision.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_start.setEnabled(True)
-        self.btn_outline_only.setEnabled(True)
-        self.btn_regen.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_refresh.setEnabled(True)
-        self.btn_merge.setEnabled(True)
-        self.btn_marketing.setEnabled(True)
-        self.btn_novel_audit.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_stop.setEnabled(False)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             QMessageBox.information(self, self.tr("内容修订完成"), message)
@@ -1330,20 +1262,8 @@ class ProgressTab(QWidget):
 
     def _on_novel_audit_finished(self, success: bool, message: str):
         """整部小说内容审计完成。"""
-        self.btn_novel_audit.setEnabled(True)
         self.btn_novel_audit.setText(self.tr("🔎  章节内容审计"))
-        self.btn_content_revision.setEnabled(True)
-        self.btn_start.setEnabled(True)
-        self.btn_outline_only.setEnabled(True)
-        self.btn_regen.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_refresh.setEnabled(True)
-        self.btn_merge.setEnabled(True)
-        self.btn_marketing.setEnabled(True)
-        self.btn_outline_audit.setEnabled(True)
-        self.btn_outline_revision.setEnabled(True)
-        self.btn_novel_audit_selected.setEnabled(len(self.chapter_list.get_selected_chapter_numbers()) > 0)
-        self.btn_stop.setEnabled(False)
-        self.pipeline_running_changed.emit(False)
+        self._set_actions_busy(False)
 
         if success:
             QMessageBox.information(self, self.tr("整部小说审计完成"), message)
@@ -1384,11 +1304,7 @@ class ProgressTab(QWidget):
 
     def _retranslate_buttons(self):
         """重新设置按钮文本（根据当前运行状态）"""
-        is_running = self._worker is not None and self._worker.isRunning()
-        if is_running:
-            self.btn_start.setText(self.tr("⏹  停止"))
-        else:
-            self.btn_start.setText(self.tr("▶  启动"))
+        self.btn_start.setText(self.tr("▶  启动"))
         self.btn_regen.setText(self.tr("🔄  重新生成选中章节"))
         self.btn_open_output.setText(self.tr("打开输出目录"))
         if self._outline_audit_worker is not None and self._outline_audit_worker.isRunning():

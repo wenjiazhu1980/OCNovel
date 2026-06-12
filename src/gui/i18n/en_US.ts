@@ -1549,6 +1549,10 @@ This may take a few minutes, continue?</translation>
         <translation>A task is running, please wait before running the novel audit.</translation>
     </message>
     <message>
+        <source>有任务正在运行中，请等待完成后再启动新任务。</source>
+        <translation>A task is already running; please wait for it to finish before starting a new one.</translation>
+    </message>
+    <message>
         <source>未找到输出目录，请先生成章节内容。</source>
         <translation>Output directory not found, please generate chapter content first.</translation>
     </message>
@@ -1664,6 +1668,46 @@ Report saved to:
     <message>
         <source>整部小说内容审计失败: {0}</source>
         <translation>Full novel content audit failed: {0}</translation>
+    </message>
+    <message>
+        <source>未选择有效章节，已取消小说内容审计。</source>
+        <translation>No valid chapters selected; novel content audit cancelled.</translation>
+    </message>
+    <message>
+        <source>开始指定章节内容审计: {0}；章节: {1}</source>
+        <translation>Starting scoped chapter content audit: {0}; chapters: {1}</translation>
+    </message>
+    <message>
+        <source>章节内容审计为结构化 JSON 任务，已临时关闭 content_model 推理输出以减少截断。</source>
+        <translation>Chapter content audit is a structured JSON task; content_model reasoning output is temporarily disabled to reduce truncation.</translation>
+    </message>
+    <message>
+        <source>小说内容审计完成，发现 {0} 处 fatal 问题、{1} 处 warning、{2} 处 info。
+已审计章节 {3} 章，LLM 调用 {4} 次。
+报告已保存到:
+{5}</source>
+        <translation>Novel content audit complete. Found {0} fatal issues, {1} warnings, and {2} info items.
+Audited {3} chapters with {4} LLM calls.
+Report saved to:
+{5}</translation>
+    </message>
+    <message>
+        <source>小说内容审计完成，未发现 fatal 问题，warning {0} 处、info {1} 处。
+已审计章节 {2} 章，LLM 调用 {3} 次。
+报告已保存到:
+{4}</source>
+        <translation>Novel content audit complete. No fatal issues found; {0} warnings and {1} info items.
+Audited {2} chapters with {3} LLM calls.
+Report saved to:
+{4}</translation>
+    </message>
+    <message>
+        <source>已清理过时的局部审计报告: {0}</source>
+        <translation>Removed stale scoped audit report: {0}</translation>
+    </message>
+    <message>
+        <source>清理局部审计报告失败: {0}</source>
+        <translation>Failed to remove scoped audit report: {0}</translation>
     </message>
 </context>
 </TS>

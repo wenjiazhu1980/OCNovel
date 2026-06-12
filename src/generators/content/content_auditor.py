@@ -14,31 +14,8 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
-
-
-_DEBUG_SESSION_ID = "bda02d"
-_DEBUG_LOG_PATH = "/Users/zzz/Codespace/OCNovel/.cursor/debug-bda02d.log"
-
-
-def _debug_bda02d(hypothesis_id: str, location: str, message: str, data: Optional[Dict[str, Any]] = None) -> None:
-    """写入本次调试会话的 NDJSON 运行证据。"""
-    try:
-        os.makedirs(os.path.dirname(_DEBUG_LOG_PATH), exist_ok=True)
-        payload = {
-            "sessionId": _DEBUG_SESSION_ID,
-            "hypothesisId": hypothesis_id,
-            "location": location,
-            "message": message,
-            "data": data or {},
-            "timestamp": int(time.time() * 1000),
-        }
-        with open(_DEBUG_LOG_PATH, "a", encoding="utf-8") as fp:
-            fp.write(json.dumps(payload, ensure_ascii=False, default=str) + "\n")
-    except Exception:
-        pass
 
 
 # =====================================================================
@@ -253,6 +230,16 @@ def _iter_prompt_budget_batches(
     index = 0
     while index < len(items):
         max_end = min(len(items), index + normalized_batch_size)
+        # 先整批构建一次：未超预算（常见情形）时避免逐项扩展的 O(k²) 重复构建
+        full_batch = list(items[index:max_end])
+        full_prompt = prompt_builder(full_batch)
+        if len(full_prompt) <= CONTENT_AUDIT_PROMPT_MAX_CHARS or len(full_batch) == 1:
+            # 单个章节/转场已经超预算时无法继续拆分，保留统计并交由 LLM 返回处理。
+            yield full_batch, full_prompt
+            index += len(full_batch)
+            continue
+
+        # 整批超预算：从单项起逐项扩展，取最长不超预算前缀
         selected_batch: List[Any] = []
         selected_prompt = ""
         probe_end = index
@@ -470,6 +457,14 @@ def _is_content_candidate(filename: str, chapter_number: int) -> bool:
     return bool(match and int(match.group(1)) == chapter_number)
 
 
+def _safe_mtime(path: str) -> float:
+    """获取文件修改时间；文件在排序期间被删除时返回 0 而非中断审计。"""
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return 0.0
+
+
 def find_chapter_candidates(
     output_dir: str,
     chapter_number: int,
@@ -493,7 +488,7 @@ def find_chapter_candidates(
     except OSError:
         return candidates
 
-    candidates.sort(key=lambda path: os.path.getmtime(path), reverse=True)
+    candidates.sort(key=_safe_mtime, reverse=True)
     if title:
         expected_name = f"第{chapter_number}章_{_clean_filename(title)}.txt"
         candidates.sort(key=lambda path: 0 if os.path.basename(path) == expected_name else 1)
@@ -577,9 +572,13 @@ def _extract_json(raw: str) -> Optional[Any]:
     text = str(raw or "").strip()
     if not text:
         return None
+    # 优先尝试代码块内容，但失败时回退全文扫描——首个代码块可能是思考/示例而非结果
     fence_match = re.search(r"```(?:json)?\s*(.*?)```", text, re.S | re.I)
     if fence_match:
-        text = fence_match.group(1).strip()
+        try:
+            return json.loads(fence_match.group(1).strip())
+        except Exception:
+            pass
     try:
         return json.loads(text)
     except Exception:
@@ -742,40 +741,11 @@ def _call_llm_for_findings(
     base_evidence: Optional[Dict[str, Any]] = None,
 ) -> List[Finding]:
     """调用 LLM 并把返回 JSON 转换为 Finding 列表。"""
-    # region debug-bda02d
-    _debug_bda02d(
-        "H3",
-        "src/generators/content/content_auditor.py:_call_llm_for_findings:before_generate",
-        "章节内容审计即将调用 LLM，记录规则与章节上下文",
-        {
-            "rule_id": rule_id,
-            "chapter_number": chapter_number,
-            "prompt_len": len(prompt or ""),
-            "title": title,
-            "base_evidence_keys": sorted((base_evidence or {}).keys()),
-        },
-    )
-    # endregion
-    started_at = time.time()
     _update_prompt_stats(stats, prompt, item_count=1)
     try:
         raw = model.generate(prompt, **CONTENT_AUDIT_GENERATE_KWARGS)
     except Exception as exc:
         stats["llm_call_failures"] += 1
-        # region debug-bda02d
-        _debug_bda02d(
-            "H3",
-            "src/generators/content/content_auditor.py:_call_llm_for_findings:generate_exception",
-            "章节内容审计 LLM 调用抛出异常",
-            {
-                "rule_id": rule_id,
-                "chapter_number": chapter_number,
-                "elapsed_ms": int((time.time() - started_at) * 1000),
-                "error_type": type(exc).__name__,
-                "error_message": str(exc),
-            },
-        )
-        # endregion
         return [Finding(
             rule_id,
             "warning",
@@ -785,38 +755,9 @@ def _call_llm_for_findings(
             evidence={**(base_evidence or {}), "error": str(exc)},
         )]
 
-    # region debug-bda02d
-    _debug_bda02d(
-        "H3_H5",
-        "src/generators/content/content_auditor.py:_call_llm_for_findings:after_generate",
-        "章节内容审计 LLM 调用返回，记录原始返回长度与可解析性前置指标",
-        {
-            "rule_id": rule_id,
-            "chapter_number": chapter_number,
-            "elapsed_ms": int((time.time() - started_at) * 1000),
-            "raw_type": type(raw).__name__,
-            "raw_len": len(raw) if isinstance(raw, str) else None,
-            "raw_len_after_strip": len(raw.strip()) if isinstance(raw, str) else None,
-        },
-    )
-    # endregion
-
     payload = _extract_json(raw)
     if payload is None:
         stats["llm_parse_failures"] += 1
-        # region debug-bda02d
-        _debug_bda02d(
-            "H3_H5",
-            "src/generators/content/content_auditor.py:_call_llm_for_findings:parse_failed",
-            "章节内容审计 LLM 返回无法解析为 JSON",
-            {
-                "rule_id": rule_id,
-                "chapter_number": chapter_number,
-                "raw_len": len(raw) if isinstance(raw, str) else None,
-                "raw_len_after_strip": len(raw.strip()) if isinstance(raw, str) else None,
-            },
-        )
-        # endregion
         return [Finding(
             rule_id,
             "warning",
@@ -839,21 +780,6 @@ def _call_llm_for_findings(
             if reason:
                 evidence["reason"] = str(reason)
         findings.append(Finding(rule_id, severity, title, chapter_number, message, evidence=evidence or None))
-    # region debug-bda02d
-    _debug_bda02d(
-        "H3_H5",
-        "src/generators/content/content_auditor.py:_call_llm_for_findings:parsed_findings",
-        "章节内容审计 LLM 返回解析完成，记录 finding 数量与严重程度分布",
-        {
-            "rule_id": rule_id,
-            "chapter_number": chapter_number,
-            "finding_count": len(findings),
-            "fatal": len([item for item in findings if item.severity == "fatal"]),
-            "warning": len([item for item in findings if item.severity == "warning"]),
-            "info": len([item for item in findings if item.severity == "info"]),
-        },
-    )
-    # endregion
     return findings
 
 
@@ -873,26 +799,28 @@ def _call_llm_for_batch_findings(
         raw = model.generate(prompt, **CONTENT_AUDIT_GENERATE_KWARGS)
     except Exception as exc:
         stats["llm_call_failures"] += 1
+        # 与逐项路径对齐：批量失败时为批内每个章节生成归属明确的 finding，
+        # 避免只留一条无章节号的提示导致修订流程无法定位受影响章节。
         return [Finding(
-            default_rule_id,
+            rule_id,
             "warning",
-            title_by_rule.get(default_rule_id, "章节内容审计"),
-            None,
-            f"批量章节内容审计 LLM 调用失败，需人工确认：{exc}",
-            evidence={"error": str(exc)},
-        )]
+            title_by_rule.get(rule_id, "章节内容审计"),
+            chapter_number,
+            f"第 {chapter_number} 章批量 LLM 审计调用失败，需人工确认：{exc}",
+            evidence={**evidence, "error": str(exc)},
+        ) for (rule_id, chapter_number), evidence in sorted(evidence_by_key.items())]
 
     payload = _extract_json(raw)
     if payload is None:
         stats["llm_parse_failures"] += 1
         return [Finding(
-            default_rule_id,
+            rule_id,
             "warning",
-            title_by_rule.get(default_rule_id, "章节内容审计"),
-            None,
-            "批量章节内容审计 LLM 返回无法解析，需人工确认。",
-            evidence={"raw_response": str(raw)[:800]},
-        )]
+            title_by_rule.get(rule_id, "章节内容审计"),
+            chapter_number,
+            f"第 {chapter_number} 章批量 LLM 审计返回无法解析，需人工确认。",
+            evidence={**evidence, "raw_response": str(raw)[:800]},
+        ) for (rule_id, chapter_number), evidence in sorted(evidence_by_key.items())]
 
     findings: List[Finding] = []
     for item in _payload_items(payload):
